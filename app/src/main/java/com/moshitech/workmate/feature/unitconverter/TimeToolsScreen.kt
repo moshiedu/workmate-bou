@@ -24,6 +24,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -31,6 +33,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults
@@ -68,7 +71,7 @@ fun TimeToolsScreen(
     val primaryBlue = Color(0xFF1976D2)
 
     var selectedTabIndex by remember { mutableStateOf(0) }
-    val tabs = listOf("Converter", "Date Calc", "Difference", "Timestamp")
+    val tabs = listOf("Converter", "Date Calc", "Difference", "Timestamp", "Zones", "Biz Days", "Age")
 
     Scaffold(
         containerColor = backgroundColor,
@@ -85,10 +88,15 @@ fun TimeToolsScreen(
         }
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
-            TabRow(
+
+
+// ...
+
+            ScrollableTabRow(
                 selectedTabIndex = selectedTabIndex,
                 containerColor = backgroundColor,
                 contentColor = primaryBlue,
+                edgePadding = 0.dp,
                 indicator = { tabPositions ->
                     TabRowDefaults.Indicator(
                         Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]),
@@ -107,10 +115,13 @@ fun TimeToolsScreen(
 
             Box(modifier = Modifier.padding(16.dp)) {
                 when (selectedTabIndex) {
-                    0 -> UnitConverterTab(navController) // Reuse existing logic
+                    0 -> UnitConverterTab(navController)
                     1 -> DateCalculatorTab(viewModel, isDark)
                     2 -> TimeDifferenceTab(viewModel, isDark)
                     3 -> TimestampTab(viewModel, isDark)
+                    4 -> TimeZoneTab(viewModel, isDark)
+                    5 -> BusinessDayTab(viewModel, isDark)
+                    6 -> AgeCalculatorTab(viewModel, isDark)
                 }
             }
         }
@@ -328,6 +339,166 @@ fun TimestampTab(viewModel: TimeToolsViewModel, isDark: Boolean) {
             modifier = Modifier.align(Alignment.CenterHorizontally)
         ) {
             Text("Set to Now")
+        }
+    }
+}
+
+@Composable
+fun TimeZoneTab(viewModel: TimeToolsViewModel, isDark: Boolean) {
+    val sourceTime by viewModel.timeZoneSourceTime.collectAsState()
+    val sourceId by viewModel.timeZoneSourceId.collectAsState()
+    val targetId by viewModel.timeZoneTargetId.collectAsState()
+    val result by viewModel.timeZoneResult.collectAsState()
+    
+    val textColor = if (isDark) Color.White else Color(0xFF111827)
+    val cardColor = if (isDark) Color(0xFF1E293B) else Color.White
+    
+    // Simplified Zone List for Demo
+    val commonZones = listOf("UTC", "America/New_York", "Europe/London", "Asia/Tokyo", "Australia/Sydney", "Asia/Dhaka", "Europe/Paris")
+
+    Column {
+        Text("Time Zone Converter", color = textColor, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // Source Time (Just Date Selector for now, ideally TimePicker too)
+        DateSelector(label = "Source Date", date = sourceTime.toLocalDate()) { 
+            viewModel.onTimeZoneSourceTimeChanged(it.atTime(sourceTime.toLocalTime()))
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Text("Source Zone", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+        ZoneDropdown(selected = sourceId, zones = commonZones) { viewModel.onTimeZoneSourceIdChanged(it) }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Text("Target Zone", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+        ZoneDropdown(selected = targetId, zones = commonZones) { viewModel.onTimeZoneTargetIdChanged(it) }
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = cardColor)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Converted Time", color = Color.Gray)
+                Text(
+                    text = result,
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = textColor,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun BusinessDayTab(viewModel: TimeToolsViewModel, isDark: Boolean) {
+    val startDate by viewModel.bizStartDate.collectAsState()
+    val days by viewModel.bizDays.collectAsState()
+    val operation by viewModel.bizOperation.collectAsState()
+    val resultDate by viewModel.bizResultDate.collectAsState()
+    
+    val textColor = if (isDark) Color.White else Color(0xFF111827)
+    val cardColor = if (isDark) Color(0xFF1E293B) else Color.White
+
+    Column {
+        Text("Business Day Calculator", color = textColor, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        DateSelector(label = "Start Date", date = startDate) { viewModel.onBizStartDateChanged(it) }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+            Button(
+                onClick = { viewModel.onBizOperationChanged(DateOperation.ADD) },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (operation == DateOperation.ADD) Color(0xFF1976D2) else Color.Gray
+                )
+            ) { Text("Add") }
+            Button(
+                onClick = { viewModel.onBizOperationChanged(DateOperation.SUBTRACT) },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (operation == DateOperation.SUBTRACT) Color(0xFF1976D2) else Color.Gray
+                )
+            ) { Text("Subtract") }
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        OutlinedTextField(
+            value = days,
+            onValueChange = { viewModel.onBizDaysChanged(it) },
+            label = { Text("Business Days") },
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+        )
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = cardColor)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Result Date (Excl. Weekends)", color = Color.Gray)
+                Text(
+                    text = resultDate.format(DateTimeFormatter.ofPattern("EEE, MMM dd, yyyy")),
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = textColor,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun AgeCalculatorTab(viewModel: TimeToolsViewModel, isDark: Boolean) {
+    val birthDate by viewModel.ageBirthDate.collectAsState()
+    val result by viewModel.ageResult.collectAsState()
+    
+    val textColor = if (isDark) Color.White else Color(0xFF111827)
+    val cardColor = if (isDark) Color(0xFF1E293B) else Color.White
+
+    Column {
+        Text("Age Calculator", color = textColor, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        DateSelector(label = "Birth Date", date = birthDate) { viewModel.onAgeBirthDateChanged(it) }
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = cardColor)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Your Age", color = Color.Gray)
+                Text(
+                    text = result,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = textColor,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ZoneDropdown(selected: String, zones: List<String>, onSelected: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box(modifier = Modifier.fillMaxWidth().clickable { expanded = true }.background(Color.Transparent).padding(8.dp)) {
+        Text(selected, style = MaterialTheme.typography.bodyLarge)
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            zones.forEach { zone ->
+                DropdownMenuItem(text = { Text(zone) }, onClick = { onSelected(zone); expanded = false })
+            }
         }
     }
 }

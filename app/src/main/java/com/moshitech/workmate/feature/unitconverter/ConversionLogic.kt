@@ -110,6 +110,8 @@ object ConversionRepository {
             UnitCategory.TIME -> listOf(
                 ConversionUnit("Second", "s", 1.0),
                 ConversionUnit("Millisecond", "ms", 0.001),
+                ConversionUnit("Microsecond", "μs", 0.000001),
+                ConversionUnit("Nanosecond", "ns", 0.000000001),
                 ConversionUnit("Minute", "min", 60.0),
                 ConversionUnit("Hour", "h", 3600.0),
                 ConversionUnit("Day", "d", 86400.0),
