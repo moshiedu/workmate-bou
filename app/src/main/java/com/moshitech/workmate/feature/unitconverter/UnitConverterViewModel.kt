@@ -225,4 +225,64 @@ class UnitConverterViewModel(application: Application) : AndroidViewModel(applic
             repository.clearHistory()
         }
     }
+
+    // Quick edit from history
+    data class QuickEditResult(
+        val inputValue: String,
+        val resultValue: String,
+        val fromUnit: String,
+        val toUnit: String,
+        val category: String
+    )
+
+    fun recalculateFromHistory(
+        categoryName: String,
+        fromUnitName: String,
+        toUnitName: String,
+        newInputValue: String
+    ): QuickEditResult? {
+        try {
+            val category = UnitCategory.entries.find { it.name == categoryName } ?: return null
+            val units = ConversionRepository.getUnitsForCategory(category)
+            val fromUnit = units.find { it.name == fromUnitName } ?: return null
+            val toUnit = units.find { it.name == toUnitName } ?: return null
+            
+            val inputDouble = newInputValue.toDoubleOrNull() ?: return null
+            
+            val result = if (category == UnitCategory.TEMPERATURE) {
+                convertTemperature(inputDouble, fromUnit, toUnit)
+            } else if (category == UnitCategory.DIGITAL_IMAGE) {
+                convertDigitalImage(inputDouble, fromUnit, toUnit)
+            } else {
+                // Standard Linear Conversion
+                val baseValue = inputDouble * fromUnit.factor
+                baseValue / toUnit.factor
+            }
+            
+            val formatter = DecimalFormat("#,##0.##########")
+            val formattedResult = formatter.format(result)
+            
+            return QuickEditResult(
+                inputValue = newInputValue,
+                resultValue = formattedResult,
+                fromUnit = fromUnit.symbol,
+                toUnit = toUnit.symbol,
+                category = categoryName
+            )
+        } catch (e: Exception) {
+            return null
+        }
+    }
+
+    fun saveQuickEditToHistory(result: QuickEditResult) {
+        viewModelScope.launch {
+            repository.saveConversion(
+                category = result.category,
+                fromUnit = result.fromUnit,
+                toUnit = result.toUnit,
+                inputValue = result.inputValue,
+                resultValue = result.resultValue
+            )
+        }
+    }
 }

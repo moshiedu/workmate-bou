@@ -23,6 +23,8 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
@@ -33,6 +35,11 @@ import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Button
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -45,6 +52,11 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -54,7 +66,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun UnitConverterScreen(
     navController: NavController,
@@ -64,6 +76,10 @@ fun UnitConverterScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val categories by viewModel.categories.collectAsState()
     val favorites by viewModel.favorites.collectAsState()
+
+    // Quick edit state
+    var showQuickEditSheet by remember { mutableStateOf(false) }
+    var selectedHistoryItem by remember { mutableStateOf<com.moshitech.workmate.feature.unitconverter.data.local.UnitConversionHistoryEntity?>(null) }
 
     // Colors matching the design
     val backgroundColor = if (isDark) Color(0xFF0F172A) else Color(0xFFF8F9FA)
@@ -257,9 +273,15 @@ fun UnitConverterScreen(
                             modifier = Modifier
                                 .width(180.dp)
                                 .height(90.dp)
-                                .clickable { 
-                                    navController.navigate("unit_conversion_details/${item.category}")
-                                },
+                                .combinedClickable(
+                                    onClick = { 
+                                        navController.navigate("unit_conversion_details/${item.category}")
+                                    },
+                                    onLongClick = {
+                                        selectedHistoryItem = item
+                                        showQuickEditSheet = true
+                                    }
+                                ),
                             colors = CardDefaults.cardColors(containerColor = cardColor),
                             shape = RoundedCornerShape(12.dp),
                             border = androidx.compose.foundation.BorderStroke(1.dp, borderColor),
@@ -365,6 +387,169 @@ fun UnitConverterScreen(
                     }
                 }
             }
+        }
+
+        // Quick Edit Bottom Sheet
+        if (showQuickEditSheet && selectedHistoryItem != null) {
+            val item = selectedHistoryItem!!
+            QuickEditBottomSheet(
+                historyItem = item,
+                viewModel = viewModel,
+                onDismiss = { showQuickEditSheet = false },
+                textColor = textColor,
+                secondaryTextColor = secondaryTextColor,
+                cardColor = cardColor,
+                borderColor = borderColor,
+                primaryBlue = primaryBlue
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun QuickEditBottomSheet(
+    historyItem: com.moshitech.workmate.feature.unitconverter.data.local.UnitConversionHistoryEntity,
+    viewModel: UnitConverterViewModel,
+    onDismiss: () -> Unit,
+    textColor: Color,
+    secondaryTextColor: Color,
+    cardColor: Color,
+    borderColor: Color,
+    primaryBlue: Color
+) {
+    val sheetState = rememberModalBottomSheetState()
+    val scope = rememberCoroutineScope()
+    
+    var editedInputValue by remember { mutableStateOf(historyItem.inputValue) }
+    var calculatedResult by remember { mutableStateOf<UnitConverterViewModel.QuickEditResult?>(null) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = cardColor
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp)
+        ) {
+            Text(
+                text = "Quick Edit Conversion",
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                color = textColor
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Text(
+                text = historyItem.category.replace("_", " "),
+                style = MaterialTheme.typography.bodyMedium,
+                color = secondaryTextColor
+            )
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            // Input field
+            OutlinedTextField(
+                value = editedInputValue,
+                onValueChange = { 
+                    editedInputValue = it
+                    // Recalculate on change
+                    calculatedResult = viewModel.recalculateFromHistory(
+                        categoryName = historyItem.category,
+                        fromUnitName = historyItem.fromUnit,
+                        toUnitName = historyItem.toUnit,
+                        newInputValue = it
+                    )
+                },
+                label = { Text("Input Value", color = secondaryTextColor) },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = cardColor,
+                    unfocusedContainerColor = cardColor,
+                    focusedBorderColor = primaryBlue,
+                    unfocusedBorderColor = borderColor,
+                    cursorColor = primaryBlue,
+                    focusedTextColor = textColor,
+                    unfocusedTextColor = textColor
+                ),
+                trailingIcon = {
+                    Text(
+                        text = historyItem.fromUnit,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = secondaryTextColor,
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                }
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Result display
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Result:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = secondaryTextColor
+                )
+                Text(
+                    text = "${calculatedResult?.resultValue ?: historyItem.resultValue} ${historyItem.toUnit}",
+                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                    color = primaryBlue
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            // Action buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            sheetState.hide()
+                            onDismiss()
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = cardColor,
+                        contentColor = textColor
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, borderColor)
+                ) {
+                    Text("Cancel")
+                }
+                
+                Button(
+                    onClick = {
+                        calculatedResult?.let { result ->
+                            viewModel.saveQuickEditToHistory(result)
+                        }
+                        scope.launch {
+                            sheetState.hide()
+                            onDismiss()
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    enabled = calculatedResult != null,
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = primaryBlue
+                    )
+                ) {
+                    Text("Save to History")
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
