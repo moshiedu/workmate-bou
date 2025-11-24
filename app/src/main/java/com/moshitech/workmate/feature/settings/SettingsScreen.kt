@@ -193,16 +193,22 @@ fun SettingsScreen(navController: NavController, mainViewModel: MainViewModel) {
                 SettingsItem(
                     icon = Icons.Default.Lock,
                     title = "App Lock",
-                    subtitle = null,
+                    subtitle = if (isAppLockEnabled) "Enabled" else "Disabled",
                     iconBgColor = iconBackgroundColor,
                     textColor = textColor,
                     trailing = {
                         Switch(
                             checked = isAppLockEnabled,
-                            onCheckedChange = { isAppLockEnabled = it },
+                            onCheckedChange = { 
+                                isAppLockEnabled = it
+                                if (it) {
+                                    navController.navigate(com.moshitech.workmate.navigation.Screen.AppLock.route)
+                                }
+                            },
                             colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = sectionHeaderColor)
                         )
-                    }
+                    },
+                    onClick = { navController.navigate(com.moshitech.workmate.navigation.Screen.AppLock.route) }
                 )
             }
 

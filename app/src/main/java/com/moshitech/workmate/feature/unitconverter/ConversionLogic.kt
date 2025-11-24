@@ -120,12 +120,19 @@ object ConversionRepository {
                 ConversionUnit("Year (Avg)", "yr", 31536000.0)
             )
             UnitCategory.DATA_STORAGE -> listOf(
+                ConversionUnit("Bit", "b", 0.125),
                 ConversionUnit("Byte", "B", 1.0),
+                ConversionUnit("Kilobit", "Kb", 128.0),
                 ConversionUnit("Kilobyte", "KB", 1024.0),
+                ConversionUnit("Megabit", "Mb", 131072.0),
                 ConversionUnit("Megabyte", "MB", 1048576.0),
+                ConversionUnit("Gigabit", "Gb", 134217728.0),
                 ConversionUnit("Gigabyte", "GB", 1073741824.0),
                 ConversionUnit("Terabyte", "TB", 1099511627776.0),
-                ConversionUnit("Bit", "b", 0.125)
+                ConversionUnit("Petabyte", "PB", 1125899906842624.0),
+                ConversionUnit("Exabyte", "EB", 1.152921504606847e18),
+                ConversionUnit("Zettabyte", "ZB", 1.1805916207174113e21),
+                ConversionUnit("Yottabyte", "YB", 1.2089258196146292e24)
             )
             UnitCategory.FUEL -> listOf(
                 ConversionUnit("Kilometers/Liter", "km/L", 1.0), // Base

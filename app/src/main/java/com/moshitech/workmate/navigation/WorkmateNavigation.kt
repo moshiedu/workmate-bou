@@ -64,15 +64,16 @@ fun WorkmateNavigation(
                 com.moshitech.workmate.feature.unitconverter.ConversionDetailsScreen(navController, categoryName)
             }
         }
+        composable("manage_favorites") {
+            com.moshitech.workmate.feature.unitconverter.ManageFavoritesScreen(navController = navController)
+        }
         composable(Screen.Compass.route) {
              Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(text = "Compass Screen")
             }
         }
         composable(Screen.AppLock.route) {
-             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(text = "App Lock Screen")
-            }
+             com.moshitech.workmate.feature.applock.AppLockScreen(navController = navController)
         }
         composable(Screen.RamBooster.route) {
              RamBoosterScreen(navController = navController)

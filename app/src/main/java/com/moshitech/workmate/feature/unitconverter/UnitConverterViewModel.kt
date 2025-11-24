@@ -6,7 +6,19 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.text.DecimalFormat
 
-class UnitConverterViewModel : ViewModel() {
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.moshitech.workmate.data.local.AppDatabase
+import com.moshitech.workmate.feature.unitconverter.data.local.ConversionFavoriteEntity
+import com.moshitech.workmate.feature.unitconverter.repository.UnitConverterRepository
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+
+class UnitConverterViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val repository: UnitConverterRepository by lazy { UnitConverterRepository(application) }
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -14,14 +26,19 @@ class UnitConverterViewModel : ViewModel() {
     private val _categories = MutableStateFlow(UnitCategory.values().toList())
     val categories: StateFlow<List<UnitCategory>> = _categories.asStateFlow()
 
-    // Dummy favorites for now
-    private val _favorites = MutableStateFlow(
-        listOf(
-            ConversionFavorite("1", UnitCategory.LENGTH, "Inch", "Centimeter"),
-            ConversionFavorite("2", UnitCategory.TEMPERATURE, "Celsius", "Fahrenheit")
+    val favorites: StateFlow<List<ConversionFavoriteEntity>> = repository.getFavorites()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
         )
-    )
-    val favorites: StateFlow<List<ConversionFavorite>> = _favorites.asStateFlow()
+
+    val history: StateFlow<List<com.moshitech.workmate.feature.unitconverter.data.local.UnitConversionHistoryEntity>> = repository.getHistory()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
 
     // Conversion Details State
     private val _selectedCategory = MutableStateFlow(UnitCategory.LENGTH)
@@ -50,8 +67,16 @@ class UnitConverterViewModel : ViewModel() {
         if (query.isEmpty()) {
             _categories.value = UnitCategory.values().toList()
         } else {
-            _categories.value = UnitCategory.values().filter {
-                it.title.contains(query, ignoreCase = true)
+            _categories.value = UnitCategory.values().filter { category ->
+                // Search in category title
+                if (category.title.contains(query, ignoreCase = true)) return@filter true
+                
+                // Search in units of this category
+                val units = ConversionRepository.getUnitsForCategory(category)
+                units.any { unit -> 
+                    unit.name.contains(query, ignoreCase = true) || 
+                    unit.symbol.contains(query, ignoreCase = true)
+                }
             }
         }
     }
@@ -99,6 +124,7 @@ class UnitConverterViewModel : ViewModel() {
     }
 
     private fun calculateConversion() {
+        checkIsFavorite()
         val input = _inputValue.value.toDoubleOrNull() ?: 0.0
         val source = _sourceUnit.value
         val target = _targetUnit.value
@@ -121,6 +147,19 @@ class UnitConverterViewModel : ViewModel() {
 
         val df = DecimalFormat("#.####")
         _resultValue.value = df.format(result)
+        
+        // Save to history if we have valid values
+        if (input > 0 && source != null && target != null) {
+            viewModelScope.launch {
+                repository.saveConversion(
+                    category = category.name,
+                    fromUnit = source.name,
+                    toUnit = target.name,
+                    inputValue = _inputValue.value,
+                    resultValue = _resultValue.value
+                )
+            }
+        }
     }
     
     private fun convertTemperature(value: Double, from: ConversionUnit, to: ConversionUnit): Double {
@@ -147,6 +186,43 @@ class UnitConverterViewModel : ViewModel() {
             "Centimeter" -> (pixels / dpi) * 2.54
             "Millimeter" -> (pixels / dpi) * 25.4
             else -> 0.0
+        }
+    }
+
+
+    private val _isCurrentFavorite = MutableStateFlow(false)
+    val isCurrentFavorite: StateFlow<Boolean> = _isCurrentFavorite.asStateFlow()
+
+    fun checkIsFavorite() {
+        val source = _sourceUnit.value ?: return
+        val target = _targetUnit.value ?: return
+        val category = _selectedCategory.value
+
+        viewModelScope.launch {
+            _isCurrentFavorite.value = repository.isFavorite(category, source.name, target.name)
+        }
+    }
+
+    fun toggleFavorite() {
+        val source = _sourceUnit.value ?: return
+        val target = _targetUnit.value ?: return
+        val category = _selectedCategory.value
+
+        viewModelScope.launch {
+            repository.toggleFavorite(category, source.name, target.name)
+            checkIsFavorite()
+        }
+    }
+
+    fun removeFavorite(favorite: ConversionFavoriteEntity) {
+        viewModelScope.launch {
+            repository.removeFavorite(favorite)
+        }
+    }
+
+    fun clearHistory() {
+        viewModelScope.launch {
+            repository.clearHistory()
         }
     }
 }

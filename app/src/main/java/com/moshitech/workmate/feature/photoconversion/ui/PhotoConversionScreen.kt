@@ -65,6 +65,10 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.moshitech.workmate.feature.photoconversion.repository.CompressFormat
 import com.moshitech.workmate.feature.photoconversion.viewmodel.PhotoConversionViewModel
+import com.canhub.cropper.CropImageContract
+import com.canhub.cropper.CropImageContractOptions
+import com.canhub.cropper.CropImageOptions
+import androidx.compose.material.icons.filled.Crop
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -79,6 +83,19 @@ fun PhotoConversionScreen(
         contract = ActivityResultContracts.PickMultipleVisualMedia(),
         onResult = { uris -> viewModel.onImagesSelected(uris) }
     )
+
+    var uriToCrop by remember { androidx.compose.runtime.mutableStateOf<Uri?>(null) }
+
+    val cropImageLauncher = rememberLauncherForActivityResult(contract = CropImageContract()) { result ->
+        if (result.isSuccessful) {
+            val newUri = result.uriContent
+            val oldUri = uriToCrop
+            if (newUri != null && oldUri != null) {
+                viewModel.updateImage(oldUri, newUri)
+            }
+        }
+        uriToCrop = null
+    }
 
     var previewUri by remember { androidx.compose.runtime.mutableStateOf<Uri?>(null) }
 
@@ -173,6 +190,27 @@ fun PhotoConversionScreen(
                                 Icon(
                                     Icons.Default.Close,
                                     contentDescription = "Remove",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    uriToCrop = uri
+                                    val options = CropImageContractOptions(
+                                        uri = uri,
+                                        cropImageOptions = CropImageOptions()
+                                    )
+                                    cropImageLauncher.launch(options)
+                                },
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .size(24.dp)
+                                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                            ) {
+                                Icon(
+                                    Icons.Default.Crop,
+                                    contentDescription = "Crop",
                                     tint = Color.White,
                                     modifier = Modifier.size(16.dp)
                                 )

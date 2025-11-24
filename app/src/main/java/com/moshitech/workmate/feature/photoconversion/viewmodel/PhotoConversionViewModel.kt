@@ -55,6 +55,13 @@ class PhotoConversionViewModel(application: Application) : AndroidViewModel(appl
         _uiState.update { it.copy(selectedImages = it.selectedImages - uri) }
     }
 
+    fun updateImage(oldUri: Uri, newUri: Uri) {
+        _uiState.update { state ->
+            val newImages = state.selectedImages.map { if (it == oldUri) newUri else it }
+            state.copy(selectedImages = newImages)
+        }
+    }
+
     fun updateFormat(format: CompressFormat) {
         _uiState.update { it.copy(format = format) }
     }

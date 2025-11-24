@@ -1,5 +1,6 @@
 package com.moshitech.workmate.feature.unitconverter
 
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,6 +27,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -136,16 +140,25 @@ fun UnitConverterScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Favorites",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = textColor
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Star,
+                        contentDescription = null,
+                        tint = primaryBlue,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Favorites",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = textColor
+                    )
+                }
                 Text(
                     text = "Manage",
                     style = MaterialTheme.typography.bodyMedium,
                     color = primaryBlue,
-                    modifier = Modifier.clickable { /* TODO: Manage Favorites */ }
+                    modifier = Modifier.clickable { navController.navigate("manage_favorites") }
                 )
             }
             
@@ -160,10 +173,11 @@ fun UnitConverterScreen(
                         modifier = Modifier
                             .width(160.dp)
                             .height(80.dp)
-                            .clickable { /* TODO: Navigate to conversion */ },
+                            .clickable { navController.navigate("unit_conversion_details/${favorite.category.name}") },
                         colors = CardDefaults.cardColors(containerColor = cardColor),
                         shape = RoundedCornerShape(12.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, borderColor)
+                        border = androidx.compose.foundation.BorderStroke(1.dp, borderColor),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
                         Column(
                             modifier = Modifier
@@ -201,12 +215,114 @@ fun UnitConverterScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            // Recent Conversions Section
+            val history by viewModel.history.collectAsState()
+            
+            if (history.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = androidx.compose.material.icons.Icons.Default.History,
+                            contentDescription = null,
+                            tint = primaryBlue,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Recent Conversions",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = textColor
+                        )
+                    }
+                    Text(
+                        text = "Clear",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = primaryBlue,
+                        modifier = Modifier.clickable { viewModel.clearHistory() }
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(history.take(10)) { item ->
+                        Card(
+                            modifier = Modifier
+                                .width(180.dp)
+                                .height(90.dp)
+                                .clickable { 
+                                    navController.navigate("unit_conversion_details/${item.category}")
+                                },
+                            colors = CardDefaults.cardColors(containerColor = cardColor),
+                            shape = RoundedCornerShape(12.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, borderColor),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .padding(12.dp)
+                                    .fillMaxSize(),
+                                verticalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = item.category.replace("_", " "),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = secondaryTextColor,
+                                    maxLines = 1
+                                )
+                                Text(
+                                    text = "${item.inputValue} ${item.fromUnit}",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                    color = textColor,
+                                    maxLines = 1
+                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = androidx.compose.material.icons.Icons.Default.ArrowForward,
+                                        contentDescription = null,
+                                        tint = primaryBlue,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "${item.resultValue} ${item.toUnit}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = primaryBlue,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+
             // All Categories
-            Text(
-                text = "All Categories",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                color = textColor
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = androidx.compose.material.icons.Icons.Default.Category,
+                    contentDescription = null,
+                    tint = primaryBlue,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "All Categories",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = textColor
+                )
+            }
             
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -224,7 +340,8 @@ fun UnitConverterScreen(
                             .clickable { navController.navigate("unit_conversion_details/${category.name}") },
                         colors = CardDefaults.cardColors(containerColor = cardColor),
                         shape = RoundedCornerShape(12.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, borderColor)
+                        border = androidx.compose.foundation.BorderStroke(1.dp, borderColor),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                     ) {
                         Row(
                             modifier = Modifier

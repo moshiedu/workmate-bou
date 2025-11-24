@@ -15,11 +15,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -89,8 +91,67 @@ fun TimeToolsScreen(
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
 
-
-// ...
+            // Category Selector
+            val secondaryTextColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF6B7280)
+            val cardColor = if (isDark) Color(0xFF1E293B) else Color.White
+            val borderColor = if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)
+            var categoryExpanded by remember { mutableStateOf(false) }
+            
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .clickable { categoryExpanded = true },
+                colors = CardDefaults.cardColors(containerColor = cardColor),
+                shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, borderColor)
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Conversion Category", color = secondaryTextColor, style = MaterialTheme.typography.bodyMedium)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Time", color = textColor, fontWeight = FontWeight.Bold)
+                        Icon(androidx.compose.material.icons.Icons.Default.ArrowDropDown, contentDescription = null, tint = textColor)
+                    }
+                }
+                
+                DropdownMenu(
+                    expanded = categoryExpanded,
+                    onDismissRequest = { categoryExpanded = false },
+                    modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                ) {
+                    UnitCategory.values().filter { it != UnitCategory.MORE }.forEach { category ->
+                        DropdownMenuItem(
+                            text = { 
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = category.icon,
+                                        contentDescription = null,
+                                        tint = if (category == UnitCategory.TIME) primaryBlue else textColor,
+                                        modifier = androidx.compose.ui.Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = androidx.compose.ui.Modifier.width(12.dp))
+                                    Text(
+                                        text = category.title,
+                                        color = if (category == UnitCategory.TIME) primaryBlue else textColor
+                                    )
+                                }
+                            },
+                            onClick = {
+                                categoryExpanded = false
+                                if (category != UnitCategory.TIME) {
+                                    navController.navigate("unit_conversion_details/${category.name}") {
+                                        popUpTo("unit_conversion_details/{categoryName}") { inclusive = true }
+                                    }
+                                }
+                            }
+                        )
+                    }
+                }
+            }
 
             ScrollableTabRow(
                 selectedTabIndex = selectedTabIndex,
