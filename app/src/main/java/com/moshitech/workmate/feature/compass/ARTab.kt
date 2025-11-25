@@ -7,6 +7,7 @@ import androidx.camera.view.PreviewView
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +35,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.Button
 import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material3.Icon
+import androidx.lifecycle.compose.LocalLifecycleOwner
 
 @Composable
 fun ARTab(
@@ -42,11 +47,15 @@ fun ARTab(
     textColor: Color
 ) {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     val azimuth by viewModel.azimuth.collectAsState()
     val selectedWaypoint by viewModel.selectedWaypoint.collectAsState()
     val useTrueNorth by viewModel.useTrueNorth.collectAsState()
     val locationInfo by viewModel.locationInfo.collectAsState()
+    
+    // UI state for debug panel and awareness overlay
+    val showDebugInfo = remember { mutableStateOf(true) }
+    val showAwareness = remember { mutableStateOf(true) }
     
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -210,24 +219,99 @@ fun ARTab(
                         close()
                     }, Color.Black.copy(alpha = 0.2f))
                 }
+
+                val x = centerX + (diff * pixelsPerDegree)
+                
+                if (kotlin.math.abs(diff) < fov / 2) {
+                    drawCircle(color = arrowColor, radius = 8.dp.toPx(), center = Offset(x, stripHeight + 40.dp.toPx()))
+                    val distance = viewModel.getWaypointDistance(selectedWaypoint!!)
+                    drawContext.canvas.nativeCanvas.drawText(selectedWaypoint!!.name, x, stripHeight + 80.dp.toPx(), waypointTextPaint)
+                    drawContext.canvas.nativeCanvas.drawText(distance, x, stripHeight + 115.dp.toPx(), waypointTextPaint)
+                } else {
+                    val isRight = diff > 0
+                    val edgeX = if (isRight) size.width - 60.dp.toPx() else 60.dp.toPx()
+                    
+                    withTransform({
+                        translate(left = edgeX, top = centerY)
+                        if (!isRight) scale(scaleX = -1f, scaleY = 1.0f)
+                    }) {
+                        val arrowSize = 50.dp.toPx()
+                        val curvedPath = androidx.compose.ui.graphics.Path().apply {
+                            moveTo(-arrowSize / 2, -arrowSize / 2)
+                            cubicTo(arrowSize / 4, -arrowSize / 2, arrowSize / 2, -arrowSize / 4, arrowSize / 2, arrowSize / 4)
+                            lineTo(arrowSize / 2 - 15.dp.toPx(), arrowSize / 4 - 15.dp.toPx())
+                            moveTo(arrowSize / 2, arrowSize / 4)
+                            lineTo(arrowSize / 2 + 15.dp.toPx(), arrowSize / 4 - 15.dp.toPx())
+                        }
+                        drawPath(curvedPath, arrowColor, style = Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round))
+                        drawPath(curvedPath, Color.Black.copy(alpha = 0.3f), style = Stroke(width = 8.dp.toPx(), cap = StrokeCap.Round))
+                    }
+                    
+                    val distance = viewModel.getWaypointDistance(selectedWaypoint!!)
+                    drawContext.canvas.nativeCanvas.drawText(distance, edgeX, centerY + 60.dp.toPx(), waypointTextPaint)
+                }
+            } else {
+                val instructionPaint = android.graphics.Paint().apply {
+                    color = android.graphics.Color.WHITE
+                    textSize = 48f
+                    textAlign = android.graphics.Paint.Align.CENTER
+                    isAntiAlias = true
+                    setShadowLayer(10f, 0f, 0f, android.graphics.Color.BLACK)
+                }
+                
+                drawRect(color = Color.Black.copy(alpha = 0.7f), topLeft = Offset(centerX - 180.dp.toPx(), centerY - 100.dp.toPx()), size = androidx.compose.ui.geometry.Size(360.dp.toPx(), 200.dp.toPx()))
+                drawCircle(color = Color(0xFF3B82F6), radius = 30.dp.toPx(), center = Offset(centerX, centerY - 50.dp.toPx()))
+                drawCircle(color = Color.White, radius = 15.dp.toPx(), center = Offset(centerX, centerY - 50.dp.toPx()))
+                drawContext.canvas.nativeCanvas.drawText("No Waypoint Selected", centerX, centerY + 10.dp.toPx(), instructionPaint)
+                
+                val smallerPaint = android.graphics.Paint().apply {
+                    color = android.graphics.Color.LTGRAY
+                    textSize = 32f
+                    textAlign = android.graphics.Paint.Align.CENTER
+                    isAntiAlias = true
+                }
+                
+                drawContext.canvas.nativeCanvas.drawText("1. Go to Waypoints tab", centerX, centerY + 50.dp.toPx(), smallerPaint)
+                drawContext.canvas.nativeCanvas.drawText("2. Tap + to save a location", centerX, centerY + 80.dp.toPx(), smallerPaint)
+                drawContext.canvas.nativeCanvas.drawText("3. Select a waypoint", centerX, centerY + 110.dp.toPx(), smallerPaint)
+            }
+        }
+
+        // Awareness overlay shown on first entry
+        if (showAwareness.value) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .clickable { showAwareness.value = false },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "Tap to start AR navigation",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Color.White,
+                    modifier = Modifier.padding(16.dp)
+                )
             }
         }
 
         Column(modifier = Modifier.align(Alignment.TopCenter).padding(top = 100.dp)) {
             Text("${azimuth.toInt()}°", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Color.Yellow, modifier = Modifier.background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(8.dp)).padding(8.dp))
             
-            if (selectedWaypoint != null) {
-                val bearing = viewModel.getWaypointBearing(selectedWaypoint!!)
-                val adjustedAzimuth = (azimuth + 180) % 360
-                var diff = bearing - adjustedAzimuth
-                while (diff < -180) diff += 360
-                while (diff > 180) diff -= 360
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                Column(modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp)).padding(8.dp)) {
-                    Text("Bearing: ${bearing.toInt()}°", style = MaterialTheme.typography.bodySmall, color = Color.White)
-                    Text("Azimuth: ${azimuth.toInt()}° → ${adjustedAzimuth.toInt()}°", style = MaterialTheme.typography.bodySmall, color = Color.White)
-                    Text("Diff: ${diff.toInt()}°", style = MaterialTheme.typography.bodySmall, color = if (kotlin.math.abs(diff) < 15) Color.Green else Color.White)
+            if (showDebugInfo.value) {
+                if (selectedWaypoint != null) {
+                    val bearing = viewModel.getWaypointBearing(selectedWaypoint!!)
+                    val adjustedAzimuth = (azimuth + 180) % 360
+                    var diff = bearing - adjustedAzimuth
+                    while (diff < -180) diff += 360
+                    while (diff > 180) diff -= 360
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Column(modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp)).padding(8.dp)) {
+                        Text("Bearing: ${bearing.toInt()}°", style = MaterialTheme.typography.bodySmall, color = Color.White)
+                        Text("Azimuth: ${azimuth.toInt()}° → ${adjustedAzimuth.toInt()}°", style = MaterialTheme.typography.bodySmall, color = Color.White)
+                        Text("Diff: ${diff.toInt()}°", style = MaterialTheme.typography.bodySmall, color = if (kotlin.math.abs(diff) < 15) Color.Green else Color.White)
+                    }
                 }
             }
         }
