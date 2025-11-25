@@ -1,0 +1,249 @@
+// This file contains all the fixes for the reported test issues
+// Copy the relevant sections to the appropriate files
+
+// ============================================================================
+// FIX 1: Fingerprint Detection (USE_BIOMETRIC_MANAGER for Android 9+)
+// File: ProTestScreens.kt - FingerprintTestScreen
+// ============================================================================
+/*
+Replace lines 33-43 with:
+
+LaunchedEffect(Unit) {
+    try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            // Android 9+ use BiometricManager
+            val biometricManager = androidx.biometric.BiometricManager.from(context)
+            hasHardware = biometricManager.canAuthenticate(androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG) != androidx.biometric.BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE
+            hasEnrolled = biometricManager.canAuthenticate(androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG) == androidx.biometric.BiometricManager.BIOMETRIC_SUCCESS
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            // Android 6-8 use FingerprintManager
+            @Suppress("DEPRECATION")
+            val fingerprintManager = context.getSystemService(android.content.Context.FINGERPRINT_SERVICE) as FingerprintManager
+            hasHardware = fingerprintManager.isHardwareDetected
+            hasEnrolled = fingerprintManager.hasEnrolledFingerprints()
+        }
+    } catch (e: Exception) {
+        hasHardware = false
+    }
+}
+
+Add dependency to build.gradle:
+implementation("androidx.biometric:biometric:1.1.0")
+*/
+
+// ============================================================================
+// FIX 2: Charging Detection (Use BroadcastReceiver for real-time updates)
+// File: ProTestScreens.kt - ChargingTestScreen
+// ============================================================================
+/*
+Replace lines 171-186 with:
+
+DisposableEffect(Unit) {
+    val intentFilter = android.content.IntentFilter().apply {
+        addAction(android.content.Intent.ACTION_POWER_CONNECTED)
+        addAction(android.content.Intent.ACTION_POWER_DISCONNECTED)
+        addAction(android.content.Intent.ACTION_BATTERY_CHANGED)
+    }
+    
+    val receiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            intent?.let {
+                val status = it.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1)
+                isCharging = status == android.os.BatteryManager.BATTERY_STATUS_CHARGING ||
+                            status == android.os.BatteryManager.BATTERY_STATUS_FULL
+                
+                batteryLevel = it.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, 0)
+                
+                chargingType = when {
+                    !isCharging -> "Not Charging"
+                    status == android.os.BatteryManager.BATTERY_STATUS_CHARGING -> "Charging"
+                    status == android.os.BatteryManager.BATTERY_STATUS_FULL -> "Full"
+                    else -> "Unknown"
+                }
+            }
+        }
+    }
+    
+    context.registerReceiver(receiver, intentFilter)
+    
+    onDispose {
+        context.unregisterReceiver(receiver)
+    }
+}
+*/
+
+// ============================================================================
+// FIX 3: Light Sensor Crash (Add null checks and error handling)
+// File: SensorTestScreens.kt - LightSensorTestScreen
+// ============================================================================
+/*
+Replace LaunchedEffect with:
+
+DisposableEffect(Unit) {
+    val sensorManager = context.getSystemService(android.content.Context.SENSOR_SERVICE) as? android.hardware.SensorManager
+    val lightSensor = sensorManager?.getDefaultSensor(android.hardware.Sensor.TYPE_LIGHT)
+    
+    val listener = object : android.hardware.SensorEventListener {
+        override fun onSensorChanged(event: android.hardware.SensorEvent?) {
+            try {
+                event?.let {
+                    if (it.values.isNotEmpty()) {
+                        lightValue = it.values[0]
+                        maxValue = it.sensor?.maximumRange ?: 10000f
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore sensor errors
+            }
+        }
+        
+        override fun onAccuracyChanged(sensor: android.hardware.Sensor?, accuracy: Int) {}
+    }
+    
+    if (lightSensor != null) {
+        sensorManager.registerListener(listener, lightSensor, android.hardware.SensorManager.SENSOR_DELAY_UI)
+    }
+    
+    onDispose {
+        try {
+            sensorManager?.unregisterListener(listener)
+        } catch (e: Exception) {
+            // Ignore
+        }
+    }
+}
+*/
+
+// ============================================================================
+// FIX 4: Microphone Permission (Fix permission launcher)
+// File: SensorTestScreens.kt - MicrophoneTestScreen
+// ============================================================================
+/*
+Replace permission handling section with:
+
+val context = LocalContext.current
+var isRecording by remember { mutableStateOf(false) }
+var hasPermission by remember { 
+    mutableStateOf(
+        androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECORD_AUDIO
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    )
+}
+var recorder: MediaRecorder? by remember { mutableStateOf(null) }
+var recordingFile by remember { mutableStateOf<File?>(null) }
+
+val permissionLauncher = rememberLauncherForActivityResult(
+    ActivityResultContracts.RequestPermission()
+) { granted ->
+    hasPermission = granted
+}
+
+// In the UI where permission button is:
+if (!hasPermission) {
+    Text(
+        "Microphone permission required",
+        style = MaterialTheme.typography.titleLarge,
+        color = Color.Gray
+    )
+    Spacer(Modifier.height(16.dp))
+    Button(
+        onClick = {
+            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    ) {
+        Text("Grant Permission")
+    }
+}
+*/
+
+// ============================================================================
+// FIX 5: Headset Messaging (Better messaging for unsupported devices)
+// File: ProTestScreens.kt - HeadsetTestScreen
+// ============================================================================
+/*
+Replace the UI section (lines 372-395) with:
+
+Icon(
+    Icons.Default.Headset,
+    contentDescription = "Headset",
+    modifier = Modifier.size(120.dp),
+    tint = if (isConnected) Color(0xFF10B981) else Color.Gray
+)
+
+Spacer(Modifier.height(32.dp))
+
+Text(
+    if (isConnected) "CONNECTED" else "NOT CONNECTED",
+    style = MaterialTheme.typography.headlineSmall,
+    fontWeight = FontWeight.Bold,
+    color = if (isConnected) Color(0xFF10B981) else Color.Gray
+)
+
+Spacer(Modifier.height(16.dp))
+
+Card(
+    modifier = Modifier.fillMaxWidth(),
+    colors = CardDefaults.cardColors(containerColor = Color(0xFFF3F4F6))
+) {
+    Column(modifier = Modifier.padding(16.dp)) {
+        Text(
+            "ℹ️ Note:",
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleSmall
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "• Many modern phones don't have 3.5mm headphone jacks",
+            style = MaterialTheme.typography.bodyMedium
+        )
+        Text(
+            "• USB-C/Lightning headsets may not be detected",
+            style = MaterialTheme.typography.bodyMedium
+        )
+        Text(
+            "• Bluetooth headsets are not detected by this test",
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
+}
+
+Spacer(Modifier.height(16.dp))
+
+Text(
+    if (isConnected) 
+        "Wired headset detected!" 
+    else 
+        "Plug in a 3.5mm wired headset (if supported)",
+    style = MaterialTheme.typography.bodyLarge,
+    color = if (isConnected) Color(0xFF10B981) else Color.Gray
+)
+*/
+
+// ============================================================================
+// FIX 6: Button Test (Note about limitations)
+// File: MoreTestScreens.kt - ButtonTestScreen
+// ============================================================================
+/*
+Add this note in the UI:
+
+Card(
+    modifier = Modifier.fillMaxWidth(),
+    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3CD))
+) {
+    Column(modifier = Modifier.padding(16.dp)) {
+        Text(
+            "⚠️ Limitation:",
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF856404)
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Hardware button detection is very limited on Android. Volume buttons can only be detected when the app is in focus, and the Power button cannot be detected at all due to system restrictions.",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF856404)
+        )
+    }
+}
+*/

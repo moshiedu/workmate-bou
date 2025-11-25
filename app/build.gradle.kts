@@ -80,6 +80,9 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.image.cropper)
     
+    // Biometric for fingerprint detection
+    implementation("androidx.biometric:biometric:1.1.0")
+    
     // CameraX for AR Mode
     implementation(libs.camerax.core)
     implementation(libs.camerax.camera2)

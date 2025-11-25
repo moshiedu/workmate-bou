@@ -188,9 +188,14 @@ fun TrackerTab(
                     fontWeight = FontWeight.Bold,
                     color = textColor
                 )
-                if (trips.size > 3) {
-                    TextButton(onClick = { showAllTrips = !showAllTrips }) {
-                        Text(if (showAllTrips) "Show Less" else "Show All")
+                Row {
+                    TextButton(onClick = { viewModel.clearAllTrips() }) {
+                        Text("Clear All", color = Color.Red)
+                    }
+                    if (trips.size > 3) {
+                        TextButton(onClick = { showAllTrips = !showAllTrips }) {
+                            Text(if (showAllTrips) "Show Less" else "Show All")
+                        }
                     }
                 }
             }

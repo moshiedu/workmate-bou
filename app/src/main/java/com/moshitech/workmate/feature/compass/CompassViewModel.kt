@@ -109,6 +109,10 @@ class CompassViewModel(application: Application) : AndroidViewModel(application)
 
     // Low-pass filter alpha (0 = no change, 1 = instant change). Lower = smoother but more lag.
     private val alpha = 0.05f 
+    
+    // Location smoothing
+    private var smoothedLocation: Location? = null
+    private val locationAlpha = 0.3f // Higher than sensor alpha for responsiveness 
 
     fun startSensors() {
         accelerometer?.let {
@@ -117,20 +121,22 @@ class CompassViewModel(application: Application) : AndroidViewModel(application)
         magnetometer?.let {
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
         }
+        if (_useTrueNorth.value) {
+            startLocationUpdates()
+        }
     }
 
     fun stopSensors() {
         sensorManager.unregisterListener(this)
+        stopLocationUpdates()
     }
 
     fun toggleTrueNorth(enabled: Boolean) {
         _useTrueNorth.value = enabled
-        // In a real app, we would request location updates here to calculate declination.
-        // For now, we'll simulate a declination or assume 0 if no location.
-        // To implement properly, we need LocationManager.
         if (enabled) {
-            updateLocationData()
+            startLocationUpdates()
         } else {
+            stopLocationUpdates()
             declination = 0f
         }
     }
@@ -208,16 +214,17 @@ class CompassViewModel(application: Application) : AndroidViewModel(application)
         setTorchMode(false)
     }
 
-    private fun updateLocationData() {
+    private var locationListener: android.location.LocationListener? = null
+
+    private fun startLocationUpdates() {
+        if (locationListener != null) return // Already listening
+
         try {
             val locationManager = getApplication<Application>().getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
             
-            // Request fresh location update
-            val locationListener = object : android.location.LocationListener {
+            locationListener = object : android.location.LocationListener {
                 override fun onLocationChanged(location: android.location.Location) {
                     processLocation(location)
-                    // Remove listener after getting fresh location
-                    locationManager.removeUpdates(this)
                 }
                 override fun onProviderEnabled(provider: String) {}
                 override fun onProviderDisabled(provider: String) {}
@@ -225,24 +232,27 @@ class CompassViewModel(application: Application) : AndroidViewModel(application)
                 override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {}
             }
             
-            // Try GPS first, fallback to Network
+            // Request updates from both providers if available
+            // Min time: 1 second, Min distance: 1 meter
             if (locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
                 locationManager.requestLocationUpdates(
                     android.location.LocationManager.GPS_PROVIDER,
-                    0L,
-                    0f,
-                    locationListener
-                )
-            } else if (locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)) {
-                locationManager.requestLocationUpdates(
-                    android.location.LocationManager.NETWORK_PROVIDER,
-                    0L,
-                    0f,
-                    locationListener
+                    1000L, 
+                    1f,
+                    locationListener!!
                 )
             }
             
-            // Also use last known location as fallback
+            if (locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)) {
+                locationManager.requestLocationUpdates(
+                    android.location.LocationManager.NETWORK_PROVIDER,
+                    1000L, 
+                    1f,
+                    locationListener!!
+                )
+            }
+            
+            // Initial update from last known
             val provider = if (locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) 
                 android.location.LocationManager.GPS_PROVIDER 
             else 
@@ -252,14 +262,56 @@ class CompassViewModel(application: Application) : AndroidViewModel(application)
             if (lastLocation != null) {
                 processLocation(lastLocation)
             }
+            
         } catch (e: SecurityException) {
             declination = 0f
+            locationListener = null
         } catch (e: Exception) {
             declination = 0f
+            locationListener = null
         }
     }
+
+    private fun stopLocationUpdates() {
+        locationListener?.let { listener ->
+            val locationManager = getApplication<Application>().getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+            locationManager.removeUpdates(listener)
+        }
+        locationListener = null
+    }
     
-    private fun processLocation(location: android.location.Location) {
+    private fun filterLocation(newLocation: Location): Location {
+        if (smoothedLocation == null) {
+            smoothedLocation = newLocation
+            return newLocation
+        }
+
+        val prev = smoothedLocation!!
+        val distance = newLocation.distanceTo(prev)
+
+        // If distance is large (e.g. > 20m), reset filter to avoid lag
+        if (distance > 20f) {
+            smoothedLocation = newLocation
+            return newLocation
+        }
+
+        // Low-pass filter
+        val newLat = prev.latitude + locationAlpha * (newLocation.latitude - prev.latitude)
+        val newLon = prev.longitude + locationAlpha * (newLocation.longitude - prev.longitude)
+        val newAlt = prev.altitude + locationAlpha * (newLocation.altitude - prev.altitude)
+
+        val filteredLocation = Location(newLocation)
+        filteredLocation.latitude = newLat
+        filteredLocation.longitude = newLon
+        filteredLocation.altitude = newAlt
+
+        smoothedLocation = filteredLocation
+        return filteredLocation
+    }
+
+    private fun processLocation(rawLocation: android.location.Location) {
+        val location = filterLocation(rawLocation)
+
         // Update Declination
         val geoField = android.hardware.GeomagneticField(
             location.latitude.toFloat(),
@@ -568,6 +620,12 @@ class CompassViewModel(application: Application) : AndroidViewModel(application)
     fun deleteTrip(trip: TripEntity) {
         viewModelScope.launch {
             database.tripDao().deleteTrip(trip)
+        }
+    }
+
+    fun clearAllTrips() {
+        viewModelScope.launch {
+            database.tripDao().deleteAllTrips()
         }
     }
 

@@ -163,9 +163,10 @@ fun ARTab(
             
             drawRect(color = Color.Black.copy(alpha = 0.4f), topLeft = Offset(0f, 0f), size = androidx.compose.ui.geometry.Size(size.width, stripHeight))
 
-            for (i in (azimuth - fov / 2).toInt()..(azimuth + fov / 2).toInt()) {
+            val adjustedAzimuth = (azimuth + 180) % 360
+            for (i in (adjustedAzimuth - fov / 2).toInt()..(adjustedAzimuth + fov / 2).toInt()) {
                 val normalizedDegree = (i + 360) % 360
-                val x = centerX + ((i - azimuth) * pixelsPerDegree)
+                val x = centerX + ((i - adjustedAzimuth) * pixelsPerDegree)
 
                 if (normalizedDegree % 10 == 0) {
                     drawLine(color = Color.White, start = Offset(x, stripHeight - 20.dp.toPx()), end = Offset(x, stripHeight), strokeWidth = 2.dp.toPx())
