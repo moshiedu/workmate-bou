@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -150,16 +151,81 @@ fun ButtonTestScreen(
     navController: NavController,
     onResult: (Boolean) -> Unit
 ) {
+    val context = LocalContext.current
     var volumeUpPressed by remember { mutableStateOf(false) }
     var volumeDownPressed by remember { mutableStateOf(false) }
-    var powerPressed by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     
-    LaunchedEffect(Unit) {
-        try {
-            focusRequester.requestFocus()
-        } catch (e: Exception) {
-            // Ignore
+    // Get system services
+    val vibrator = remember {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            val vibratorManager = context.getSystemService(android.content.Context.VIBRATOR_MANAGER_SERVICE) as android.os.VibratorManager
+            vibratorManager.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            context.getSystemService(android.content.Context.VIBRATOR_SERVICE) as android.os.Vibrator
+        }
+    }
+    
+    val audioManager = remember {
+        context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+    }
+    
+    fun vibrateAndShowVolume() {
+        // Vibrate
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            vibrator.vibrate(android.os.VibrationEffect.createOneShot(100, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(100)
+        }
+        
+        // Show volume level
+        val currentVolume = audioManager.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+        val maxVolume = audioManager.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+        
+        scope.launch {
+            snackbarHostState.currentSnackbarData?.dismiss()
+            snackbarHostState.showSnackbar(
+                message = "Volume Level: $currentVolume / $maxVolume",
+                duration = SnackbarDuration.Short
+            )
+        }
+    }
+    
+    // Intercept keys using Window Callback
+    DisposableEffect(Unit) {
+        val activity = context as? android.app.Activity
+        val originalCallback = activity?.window?.callback
+        
+        if (activity != null && originalCallback != null) {
+            activity.window.callback = object : android.view.Window.Callback by originalCallback {
+                override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+                    if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+                        when (event.keyCode) {
+                            android.view.KeyEvent.KEYCODE_VOLUME_UP -> {
+                                volumeUpPressed = true
+                                vibrateAndShowVolume()
+                                return true // Consume event
+                            }
+                            android.view.KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                                volumeDownPressed = true
+                                vibrateAndShowVolume()
+                                return true // Consume event
+                            }
+                        }
+                    }
+                    return originalCallback.dispatchKeyEvent(event)
+                }
+            }
+        }
+        
+        onDispose {
+            if (activity != null && originalCallback != null) {
+                activity.window.callback = originalCallback
+            }
         }
     }
     
@@ -174,6 +240,7 @@ fun ButtonTestScreen(
                 }
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             Row(
                 modifier = Modifier
@@ -212,31 +279,6 @@ fun ButtonTestScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .focusable()
-                .focusRequester(focusRequester)
-                .onKeyEvent { keyEvent ->
-                    when (keyEvent.nativeKeyEvent.keyCode) {
-                        android.view.KeyEvent.KEYCODE_VOLUME_UP -> {
-                            if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
-                                volumeUpPressed = true
-                            }
-                            true
-                        }
-                        android.view.KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                            if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
-                                volumeDownPressed = true
-                            }
-                            true
-                        }
-                        android.view.KeyEvent.KEYCODE_POWER -> {
-                            if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
-                                powerPressed = true
-                            }
-                            true
-                        }
-                        else -> false
-                    }
-                }
         ) {
             Column(
                 modifier = Modifier
@@ -267,13 +309,6 @@ fun ButtonTestScreen(
                     isPressed = volumeDownPressed
                 )
                 
-                // Power Button
-                ButtonIndicator(
-                    label = "Power Button",
-                    icon = Icons.Default.Power,
-                    isPressed = powerPressed
-                )
-                
                 Spacer(Modifier.height(16.dp))
                 
                 Card(
@@ -288,7 +323,7 @@ fun ButtonTestScreen(
                         )
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            "Make sure this screen is in focus. Tap anywhere on the screen first, then press the volume buttons.",
+                            "Tap screen first to ensure focus. Pressing buttons will vibrate and show volume level.",
                             style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFF856404)
                         )

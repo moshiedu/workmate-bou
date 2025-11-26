@@ -4,7 +4,10 @@ import android.Manifest
 import android.media.MediaRecorder
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -26,6 +29,8 @@ fun MicrophoneTestScreen(
 ) {
     val context = LocalContext.current
     var isRecording by remember { mutableStateOf(false) }
+    var isPlaying by remember { mutableStateOf(false) }
+    var amplitude by remember { mutableStateOf(0f) }
     var hasPermission by remember { 
         mutableStateOf(
             androidx.core.content.ContextCompat.checkSelfPermission(
@@ -35,12 +40,29 @@ fun MicrophoneTestScreen(
         )
     }
     var recorder: MediaRecorder? by remember { mutableStateOf(null) }
+    var player: android.media.MediaPlayer? by remember { mutableStateOf(null) }
     var recordingFile by remember { mutableStateOf<File?>(null) }
     
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         hasPermission = granted
+    }
+    
+    // Amplitude poller
+    LaunchedEffect(isRecording) {
+        while (isRecording) {
+            recorder?.let {
+                try {
+                    val maxAmp = it.maxAmplitude.toFloat()
+                    amplitude = (maxAmp / 32767f).coerceIn(0f, 1f)
+                } catch (e: Exception) {
+                    // Ignore
+                }
+            }
+            kotlinx.coroutines.delay(50)
+        }
+        amplitude = 0f
     }
     
     Scaffold(
@@ -109,17 +131,43 @@ fun MicrophoneTestScreen(
                     Text("Grant Permission")
                 }
             } else {
-                Icon(
-                    Icons.Default.Mic,
-                    contentDescription = "Microphone",
-                    modifier = Modifier.size(120.dp),
-                    tint = if (isRecording) Color(0xFFEF4444) else Color(0xFF1890FF)
-                )
+                // Amplitude Visualizer
+                Row(
+                    modifier = Modifier
+                        .height(100.dp)
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    repeat(5) { index ->
+                        val height = if (isRecording) {
+                            (amplitude * 100 * (index + 1) / 5).coerceAtLeast(10f)
+                        } else {
+                            10f
+                        }
+                        
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 4.dp)
+                                .width(20.dp)
+                                .height(height.dp)
+                                .background(
+                                    if (isRecording) Color(0xFF1890FF) else Color.LightGray,
+                                    RoundedCornerShape(4.dp)
+                                )
+                        )
+                    }
+                }
                 
                 Spacer(Modifier.height(32.dp))
                 
                 Text(
-                    if (isRecording) "Recording..." else "Ready to record",
+                    when {
+                        isRecording -> "Recording..."
+                        isPlaying -> "Playing..."
+                        recordingFile != null -> "Recording Saved"
+                        else -> "Ready to record"
+                    },
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     color = if (isRecording) Color(0xFFEF4444) else Color.Black
@@ -127,58 +175,107 @@ fun MicrophoneTestScreen(
                 
                 Spacer(Modifier.height(48.dp))
                 
-                Button(
-                    onClick = {
-                        if (isRecording) {
-                            // Stop recording
-                            try {
-                                recorder?.stop()
-                                recorder?.release()
-                                recorder = null
-                                isRecording = false
-                            } catch (e: Exception) {
-                                // Ignore
-                            }
-                        } else {
-                            // Start recording
-                            try {
-                                recordingFile = File(context.cacheDir, "test_recording.3gp")
-                                recorder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                                    MediaRecorder(context)
-                                } else {
-                                    @Suppress("DEPRECATION")
-                                    MediaRecorder()
-                                }.apply {
-                                    setAudioSource(MediaRecorder.AudioSource.MIC)
-                                    setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
-                                    setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
-                                    setOutputFile(recordingFile?.absolutePath)
-                                    prepare()
-                                    start()
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    // Record Button
+                    Button(
+                        onClick = {
+                            if (isRecording) {
+                                // Stop recording
+                                try {
+                                    recorder?.stop()
+                                    recorder?.release()
+                                    recorder = null
+                                    isRecording = false
+                                } catch (e: Exception) {
+                                    // Ignore
                                 }
-                                isRecording = true
-                            } catch (e: Exception) {
-                                // Ignore
+                            } else {
+                                // Start recording
+                                try {
+                                    if (isPlaying) {
+                                        player?.stop()
+                                        player?.release()
+                                        player = null
+                                        isPlaying = false
+                                    }
+                                    
+                                    recordingFile = File(context.cacheDir, "test_recording.3gp")
+                                    recorder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                                        MediaRecorder(context)
+                                    } else {
+                                        @Suppress("DEPRECATION")
+                                        MediaRecorder()
+                                    }.apply {
+                                        setAudioSource(MediaRecorder.AudioSource.MIC)
+                                        setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
+                                        setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
+                                        setOutputFile(recordingFile?.absolutePath)
+                                        prepare()
+                                        start()
+                                    }
+                                    isRecording = true
+                                } catch (e: Exception) {
+                                    // Ignore
+                                }
                             }
+                        },
+                        modifier = Modifier.size(80.dp),
+                        shape = CircleShape,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isRecording) Color(0xFFEF4444) else Color(0xFF10B981)
+                        )
+                    ) {
+                        Icon(
+                            if (isRecording) Icons.Default.Stop else Icons.Default.Mic,
+                            contentDescription = if (isRecording) "Stop" else "Record",
+                            modifier = Modifier.size(40.dp)
+                        )
+                    }
+                    
+                    // Play Button
+                    if (recordingFile != null && !isRecording) {
+                        Button(
+                            onClick = {
+                                if (isPlaying) {
+                                    player?.stop()
+                                    player?.release()
+                                    player = null
+                                    isPlaying = false
+                                } else {
+                                    try {
+                                        player = android.media.MediaPlayer().apply {
+                                            setDataSource(recordingFile!!.absolutePath)
+                                            prepare()
+                                            start()
+                                            setOnCompletionListener {
+                                                isPlaying = false
+                                            }
+                                        }
+                                        isPlaying = true
+                                    } catch (e: Exception) {
+                                        // Ignore
+                                    }
+                                }
+                            },
+                            modifier = Modifier.size(80.dp),
+                            shape = CircleShape,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF1890FF)
+                            )
+                        ) {
+                            Icon(
+                                if (isPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
+                                contentDescription = if (isPlaying) "Stop" else "Play",
+                                modifier = Modifier.size(40.dp)
+                            )
                         }
-                    },
-                    modifier = Modifier.size(80.dp),
-                    shape = androidx.compose.foundation.shape.CircleShape,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isRecording) Color(0xFFEF4444) else Color(0xFF10B981)
-                    )
-                ) {
-                    Icon(
-                        if (isRecording) Icons.Default.Stop else Icons.Default.FiberManualRecord,
-                        contentDescription = if (isRecording) "Stop" else "Record",
-                        modifier = Modifier.size(40.dp)
-                    )
+                    }
                 }
                 
                 Spacer(Modifier.height(16.dp))
                 
                 Text(
-                    "Tap to ${if (isRecording) "stop" else "start"} recording",
+                    if (recordingFile != null && !isRecording) "Tap Play to listen" else "Tap Mic to record",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.Gray
                 )
@@ -190,6 +287,7 @@ fun MicrophoneTestScreen(
         onDispose {
             try {
                 recorder?.release()
+                player?.release()
                 recordingFile?.delete()
             } catch (e: Exception) {
                 // Ignore
