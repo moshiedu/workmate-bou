@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import java.io.File
 import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -39,15 +40,37 @@ fun BatteryTab(isDark: Boolean) {
     var health by remember { mutableStateOf("Unknown") }
     var capacity by remember { mutableStateOf(0) }
     var chargeCounter by remember { mutableStateOf(0) }
-    var designCapacity by remember { mutableStateOf(0) }
+    var designCapacity by remember { mutableStateOf(getBatteryProfileCapacity(context)) }
     
     var maxInput by remember { mutableStateOf(0f) }
-    var chargeCycles by remember { mutableStateOf(0) }
     
     val backgroundColor = if (isDark) Color(0xFF0F172A) else Color(0xFFF8F9FA)
     val cardColor = if (isDark) Color(0xFF1E293B) else Color.White
     val textColor = if (isDark) Color.White else Color(0xFF111827)
     val accentColor = Color(0xFF10B981)
+    
+    // Periodic update for battery properties that might not trigger broadcasts
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1000) // Update every second
+            try {
+                // Update current reading
+                val currentNow = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
+                current = if (currentNow != 0) {
+                    currentNow / 1000
+                } else {
+                    // Try average
+                    val avg = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_AVERAGE)
+                    if (avg != 0) avg / 1000 else readKernelCurrent()
+                }
+            } catch (e: Exception) {
+                // Try kernel fallback
+                val kernelCurrent = readKernelCurrent()
+                if (kernelCurrent != 0) current = kernelCurrent
+            }
+        }
+    }
+    
     
     // Real-time battery monitoring with BroadcastReceiver
     DisposableEffect(Unit) {
@@ -97,8 +120,25 @@ fun BatteryTab(isDark: Boolean) {
                     }
                     
                     // Get current and charge counter from BatteryManager
-                    current = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW) / 1000
-                    chargeCounter = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER) / 1000
+                    // Try CURRENT_NOW first, fallback to CURRENT_AVERAGE, then Sysfs
+                    current = try {
+                        val currentNow = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
+                        if (currentNow != 0) {
+                            currentNow / 1000
+                        } else {
+                            // Fallback to CURRENT_AVERAGE
+                            val avg = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_AVERAGE)
+                            if (avg != 0) avg / 1000 else readKernelCurrent()
+                        }
+                    } catch (e: Exception) {
+                        readKernelCurrent()
+                    }
+                    
+                    chargeCounter = try {
+                        batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER) / 1000
+                    } catch (e: Exception) {
+                        0
+                    }
                     
                     // Calculate max input (charging power in watts)
                     if (isCharging && current != 0 && voltage != 0) {
@@ -108,35 +148,27 @@ fun BatteryTab(isDark: Boolean) {
                     }
                     
                     // Better design capacity calculation
-                    // Use energy counter if available, otherwise estimate from charge counter
-                    try {
-                        val energyCounter = batteryManager.getLongProperty(BatteryManager.BATTERY_PROPERTY_ENERGY_COUNTER)
-                        if (energyCounter > 0 && batteryLevel > 0) {
-                            // Energy counter is in nWh, convert to mAh
-                            designCapacity = ((energyCounter / 1000000) * 100 / batteryLevel / voltage * 1000).toInt()
-                        }
-                    } catch (e: Exception) {
-                        // Fallback to charge counter method
-                        if (chargeCounter > 0 && batteryLevel > 0) {
-                            designCapacity = (chargeCounter * 100) / batteryLevel
+                    // If PowerProfile failed (designCapacity is 0), try estimation methods
+                    if (designCapacity == 0) {
+                        try {
+                            val energyCounter = batteryManager.getLongProperty(BatteryManager.BATTERY_PROPERTY_ENERGY_COUNTER)
+                            if (energyCounter > 0 && batteryLevel > 0 && voltage > 0) {
+                                // Energy counter is in nWh, convert to mAh
+                                designCapacity = ((energyCounter / 1000000) * 100 / batteryLevel / voltage * 1000).toInt()
+                            } else if (chargeCounter > 0 && batteryLevel > 0) {
+                                // Fallback to charge counter method
+                                designCapacity = (chargeCounter * 100) / batteryLevel
+                            }
+                        } catch (e: Exception) {
+                            // Fallback to charge counter method
+                            if (chargeCounter > 0 && batteryLevel > 0) {
+                                designCapacity = (chargeCounter * 100) / batteryLevel
+                            }
                         }
                     }
                     
-                    // Estimate charge cycles (rough estimate based on total charge throughput)
-                    // This is an approximation since Android doesn't expose actual cycle count
-                    if (designCapacity > 0 && chargeCounter > 0) {
-                        // Calculate cycles as total charge / design capacity
-                        // Add current charge to get total throughput estimate
-                        val totalThroughput = chargeCounter + (designCapacity * batteryLevel / 100)
-                        chargeCycles = totalThroughput / designCapacity
-                        
-                        // Ensure at least 1 cycle if battery has been used
-                        if (chargeCycles == 0 && chargeCounter > 0) {
-                            chargeCycles = 1
-                        }
-                    } else {
-                        chargeCycles = 0
-                    }
+                    
+
                 }
             }
         }
@@ -215,23 +247,32 @@ fun BatteryTab(isDark: Boolean) {
                             color = accentColor
                         )
                         
-                        // Show current with sign
+                        // Show current with sign and 3-digit formatting
                         val currentDisplay = if (isCharging) {
                             "+${abs(current)} mA"
                         } else {
                             "-${abs(current)} mA"
                         }
-                        Text(
-                            "Current $currentDisplay",
-                            fontSize = 14.sp,
-                            color = textColor.copy(alpha = 0.7f)
-                        )
+                        
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "Current ",
+                                fontSize = 14.sp,
+                                color = textColor.copy(alpha = 0.7f)
+                            )
+                            Text(
+                                currentDisplay,
+                                fontSize = 14.sp,
+                                color = textColor.copy(alpha = 0.9f),
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                         
                         // Show power in watts when charging
                         if (isCharging && current != 0 && voltage != 0) {
                             val powerWatts = (abs(current) * voltage) / 1000000f
                             Text(
-                                "Power %.2f W".format(powerWatts),
+                                "Power %.3f W".format(powerWatts),
                                 fontSize = 14.sp,
                                 color = textColor.copy(alpha = 0.7f)
                             )
@@ -263,47 +304,78 @@ fun BatteryTab(isDark: Boolean) {
                 BatteryInfoRow("Voltage", "%.3f V".format(voltage / 1000f), textColor)
                 
                 if (maxInput > 0) {
-                    BatteryInfoRow("Max input", "%.2f W".format(maxInput), textColor)
+                    BatteryInfoRow("Max input", "%.3f W".format(maxInput), textColor)
                 }
                 
+                // Always show design capacity
                 if (designCapacity > 0) {
-                    BatteryInfoRow("Design capacity\n(reported by system)", "$designCapacity mAh", textColor)
+                    BatteryInfoRow("Design capacity\n(reported by system)", "%,d mAh".format(designCapacity), textColor)
+                } else {
+                    BatteryInfoRow("Design capacity\n(reported by system)", "N/A", textColor)
                 }
                 
                 if (chargeCounter > 0) {
-                    val healthPercent = if (designCapacity > 0) (chargeCounter * 100) / designCapacity else 0
+                    // Calculate Estimated Full Capacity (Health)
+                    // Formula: (Current Charge / Battery Level) * 100
+                    val estimatedFullCapacity = if (batteryLevel > 0) (chargeCounter.toLong() * 100) / batteryLevel else 0
+                    
+                    val healthPercent = if (designCapacity > 0 && estimatedFullCapacity > 0) 
+                        (estimatedFullCapacity * 100) / designCapacity 
+                    else 0
+                    
+                    val capacityText = if (healthPercent > 0) {
+                        "%,d mAh\n$healthPercent%%".format(estimatedFullCapacity)
+                    } else {
+                        "%,d mAh".format(estimatedFullCapacity)
+                    }
                     BatteryInfoRow(
-                        "Capacity\n(estimated)", 
-                        "$chargeCounter mAh${if (healthPercent > 0) "\n$healthPercent%" else ""}", 
+                        "Capacity\n(estimated full)", 
+                        capacityText, 
                         textColor
                     )
-                    BatteryInfoRow("Charge counter", "$chargeCounter mAh", textColor)
+                    BatteryInfoRow("Charge counter", "%,d mAh".format(chargeCounter), textColor)
                 }
                 
                 // Estimate remaining time
-                if (current != 0 && chargeCounter > 0) {
+                // Fallback for chargeCounter if 0
+                val effectiveChargeCounter = if (chargeCounter > 0) {
+                    chargeCounter
+                } else if (designCapacity > 0) {
+                    (designCapacity * batteryLevel) / 100
+                } else {
+                    0
+                }
+
+                if (current != 0 && effectiveChargeCounter > 0) {
                     val remainingHours = if (current < 0) {
                         // Discharging
-                        abs(chargeCounter.toFloat() / current)
+                        abs(effectiveChargeCounter.toFloat() / current)
                     } else {
                         // Charging - estimate time to full
                         if (designCapacity > 0) {
-                            (designCapacity - chargeCounter).toFloat() / current
+                            (designCapacity - effectiveChargeCounter).toFloat() / current
                         } else 0f
                     }
                     
                     if (remainingHours > 0 && remainingHours < 100) {
-                        val hours = remainingHours.toInt()
-                        val minutes = ((remainingHours - hours) * 60).toInt()
-                        BatteryInfoRow("Remaining", "${hours}h ${minutes}m", textColor)
+                        val totalSeconds = (remainingHours * 3600).toLong()
+                        val days = totalSeconds / 86400
+                        val hours = (totalSeconds % 86400) / 3600
+                        val minutes = (totalSeconds % 3600) / 60
+                        val seconds = totalSeconds % 60
+                        
+                        val timeString = buildString {
+                            if (days > 0) append("${days}d ")
+                            if (hours > 0) append("${hours}h ")
+                            if (minutes > 0) append("${minutes}m ")
+                            append("${seconds}s")
+                        }
+                        
+                        BatteryInfoRow("Remaining", timeString, textColor)
                     }
                 }
                 
-                if (chargeCycles > 0) {
-                    BatteryInfoRow("Charge cycles", "$chargeCycles", textColor)
-                } else {
-                    BatteryInfoRow("Charge cycles", "N/A", textColor)
-                }
+
             }
         }
         
@@ -332,4 +404,43 @@ fun BatteryInfoRow(label: String, value: String, textColor: Color) {
             fontWeight = FontWeight.Medium
         )
     }
+}
+
+private fun getBatteryProfileCapacity(context: Context): Int {
+    return try {
+        val powerProfileClass = Class.forName("com.android.internal.os.PowerProfile")
+        val powerProfile = powerProfileClass.getConstructor(Context::class.java).newInstance(context)
+        val capacity = powerProfileClass.getMethod("getBatteryCapacity").invoke(powerProfile) as Double
+        capacity.toInt()
+    } catch (e: Exception) {
+        e.printStackTrace()
+        0
+    }
+}
+
+private fun readKernelCurrent(): Int {
+    val paths = listOf(
+        "/sys/class/power_supply/battery/current_now",
+        "/sys/class/power_supply/bms/current_now",
+        "/sys/class/power_supply/main/current_now",
+        "/sys/class/power_supply/usb/current_now"
+    )
+    for (path in paths) {
+        try {
+            val file = File(path)
+            if (file.exists() && file.canRead()) {
+                val value = file.readText().trim().toInt()
+                if (value != 0) {
+                    // Kernel values are usually in microamperes (uA)
+                    // Some devices might report in mA, but uA is standard
+                    // Heuristic: if value > 10000, assume uA and divide by 1000
+                    // If value is small (e.g. 500), assume mA
+                    return if (abs(value) > 10000) value / 1000 else value
+                }
+            }
+        } catch (e: Exception) {
+            // Ignore
+        }
+    }
+    return 0
 }

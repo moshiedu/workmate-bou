@@ -105,7 +105,7 @@ fun DetailRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.padding(end = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (showCheckmark) {
@@ -125,6 +125,8 @@ fun DetailRow(
         }
         Text(
             text = value,
+            modifier = Modifier.weight(1f),
+            textAlign = androidx.compose.ui.text.style.TextAlign.End,
             style = MaterialTheme.typography.bodyMedium,
             color = textColor,
             fontWeight = FontWeight.Medium
