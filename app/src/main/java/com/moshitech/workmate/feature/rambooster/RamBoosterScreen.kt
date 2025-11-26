@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -104,10 +106,11 @@ fun RamBoosterScreen(
             modifier = Modifier
                 .padding(innerPadding)
                 .fillMaxSize()
+                .verticalScroll(androidx.compose.foundation.rememberScrollState())
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Circular Progress
             Box(contentAlignment = Alignment.Center) {
@@ -134,7 +137,7 @@ fun RamBoosterScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             Text(
                 text = "RAM Usage",
@@ -147,7 +150,7 @@ fun RamBoosterScreen(
                 color = secondaryTextColor
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             if (state == BoosterState.BOOSTING) {
                 Text(
@@ -158,7 +161,7 @@ fun RamBoosterScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Stats Cards
             Card(
@@ -206,7 +209,7 @@ fun RamBoosterScreen(
             val lastBoosted by viewModel.lastBoosted.collectAsState()
             val stoppedAppsList by viewModel.stoppedAppsList.collectAsState()
 
-            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.height(16.dp))
             
             if (stoppedAppsList.isNotEmpty()) {
                 Text(
@@ -217,7 +220,7 @@ fun RamBoosterScreen(
                 )
                 androidx.compose.foundation.lazy.LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp).height(40.dp)
                 ) {
                     items(stoppedAppsList.size) { index ->
                         val app = stoppedAppsList[index]
@@ -267,7 +270,7 @@ fun RamBoosterScreen(
                     disabledContainerColor = primaryBlue.copy(alpha = 0.7f)
                 ),
                 shape = RoundedCornerShape(25.dp),
-                enabled = state != BoosterState.BOOSTING
+                enabled = state != BoosterState.BOOSTING && isPermissionGranted
             ) {
                 Text(
                     text = if (state == BoosterState.BOOSTING) "BOOSTING..." else "BOOST NOW",
@@ -292,10 +295,21 @@ fun RamBoosterScreen(
                 }
             }
             
-            // Check permission on resume (simplified)
-            androidx.compose.runtime.LaunchedEffect(Unit) {
-                viewModel.checkPermission()
+            // Check permission on resume - monitors lifecycle
+            val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+            androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+                val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                    if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                        viewModel.checkPermission()
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose {
+                    lifecycleOwner.lifecycle.removeObserver(observer)
+                }
             }
+            
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
