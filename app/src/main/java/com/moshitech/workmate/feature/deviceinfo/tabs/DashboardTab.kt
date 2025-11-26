@@ -188,10 +188,10 @@ fun DashboardTab(
             subtitleColor = subtitleColor
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                DetailRow("Name", hardwareInfo.socName, textColor, subtitleColor)
-                DetailRow("Manufacturer", hardwareInfo.socManufacturer, textColor, subtitleColor)
-                DetailRow("Model", hardwareInfo.socModel, textColor, subtitleColor)
-                DetailRow("Temperature", dashboardInfo.cpuTemperature, textColor, subtitleColor)
+                DashboardDetailRow("Name", hardwareInfo.socName, textColor, subtitleColor)
+                DashboardDetailRow("Manufacturer", hardwareInfo.socManufacturer, textColor, subtitleColor)
+                DashboardDetailRow("Model", hardwareInfo.socModel, textColor, subtitleColor)
+                DashboardDetailRow("Temperature", dashboardInfo.cpuTemperature, textColor, subtitleColor)
             }
         }
     }
@@ -206,10 +206,10 @@ fun DashboardTab(
             subtitleColor = subtitleColor
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                DetailRow("Level", "${dashboardInfo.batteryLevel}%", textColor, subtitleColor)
-                DetailRow("Temperature", FormatUtils.formatTemperature(dashboardInfo.batteryTemperature), textColor, subtitleColor)
-                DetailRow("Status", dashboardInfo.batteryStatus, textColor, subtitleColor)
-                DetailRow("Health", "Good", textColor, subtitleColor)
+                DashboardDetailRow("Level", "${dashboardInfo.batteryLevel}%", textColor, subtitleColor)
+                DashboardDetailRow("Temperature", FormatUtils.formatTemperature(dashboardInfo.batteryTemperature), textColor, subtitleColor)
+                DashboardDetailRow("Status", dashboardInfo.batteryStatus, textColor, subtitleColor)
+                DashboardDetailRow("Health", "Good", textColor, subtitleColor)
             }
         }
     }
@@ -224,9 +224,9 @@ fun DashboardTab(
             subtitleColor = subtitleColor
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                DetailRow("Type", dashboardInfo.networkType, textColor, subtitleColor)
-                DetailRow("Signal Strength", dashboardInfo.signalStrength, textColor, subtitleColor)
-                DetailRow("Status", "Connected", textColor, subtitleColor)
+                DashboardDetailRow("Type", dashboardInfo.networkType, textColor, subtitleColor)
+                DashboardDetailRow("Signal Strength", dashboardInfo.signalStrength, textColor, subtitleColor)
+                DashboardDetailRow("Status", "Connected", textColor, subtitleColor)
             }
         }
     }
@@ -241,10 +241,10 @@ fun DashboardTab(
             subtitleColor = subtitleColor
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                DetailRow("Total", FormatUtils.formatBytes(dashboardInfo.ramTotal), textColor, subtitleColor)
-                DetailRow("Used", FormatUtils.formatBytes(dashboardInfo.ramUsed), textColor, subtitleColor)
-                DetailRow("Available", FormatUtils.formatBytes(dashboardInfo.ramTotal - dashboardInfo.ramUsed), textColor, subtitleColor)
-                DetailRow("Type", hardwareInfo.ramType, textColor, subtitleColor)
+                DashboardDetailRow("Total", FormatUtils.formatBytes(dashboardInfo.ramTotal), textColor, subtitleColor)
+                DashboardDetailRow("Used", FormatUtils.formatBytes(dashboardInfo.ramUsed), textColor, subtitleColor)
+                DashboardDetailRow("Available", FormatUtils.formatBytes(dashboardInfo.ramTotal - dashboardInfo.ramUsed), textColor, subtitleColor)
+                DashboardDetailRow("Type", hardwareInfo.ramType, textColor, subtitleColor)
             }
         }
     }
@@ -259,10 +259,10 @@ fun DashboardTab(
             subtitleColor = subtitleColor
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                DetailRow("Total", FormatUtils.formatBytes(dashboardInfo.storageTotal), textColor, subtitleColor)
-                DetailRow("Used", FormatUtils.formatBytes(dashboardInfo.storageUsed), textColor, subtitleColor)
-                DetailRow("Available", FormatUtils.formatBytes(dashboardInfo.storageTotal - dashboardInfo.storageUsed), textColor, subtitleColor)
-                DetailRow("Type", hardwareInfo.storageType, textColor, subtitleColor)
+                DashboardDetailRow("Total", FormatUtils.formatBytes(dashboardInfo.storageTotal), textColor, subtitleColor)
+                DashboardDetailRow("Used", FormatUtils.formatBytes(dashboardInfo.storageUsed), textColor, subtitleColor)
+                DashboardDetailRow("Available", FormatUtils.formatBytes(dashboardInfo.storageTotal - dashboardInfo.storageUsed), textColor, subtitleColor)
+                DashboardDetailRow("Type", hardwareInfo.storageType, textColor, subtitleColor)
             }
         }
     }
@@ -425,7 +425,7 @@ fun DetailDialog(
 }
 
 @Composable
-private fun DetailRow(
+private fun DashboardDetailRow(
     label: String,
     value: String,
     textColor: Color,

@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -15,6 +18,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,8 +34,10 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.graphics.drawable.toBitmap
 import com.moshitech.workmate.feature.deviceinfo.model.AppInfo
 import com.moshitech.workmate.feature.deviceinfo.model.PermissionProtectionLevel
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.core.net.toUri
 
 @Composable
 fun AppDetailsModal(
@@ -43,6 +49,15 @@ fun AppDetailsModal(
     val context = LocalContext.current
     var showActionsMenu by remember { mutableStateOf(false) }
     var showManifestViewer by remember { mutableStateOf(false) }
+    
+    // File picker launcher for APK extraction
+    val apkFilePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/vnd.android.package-archive")
+    ) { uri ->
+        uri?.let {
+            extractApkToUri(context, app, it)
+        }
+    }
     
     val cardColor = if (isDark) Color(0xFF1E293B) else Color.White
     val subtitleColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF6B7280)
@@ -103,6 +118,9 @@ fun AppDetailsModal(
                         expanded = showActionsMenu,
                         onDismiss = { showActionsMenu = false },
                         onShowManifest = { showManifestViewer = true },
+                        onExtractApk = {
+                            apkFilePicker.launch("${app.appName}.apk")
+                        },
                         textColor = textColor
                     )
                 }
@@ -311,7 +329,7 @@ fun PermissionRow(
 
 private fun openAppSettings(context: Context, packageName: String) {
     val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-    intent.data = Uri.parse("package:$packageName")
+    intent.data = "package:$packageName".toUri()
     context.startActivity(intent)
 }
 
@@ -341,5 +359,19 @@ private fun getAndroidVersion(sdk: Int): String {
         33 -> "13.0"
         34 -> "14.0"
         else -> sdk.toString()
+    }
+}
+
+private fun extractApkToUri(context: Context, app: AppInfo, uri: Uri) {
+    try {
+        val sourceFile = File(app.sourceDir)
+        context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+            sourceFile.inputStream().use { inputStream ->
+                inputStream.copyTo(outputStream)
+            }
+        }
+        Toast.makeText(context, "APK extracted successfully", Toast.LENGTH_LONG).show()
+    } catch (e: Exception) {
+        Toast.makeText(context, "Error extracting APK: ${e.message}", Toast.LENGTH_SHORT).show()
     }
 }

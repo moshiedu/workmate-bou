@@ -4,4 +4,7 @@
 3. Device Info-> Apps tab->User/ System/ All-> calculation should be separately for each category (user level+ system level is not = All)
 4. Device Info-> Apps tab->User/ System/ All apps list should be more accurate
 5. Device Info-> Apps tab->Can keep a search/filter bar to search apps
+all above completed.
+
+
 

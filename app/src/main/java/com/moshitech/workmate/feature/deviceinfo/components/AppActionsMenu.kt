@@ -3,7 +3,6 @@ package com.moshitech.workmate.feature.deviceinfo.components
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Environment
 import android.widget.Toast
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -12,7 +11,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import com.moshitech.workmate.feature.deviceinfo.model.AppInfo
-import java.io.File
 
 @Composable
 fun AppActionsMenu(
@@ -20,6 +18,7 @@ fun AppActionsMenu(
     expanded: Boolean,
     onDismiss: () -> Unit,
     onShowManifest: () -> Unit,
+    onExtractApk: () -> Unit,
     textColor: Color
 ) {
     val context = LocalContext.current
@@ -82,7 +81,7 @@ fun AppActionsMenu(
         DropdownMenuItem(
             text = { Text("Extract apk", color = textColor) },
             onClick = {
-                extractApk(context, app)
+                onExtractApk()
                 onDismiss()
             },
             leadingIcon = {
@@ -127,18 +126,5 @@ private fun uninstallApp(context: Context, packageName: String) {
         context.startActivity(intent)
     } catch (e: Exception) {
         Toast.makeText(context, "Error uninstalling app: ${e.message}", Toast.LENGTH_SHORT).show()
-    }
-}
-
-private fun extractApk(context: Context, app: AppInfo) {
-    try {
-        val sourceFile = File(app.sourceDir)
-        val destDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        val destFile = File(destDir, "${app.packageName}.apk")
-        
-        sourceFile.copyTo(destFile, overwrite = true)
-        Toast.makeText(context, "APK extracted to Downloads/${app.packageName}.apk", Toast.LENGTH_LONG).show()
-    } catch (e: Exception) {
-        Toast.makeText(context, "Error extracting APK: ${e.message}", Toast.LENGTH_SHORT).show()
     }
 }

@@ -8,7 +8,9 @@ import com.moshitech.workmate.feature.deviceinfo.data.DeviceInfoRepositoryEnhanc
 import com.moshitech.workmate.feature.deviceinfo.data.models.*
 import com.moshitech.workmate.feature.deviceinfo.model.AppFilter
 import com.moshitech.workmate.feature.deviceinfo.model.AppInfo
+import com.moshitech.workmate.feature.deviceinfo.model.NetworkInfo
 import com.moshitech.workmate.feature.deviceinfo.utils.AppsLoader
+import com.moshitech.workmate.feature.deviceinfo.utils.NetworkInfoProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,6 +23,7 @@ class DeviceInfoViewModel(application: Application) : AndroidViewModel(applicati
     
     private val repository = DeviceInfoRepository(application)
     private val repositoryEnhanced = DeviceInfoRepositoryEnhanced(application)
+    private val networkInfoProvider = NetworkInfoProvider(application)
     
     private val _dashboardInfo = MutableStateFlow(DashboardInfo())
     val dashboardInfo: StateFlow<DashboardInfo> = _dashboardInfo.asStateFlow()
@@ -45,11 +48,16 @@ class DeviceInfoViewModel(application: Application) : AndroidViewModel(applicati
     private val _appsLoading = MutableStateFlow(false)
     val appsLoading: StateFlow<Boolean> = _appsLoading.asStateFlow()
     
+    // Network
+    private val _networkInfo = MutableStateFlow<NetworkInfo?>(null)
+    val networkInfo: StateFlow<NetworkInfo?> = _networkInfo.asStateFlow()
+    
     init {
         loadHardwareInfo()
         loadSystemInfo()
         loadEnhancedInfo()
         startDashboardUpdates()
+        startNetworkUpdates()
     }
     
     private fun loadHardwareInfo() {
@@ -90,6 +98,33 @@ class DeviceInfoViewModel(application: Application) : AndroidViewModel(applicati
                 _apps.value = emptyList()
             } finally {
                 _appsLoading.value = false
+            }
+        }
+    }
+
+    private fun startNetworkUpdates() {
+        viewModelScope.launch {
+            while (isActive) {
+                _networkInfo.value = networkInfoProvider.getNetworkInfo()
+                delay(2000) // Update every 2 seconds
+            }
+        }
+    }
+
+    fun refreshNetworkInfo() {
+        viewModelScope.launch {
+            _networkInfo.value = networkInfoProvider.getNetworkInfo()
+        }
+    }
+
+    fun refreshPublicIp() {
+        viewModelScope.launch {
+            val currentInfo = _networkInfo.value
+            if (currentInfo?.dhcpDetails != null) {
+                val publicIp = networkInfoProvider.fetchPublicIp()
+                _networkInfo.value = currentInfo.copy(
+                    dhcpDetails = currentInfo.dhcpDetails.copy(publicIp = publicIp)
+                )
             }
         }
     }

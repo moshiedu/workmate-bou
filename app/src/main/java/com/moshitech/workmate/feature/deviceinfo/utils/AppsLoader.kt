@@ -33,9 +33,12 @@ object AppsLoader {
                 val isUpdated = (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
                 
                 // Filter based on type
+                // USER: Non-system apps + Updated system apps
+                // SYSTEM: System apps that are NOT updated
+                // ALL: Everything
                 when (filter) {
                     AppFilter.USER -> if (isSystem && !isUpdated) return@mapNotNull null
-                    AppFilter.SYSTEM -> if (!isSystem) return@mapNotNull null
+                    AppFilter.SYSTEM -> if (!isSystem || isUpdated) return@mapNotNull null
                     AppFilter.ALL -> {}
                 }
                 

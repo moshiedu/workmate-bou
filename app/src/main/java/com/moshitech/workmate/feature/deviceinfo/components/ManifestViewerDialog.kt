@@ -14,8 +14,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.moshitech.workmate.feature.deviceinfo.model.AppInfo
-import java.io.BufferedReader
-import java.io.InputStreamReader
+import com.moshitech.workmate.feature.deviceinfo.utils.ManifestParser
 
 @Composable
 fun ManifestViewerDialog(
@@ -29,12 +28,10 @@ fun ManifestViewerDialog(
     
     var manifestContent by remember { mutableStateOf("Loading manifest...") }
     
+    val context = androidx.compose.ui.platform.LocalContext.current
+    
     LaunchedEffect(app) {
-        manifestContent = try {
-            extractManifest(app.sourceDir)
-        } catch (e: Exception) {
-            "Error loading manifest: ${e.message}\n\nNote: Manifest extraction requires additional tools or libraries."
-        }
+        manifestContent = ManifestParser.extractManifest(context, app.packageName)
     }
     
     Dialog(
@@ -89,30 +86,5 @@ fun ManifestViewerDialog(
                 }
             }
         }
-    }
-}
-
-private fun extractManifest(apkPath: String): String {
-    return try {
-        // Try using aapt2 command if available
-        val process = Runtime.getRuntime().exec(arrayOf("aapt2", "dump", "xmltree", apkPath, "AndroidManifest.xml"))
-        val reader = BufferedReader(InputStreamReader(process.inputStream))
-        val output = reader.readText()
-        process.waitFor()
-        
-        if (output.isNotEmpty()) {
-            output
-        } else {
-            "Manifest extraction not available.\n\nTo view the manifest, you would need:\n" +
-                    "1. Install aapt2 tool\n" +
-                    "2. Or use a library like apk-parser\n" +
-                    "3. Or manually extract and decompile the APK\n\n" +
-                    "APK Path: $apkPath"
-        }
-    } catch (e: Exception) {
-        "Manifest extraction not available.\n\n" +
-                "Error: ${e.message}\n\n" +
-                "APK Path: $apkPath\n\n" +
-                "Note: This feature requires additional setup or libraries to extract and parse the binary XML manifest."
     }
 }
