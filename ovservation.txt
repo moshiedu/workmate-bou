@@ -1,0 +1,10 @@
+// Apps Tab of Device Info
+1. Device Info-> Apps tab->app info action button Extract apk should ask for the location to save the apk file
+2. Device Info-> Apps tab->Manifest->Showing Error while other app can read the manifest file
+3. Device Info-> Apps tab->User/ System/ All-> calculation should be separately for each category (user level+ system level is not = All)
+4. Device Info-> Apps tab->User/ System/ All apps list should be more accurate
+5. Device Info-> Apps tab->Can keep a search/filter bar to search apps
+all above completed.
+
+
+
