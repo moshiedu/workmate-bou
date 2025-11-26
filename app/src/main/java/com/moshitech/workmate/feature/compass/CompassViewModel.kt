@@ -504,14 +504,47 @@ class CompassViewModel(application: Application) : AndroidViewModel(application)
     fun selectWaypoint(waypoint: WaypointEntity?) {
         _selectedWaypoint.value = waypoint
     }
+    private var lastWaypointDistanceMeters: Float? = null
+    fun getWaypointDistanceMeters(waypoint: WaypointEntity): Float {
+        val location = _locationInfo.value ?: return Float.POSITIVE_INFINITY
 
-    fun getWaypointDistance(waypoint: WaypointEntity): String {
-        val location = _locationInfo.value ?: return "--"
-        val distance = NavigationUtils.calculateDistance(
+        val rawMeters = NavigationUtils.calculateDistance(
             location.latitude, location.longitude,
             waypoint.latitude, waypoint.longitude
-        )
-        return NavigationUtils.formatDistance(distance)
+        ).toFloat()
+
+        // --- Simple "standing still" smoothing ---
+        // If we had a previous distance and the change is very small (< 2m),
+        // keep the old value to avoid jitter in UI.
+        val prev = lastWaypointDistanceMeters
+        val result = if (prev == null || kotlin.math.abs(rawMeters - prev) > 2f) {
+            rawMeters
+        } else {
+            prev
+        }
+
+        lastWaypointDistanceMeters = result
+        return result
+    }
+//    fun getWaypointDistanceMeters(waypoint: WaypointEntity): Float {
+//        val location = _locationInfo.value ?: return Float.POSITIVE_INFINITY
+//
+//        // NavigationUtils.calculateDistance already used elsewhere,
+//        // so we reuse it here. It should return meters.
+//        val distanceMeters = NavigationUtils.calculateDistance(
+//            location.latitude, location.longitude,
+//            waypoint.latitude, waypoint.longitude
+//        )
+//
+//        return distanceMeters.toFloat()
+//    }
+
+    fun getWaypointDistance(waypoint: WaypointEntity): String {
+        val meters = getWaypointDistanceMeters(waypoint)
+        if (!meters.isFinite()) return "--"
+
+        // If formatDistance expects meters as Double:
+        return NavigationUtils.formatDistance(meters.toDouble())
     }
 
     fun getWaypointBearing(waypoint: WaypointEntity): Float {

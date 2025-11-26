@@ -6,6 +6,10 @@ import androidx.lifecycle.viewModelScope
 import com.moshitech.workmate.feature.deviceinfo.data.DeviceInfoRepository
 import com.moshitech.workmate.feature.deviceinfo.data.DeviceInfoRepositoryEnhanced
 import com.moshitech.workmate.feature.deviceinfo.data.models.*
+import com.moshitech.workmate.feature.deviceinfo.model.AppFilter
+import com.moshitech.workmate.feature.deviceinfo.model.AppInfo
+import com.moshitech.workmate.feature.deviceinfo.utils.AppsLoader
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +37,13 @@ class DeviceInfoViewModel(application: Application) : AndroidViewModel(applicati
     
     private val _hardwareInfoEnhanced = MutableStateFlow(HardwareInfoEnhanced())
     val hardwareInfoEnhanced: StateFlow<HardwareInfoEnhanced> = _hardwareInfoEnhanced.asStateFlow()
+    
+    // Apps
+    private val _apps = MutableStateFlow<List<AppInfo>>(emptyList())
+    val apps: StateFlow<List<AppInfo>> = _apps.asStateFlow()
+    
+    private val _appsLoading = MutableStateFlow(false)
+    val appsLoading: StateFlow<Boolean> = _appsLoading.asStateFlow()
     
     init {
         loadHardwareInfo()
@@ -65,6 +76,20 @@ class DeviceInfoViewModel(application: Application) : AndroidViewModel(applicati
             while (isActive) {
                 _dashboardInfo.value = repository.getDashboardInfo()
                 delay(2000) // Update every 2 seconds
+            }
+        }
+    }
+    
+    fun loadApps(filter: AppFilter = AppFilter.USER) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _appsLoading.value = true
+            try {
+                val appsList = AppsLoader.loadApps(getApplication(), filter)
+                _apps.value = appsList
+            } catch (e: Exception) {
+                _apps.value = emptyList()
+            } finally {
+                _appsLoading.value = false
             }
         }
     }
