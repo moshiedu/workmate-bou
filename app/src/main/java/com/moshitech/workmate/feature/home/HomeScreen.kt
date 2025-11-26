@@ -85,6 +85,7 @@ fun HomeScreen(
         HomeItem("Photo Converter", "Convert image formats", Icons.Default.Image, Screen.PhotoConversion.route, primaryBlue),
         HomeItem("Unit Converter", "Convert various units", Icons.Default.Calculate, Screen.UnitConversion.route, primaryBlue),
         HomeItem("Compass", "Find your direction", Icons.Default.Explore, Screen.Compass.route, primaryBlue),
+        HomeItem("Device Info", "System information", Icons.Default.Dashboard, Screen.DeviceInfo.route, primaryBlue),
         HomeItem("App Lock", "Secure your apps", Icons.Default.Lock, Screen.AppLock.route, primaryBlue)
     )
 

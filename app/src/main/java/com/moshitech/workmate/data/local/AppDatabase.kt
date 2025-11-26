@@ -12,14 +12,31 @@ import com.moshitech.workmate.feature.unitconverter.data.local.ConversionFavorit
 import com.moshitech.workmate.feature.unitconverter.data.local.UnitConversionHistoryDao
 import com.moshitech.workmate.feature.unitconverter.data.local.UnitConversionHistoryEntity
 
+import com.moshitech.workmate.feature.compass.data.WaypointEntity
+import com.moshitech.workmate.feature.compass.data.WaypointDao
+import com.moshitech.workmate.feature.compass.data.TripEntity
+import com.moshitech.workmate.feature.compass.data.TripDao
+
 import androidx.room.TypeConverters
 
-@Database(entities = [ConversionHistoryEntity::class, ConversionFavoriteEntity::class, UnitConversionHistoryEntity::class], version = 3, exportSchema = false)
+@Database(
+    entities = [
+        ConversionHistoryEntity::class,
+        ConversionFavoriteEntity::class,
+        UnitConversionHistoryEntity::class,
+        WaypointEntity::class,
+        TripEntity::class
+    ],
+    version = 4,
+    exportSchema = false
+)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun conversionHistoryDao(): ConversionHistoryDao
     abstract fun conversionFavoriteDao(): ConversionFavoriteDao
     abstract fun unitConversionHistoryDao(): UnitConversionHistoryDao
+    abstract fun waypointDao(): WaypointDao
+    abstract fun tripDao(): TripDao
 
     companion object {
         @Volatile
