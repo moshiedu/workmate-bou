@@ -152,7 +152,12 @@ class NetworkInfoProvider(private val context: Context) {
                 isDualSim = false,
                 phoneType = "-",
                 isEsim = false,
-                dataSimSlot = 0
+                dataSimSlot = 0,
+                sim1Info = null,
+                sim2Info = null,
+                defaultDataSlot = 0,
+                defaultVoiceSlot = 0,
+                defaultSmsSlot = 0
             )
         }
 
@@ -167,6 +172,12 @@ class NetworkInfoProvider(private val context: Context) {
             "Unknown"
         }
 
+        val isDualSim = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) telephonyManager.phoneCount > 1 else false
+        
+        // Get SIM info using SubscriptionManager
+        val (sim1Info, sim2Info) = getSimInfos()
+        val (defaultDataSlot, defaultVoiceSlot, defaultSmsSlot) = getDefaultSlots()
+
         return MobileDetails(
             simState = getSimStateString(telephonyManager.simState),
             carrierName = telephonyManager.networkOperatorName ?: "Unknown",
@@ -174,15 +185,139 @@ class NetworkInfoProvider(private val context: Context) {
             countryIso = telephonyManager.networkCountryIso?.uppercase() ?: "-",
             roaming = if (telephonyManager.isNetworkRoaming) "Roaming" else "Not Roaming",
             networkType = networkType,
-            isDualSim = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) telephonyManager.phoneCount > 1 else false,
+            isDualSim = isDualSim,
             phoneType = when (telephonyManager.phoneType) {
                 TelephonyManager.PHONE_TYPE_GSM -> "GSM"
                 TelephonyManager.PHONE_TYPE_CDMA -> "CDMA"
                 else -> "None"
             },
-            isEsim = false, // Requires SubscriptionManager
-            dataSimSlot = 1 // Simplified
+            isEsim = sim1Info?.let { it.isAvailable && it.carrierName.contains("eSIM", ignoreCase = true) } ?: false,
+            dataSimSlot = defaultDataSlot,
+            sim1Info = sim1Info,
+            sim2Info = sim2Info,
+            defaultDataSlot = defaultDataSlot,
+            defaultVoiceSlot = defaultVoiceSlot,
+            defaultSmsSlot = defaultSmsSlot
         )
+    }
+
+    private fun getSimInfos(): Pair<SimInfo?, SimInfo?> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP_MR1) {
+            return Pair(null, null)
+        }
+
+        try {
+            val subscriptionManager = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as? android.telephony.SubscriptionManager
+                ?: return Pair(null, null)
+
+            if (ActivityCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
+                return Pair(null, null)
+            }
+
+            val subscriptions = subscriptionManager.activeSubscriptionInfoList ?: emptyList()
+            
+            var sim1: SimInfo? = null
+            var sim2: SimInfo? = null
+
+            for (sub in subscriptions) {
+                val slotIndex = sub.simSlotIndex
+                if (slotIndex == 0 || slotIndex == 1) {
+                    val simInfo = SimInfo(
+                        slotIndex = slotIndex + 1, // Convert to 1-based
+                        carrierName = sub.carrierName?.toString() ?: "Unknown",
+                        operatorCode = sub.mcc.toString() + sub.mnc.toString(),
+                        countryIso = sub.countryIso?.uppercase() ?: "-",
+                        isRoaming = false, // Would need TelephonyManager per subscription
+                        networkType = getNetworkTypeForSubscription(sub.subscriptionId),
+                        simState = "Ready",
+                        isAvailable = true
+                    )
+                    
+                    if (slotIndex == 0) sim1 = simInfo
+                    else if (slotIndex == 1) sim2 = simInfo
+                }
+            }
+
+            // If SIM slot exists but no subscription, mark as not available
+            val phoneCount = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) telephonyManager.phoneCount else 1
+            if (sim1 == null && phoneCount >= 1) {
+                sim1 = SimInfo(1, "Not Available", "-", "-", false, "-", "Absent", false)
+            }
+            if (sim2 == null && phoneCount >= 2) {
+                sim2 = SimInfo(2, "Not Available", "-", "-", false, "-", "Absent", false)
+            }
+
+            return Pair(sim1, sim2)
+        } catch (e: Exception) {
+            return Pair(null, null)
+        }
+    }
+
+    private fun getNetworkTypeForSubscription(subscriptionId: Int): String {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return "Unknown"
+        
+        try {
+            val tm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                telephonyManager.createForSubscriptionId(subscriptionId)
+            } else {
+                telephonyManager
+            }
+            
+            return when (tm.dataNetworkType) {
+                TelephonyManager.NETWORK_TYPE_LTE -> "LTE"
+                TelephonyManager.NETWORK_TYPE_NR -> "5G NR"
+                TelephonyManager.NETWORK_TYPE_HSPAP -> "HSPA+"
+                TelephonyManager.NETWORK_TYPE_UMTS -> "3G"
+                TelephonyManager.NETWORK_TYPE_EDGE -> "EDGE"
+                TelephonyManager.NETWORK_TYPE_GPRS -> "GPRS"
+                else -> "Unknown"
+            }
+        } catch (e: Exception) {
+            return "Unknown"
+        }
+    }
+
+    private fun getDefaultSlots(): Triple<Int, Int, Int> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP_MR1) {
+            return Triple(0, 0, 0)
+        }
+
+        try {
+            val subscriptionManager = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as? android.telephony.SubscriptionManager
+                ?: return Triple(0, 0, 0)
+
+            if (ActivityCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
+                return Triple(0, 0, 0)
+            }
+
+            val dataSubId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                android.telephony.SubscriptionManager.getDefaultDataSubscriptionId()
+            } else {
+                -1
+            }
+
+            val voiceSubId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                android.telephony.SubscriptionManager.getDefaultVoiceSubscriptionId()
+            } else {
+                -1
+            }
+
+            val smsSubId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                android.telephony.SubscriptionManager.getDefaultSmsSubscriptionId()
+            } else {
+                -1
+            }
+
+            val subscriptions = subscriptionManager.activeSubscriptionInfoList ?: emptyList()
+            
+            val dataSlot = subscriptions.find { it.subscriptionId == dataSubId }?.simSlotIndex?.plus(1) ?: 0
+            val voiceSlot = subscriptions.find { it.subscriptionId == voiceSubId }?.simSlotIndex?.plus(1) ?: 0
+            val smsSlot = subscriptions.find { it.subscriptionId == smsSubId }?.simSlotIndex?.plus(1) ?: 0
+
+            return Triple(dataSlot, voiceSlot, smsSlot)
+        } catch (e: Exception) {
+            return Triple(0, 0, 0)
+        }
     }
 
     private fun getHardwareDetails(): NetworkHardwareDetails {

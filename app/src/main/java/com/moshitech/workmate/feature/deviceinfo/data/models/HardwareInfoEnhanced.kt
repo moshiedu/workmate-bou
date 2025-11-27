@@ -73,7 +73,7 @@ data class HardwareInfoEnhanced(
     
     // Sensors
     val sensorCount: Int = 0,
-    val sensors: List<String> = emptyList()
+    val sensors: List<SensorInfo> = emptyList()
 )
 
 data class StoragePartition(
@@ -88,10 +88,50 @@ data class CameraInfo(
     val id: String,
     val facing: String,
     val megapixels: String,
-    val aperture: String,
-    val focalLength: String,
+    val resolution: String,
     val sensorSize: String,
     val pixelSize: String,
+    val filterColorArrangement: String,
+    val aperture: String,
+    val focalLength: String,
+    val focalLength35mm: String,
+    val cropFactor: String,
+    val fieldOfView: String,
+    val shutterSpeedRange: String,
     val isoRange: String,
-    val videoResolution: String
+    val exposureRange: String,
+    val hasFlash: Boolean,
+    val hasVideoStabilization: Boolean,
+    val hasOpticalStabilization: Boolean,
+    val hasAfLock: Boolean,
+    val hasWbLock: Boolean,
+    val capabilities: List<String>,
+    val exposureModes: List<String>,
+    val autofocusModes: List<String>,
+    val whiteBalanceModes: List<String>,
+    val sceneModes: List<String>,
+    val colorEffects: List<String>,
+    val maxFaceCount: Int,
+    val faceDetectMode: String,
+    val camera2ApiLevel: String,
+    val videoModes: List<String>,
+    val videoResolution: String,
+    val videoProfiles: List<String>,
+    val maxFrameRate: String,
+    val hasHighSpeedVideo: Boolean,
+    val hasHdr: Boolean
+)
+
+data class SensorInfo(
+    val name: String,
+    val vendor: String,
+    val version: Int,
+    val type: Int,
+    val typeString: String,
+    val power: Float,
+    val resolution: Float,
+    val maxRange: Float,
+    val isWakeUpSensor: Boolean,
+    val isDynamicSensor: Boolean,
+    val reportingMode: String
 )

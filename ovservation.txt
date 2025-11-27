@@ -28,3 +28,15 @@ more information should be shown. (Reference picture as sample)
 
 10. Make some pro widgets as Premium quality: like Battery monitor, Floating Hardware Monitor and others if AI can suggest
 11. Need to re-plan the device info dashboard (multi column, compact, realtime)
+
+1. Device Info-> Network tab-> Connection setting icon clickable to open mobile connection settings
+2. Device Info-> Network tab->Wifi Connection setting icon clickable to open wifi connection settings
+3. Device Info-> Network tab->DHCP should remove Connection setting icon and add coopy icon to copy whole dhcp in formatted way
+4. Device Info-> Network tab->IP Address should add coopy icon to copy whole ip address
+5. Device Info-> Network tab->Under Mobile section Defaults Data, Voice, SMS missing, SIM 2 information missing
+6. Device Info-> Network tab->Under Mobile section both SIM 1 and SIM 2 should have setting icon and clickable to respective SIM setting
+7. Device Info-> Network tab->Public IP Address should should shown more longer time
+8. Device Info-> Network tab->Public IP Address should add coopy icon to copy whole public ip address
+
+1. Device Info-> Battery tab-> Remaining time is not showing all smartphones, need to check
+2. Device Info-> Network tab->Public IP Address should should shown more longer time around 30 seconds

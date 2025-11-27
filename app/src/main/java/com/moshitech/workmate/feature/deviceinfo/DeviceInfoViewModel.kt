@@ -117,6 +117,8 @@ class DeviceInfoViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    private var publicIpAutoHideJob: kotlinx.coroutines.Job? = null
+
     fun refreshPublicIp() {
         viewModelScope.launch {
             val currentInfo = _networkInfo.value
@@ -125,6 +127,20 @@ class DeviceInfoViewModel(application: Application) : AndroidViewModel(applicati
                 _networkInfo.value = currentInfo.copy(
                     dhcpDetails = currentInfo.dhcpDetails.copy(publicIp = publicIp)
                 )
+                
+                // Cancel previous auto-hide job if exists
+                publicIpAutoHideJob?.cancel()
+                
+                // Auto-hide after 30 seconds
+                publicIpAutoHideJob = viewModelScope.launch {
+                    delay(30000) // 30 seconds
+                    val info = _networkInfo.value
+                    if (info?.dhcpDetails != null) {
+                        _networkInfo.value = info.copy(
+                            dhcpDetails = info.dhcpDetails.copy(publicIp = "Tap to show")
+                        )
+                    }
+                }
             }
         }
     }

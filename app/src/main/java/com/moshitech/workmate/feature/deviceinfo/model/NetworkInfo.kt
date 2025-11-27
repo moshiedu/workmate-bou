@@ -55,6 +55,17 @@ data class NetworkHardwareDetails(
     val is6GhzSupported: Boolean
 )
 
+data class SimInfo(
+    val slotIndex: Int,
+    val carrierName: String,
+    val operatorCode: String,
+    val countryIso: String,
+    val isRoaming: Boolean,
+    val networkType: String,
+    val simState: String,
+    val isAvailable: Boolean
+)
+
 data class MobileDetails(
     val simState: String,
     val carrierName: String,
@@ -65,5 +76,10 @@ data class MobileDetails(
     val isDualSim: Boolean,
     val phoneType: String,
     val isEsim: Boolean,
-    val dataSimSlot: Int // 1 or 2
+    val dataSimSlot: Int, // 0=none, 1=SIM1, 2=SIM2
+    val sim1Info: SimInfo?,
+    val sim2Info: SimInfo?,
+    val defaultDataSlot: Int, // 0=none, 1=SIM1, 2=SIM2
+    val defaultVoiceSlot: Int,
+    val defaultSmsSlot: Int
 )

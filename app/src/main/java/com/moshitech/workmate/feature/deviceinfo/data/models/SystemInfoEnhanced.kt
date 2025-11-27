@@ -60,6 +60,9 @@ data class SystemInfoEnhanced(
     val drmWidevineMaxHdcpLevel: String = "Unknown",
     val drmWidevineMaxUses: String = "Unknown",
     
+    // Network Security
+    val sslVersion: String = "Unknown",
+    
     // Bootloader
     val bootloader: String = "Unknown",
     val baseband: String = "Unknown",
