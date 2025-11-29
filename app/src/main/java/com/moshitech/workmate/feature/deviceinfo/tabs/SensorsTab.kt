@@ -15,7 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.ShowChart
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,54 +29,72 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigation.NavController
 import com.moshitech.workmate.feature.deviceinfo.DeviceInfoViewModel
 import com.moshitech.workmate.feature.deviceinfo.data.models.SensorInfo
+import com.moshitech.workmate.feature.deviceinfo.utils.SensorUtils
 
 @Composable
 fun SensorsTab(
+    navController: NavController,
     viewModel: DeviceInfoViewModel,
     isDark: Boolean,
     textColor: Color
 ) {
     val hardwareInfo by viewModel.hardwareInfoEnhanced.collectAsState()
-    var selectedSensor by remember { mutableStateOf<SensorInfo?>(null) }
     
     val cardColor = if (isDark) Color(0xFF1E293B) else Color.White
     val subtitleColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF6B7280)
 
-    if (selectedSensor != null) {
-        SensorDetailView(
-            sensor = selectedSensor!!,
-            onBack = { selectedSensor = null },
-            cardColor = cardColor,
-            textColor = textColor,
-            subtitleColor = subtitleColor
-        )
-    } else {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            item {
-                Text(
-                    text = "Sensors (${hardwareInfo.sensors.size})",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = textColor,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-            }
-            
-            items(hardwareInfo.sensors) { sensor ->
-                SensorItem(
-                    sensor = sensor,
-                    cardColor = cardColor,
-                    textColor = textColor,
-                    subtitleColor = subtitleColor,
-                    onClick = { selectedSensor = sensor }
-                )
+    // Group sensors by category
+    val groupedSensors = remember(hardwareInfo.sensors) {
+        hardwareInfo.sensors.groupBy { SensorUtils.getSensorCategory(it.type) }
+    }
+    
+    // Order of categories
+    val categories = listOf("Motion", "Position", "Environment", "Other")
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(vertical = 16.dp)
+    ) {
+        item {
+            Text(
+                text = "Sensors (${hardwareInfo.sensors.size})",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = textColor,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+        }
+        
+        categories.forEach { category ->
+            val sensors = groupedSensors[category]
+            if (!sensors.isNullOrEmpty()) {
+                item {
+                    Text(
+                        text = category,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = subtitleColor,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+                }
+                
+                items(sensors) { sensor ->
+                    SensorItem(
+                        sensor = sensor,
+                        cardColor = cardColor,
+                        textColor = textColor,
+                        subtitleColor = subtitleColor,
+                        onClick = { 
+                            navController.navigate("sensor_detail/${sensor.type}")
+                        }
+                    )
+                }
             }
         }
     }
@@ -99,11 +117,28 @@ fun SensorItem(
     ) {
         Row(
             modifier = Modifier
-                .padding(16.dp)
+                .padding(12.dp)
                 .fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            // Icon
+            Surface(
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.size(40.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = SensorUtils.getSensorIcon(sensor.type),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.width(16.dp))
+            
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = sensor.name,
@@ -120,9 +155,9 @@ fun SensorItem(
             }
             
             Icon(
-                imageVector = Icons.Default.ShowChart,
-                contentDescription = "View Graph",
-                tint = Color(0xFF4CAF50)
+                imageVector = Icons.Default.KeyboardArrowRight,
+                contentDescription = "View Details",
+                tint = subtitleColor
             )
         }
     }

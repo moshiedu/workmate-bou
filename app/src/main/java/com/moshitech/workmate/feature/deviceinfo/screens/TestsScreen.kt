@@ -121,12 +121,12 @@ fun TestItem(
                         "backlight" -> "test_backlight"
                         "display" -> "test_display"
                         "multitouch" -> "test_multitouch"
-                        "buttons" -> "test_buttons"
+                        "buttons" -> "test_button"
                         "speakers" -> "test_speaker"
                         "microphone" -> "test_microphone"
                         "proximity" -> "test_proximity"
-                        "light" -> "test_light"
-                        "light_sensor" -> "test_light"
+                        "light" -> "test_light_sensor"
+                        "light_sensor" -> "test_light_sensor"
                         "accelerometer" -> "test_accelerometer"
                         "flashlight" -> "test_flashlight"
                         "vibration" -> "test_vibration"
@@ -138,6 +138,7 @@ fun TestItem(
                         "wifi" -> "test_wifi"
                         "gps" -> "test_gps"
                         "nfc" -> "test_nfc"
+                        "usb" -> "test_usb"
                         else -> null
                     }
                     route?.let { navController.navigate(it) }
@@ -232,6 +233,7 @@ private fun getTestIcon(iconName: String): ImageVector {
         "wifi" -> Icons.Default.Wifi
         "gps" -> Icons.Default.LocationOn
         "nfc" -> Icons.Default.Nfc
+        "usb" -> Icons.Default.Usb
         else -> Icons.Default.HelpOutline
     }
 }
