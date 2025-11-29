@@ -40,3 +40,8 @@ more information should be shown. (Reference picture as sample)
 
 1. Device Info-> Battery tab-> Remaining time is not showing all smartphones, need to check
 2. Device Info-> Network tab->Public IP Address should should shown more longer time around 30 seconds
+
+1. Benchmark enhancement in progress,
+2. Battery Widget in progress,
+3. While clicking on internet widget link to workmate internet widget control page,
+4. If possible internet speed also want to show on lock screen depends on user's control
