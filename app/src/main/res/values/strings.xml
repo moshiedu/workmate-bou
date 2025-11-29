@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Workmate</string>
+    <string name="network_speed_widget_description">Real-time network speed monitor</string>
 </resources>

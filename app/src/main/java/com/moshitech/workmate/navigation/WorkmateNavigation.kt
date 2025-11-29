@@ -52,6 +52,9 @@ sealed class Screen(val route: String) {
     object WifiTest : Screen("test_wifi")
     object GpsTest : Screen("test_gps")
     object NfcTest : Screen("test_nfc")
+    object UsbTest : Screen("test_usb")
+    object Benchmarks : Screen("benchmarks")
+    object Widgets : Screen("widgets")
 }
 
 @Composable
@@ -100,6 +103,16 @@ fun WorkmateNavigation(
         }
         composable(Screen.DeviceInfo.route) {
             com.moshitech.workmate.feature.deviceinfo.DeviceInfoScreen(navController = navController)
+        }
+        composable(
+            route = "sensor_detail/{sensorType}",
+            arguments = listOf(androidx.navigation.navArgument("sensorType") { type = androidx.navigation.NavType.IntType })
+        ) { backStackEntry ->
+            val sensorType = backStackEntry.arguments?.getInt("sensorType") ?: 0
+            com.moshitech.workmate.feature.deviceinfo.screens.SensorDetailScreen(navController, sensorType)
+        }
+        composable(Screen.Benchmarks.route) {
+            com.moshitech.workmate.feature.deviceinfo.screens.BenchmarksScreen(navController)
         }
         composable(Screen.Tests.route) {
             com.moshitech.workmate.feature.deviceinfo.screens.TestsScreen(
@@ -202,8 +215,16 @@ fun WorkmateNavigation(
                 navController.previousBackStackEntry?.savedStateHandle?.set("test_result", Pair("nfc", passed))
             }
         }
+        composable(Screen.UsbTest.route) {
+            com.moshitech.workmate.feature.deviceinfo.testing.screens.UsbTestScreen(navController) { passed ->
+                navController.previousBackStackEntry?.savedStateHandle?.set("test_result", Pair("usb", passed))
+            }
+        }
         composable(Screen.Settings.route) {
             SettingsScreen(navController = navController, mainViewModel = mainViewModel)
+        }
+        composable(Screen.Widgets.route) {
+            com.moshitech.workmate.feature.widgets.WidgetsScreen(navController)
         }
     }
 }

@@ -13,5 +13,10 @@ data class DashboardInfo(
     val batteryStatus: String = "Unknown",
     val networkType: String = "None",
     val signalStrength: String = "--",
-    val uptime: String = "00:00:00"
+    val uptime: String = "00:00:00",
+    val cpuCores: List<CpuCore> = emptyList(),
+    val dataSent: Long = 0L,
+    val dataReceived: Long = 0L,
+    val networkSpeedUpload: Long = 0L,
+    val networkSpeedDownload: Long = 0L
 )

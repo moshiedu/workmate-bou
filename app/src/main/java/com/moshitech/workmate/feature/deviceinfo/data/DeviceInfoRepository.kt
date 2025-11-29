@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Environment
 import android.os.StatFs
 import android.os.SystemClock
+import com.moshitech.workmate.feature.deviceinfo.data.models.CpuCore
 import com.moshitech.workmate.feature.deviceinfo.data.models.DashboardInfo
 import com.moshitech.workmate.feature.deviceinfo.data.models.HardwareInfo
 import com.moshitech.workmate.feature.deviceinfo.data.models.SystemInfo
@@ -27,6 +28,28 @@ class DeviceInfoRepository(private val context: Context) {
         val storageTotal = statFs.blockCountLong * statFs.blockSizeLong
         val storageAvailable = statFs.availableBlocksLong * statFs.blockSizeLong
         val storageUsed = storageTotal - storageAvailable
+
+        // Battery Info
+        val batteryIntent = context.registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
+        val level = batteryIntent?.let {
+            val level = it.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1)
+            val scale = it.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1)
+            if (level != -1 && scale != -1) {
+                (level / scale.toFloat() * 100).toInt()
+            } else 0
+        } ?: 0
+        
+        val status = batteryIntent?.let {
+            when (it.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1)) {
+                android.os.BatteryManager.BATTERY_STATUS_CHARGING -> "Charging"
+                android.os.BatteryManager.BATTERY_STATUS_DISCHARGING -> "Discharging"
+                android.os.BatteryManager.BATTERY_STATUS_FULL -> "Full"
+                android.os.BatteryManager.BATTERY_STATUS_NOT_CHARGING -> "Not Charging"
+                else -> "Unknown"
+            }
+        } ?: "Unknown"
+        
+        val temperature = batteryIntent?.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, 0)?.div(10f) ?: 0f
         
         return DashboardInfo(
             cpuFrequency = getCurrentCpuFrequency(),
@@ -34,7 +57,13 @@ class DeviceInfoRepository(private val context: Context) {
             ramTotal = memInfo.totalMem,
             storageUsed = storageUsed,
             storageTotal = storageTotal,
-            uptime = FormatUtils.formatUptime(SystemClock.elapsedRealtime())
+            uptime = FormatUtils.formatUptime(SystemClock.elapsedRealtime()),
+            batteryLevel = level,
+            batteryStatus = status,
+            batteryTemperature = temperature,
+            cpuCores = getCpuCores(),
+            dataSent = android.net.TrafficStats.getTotalTxBytes(),
+            dataReceived = android.net.TrafficStats.getTotalRxBytes()
         )
     }
     
@@ -152,5 +181,36 @@ class DeviceInfoRepository(private val context: Context) {
             "/su/bin/su"
         )
         return paths.any { File(it).exists() }
+    }
+
+    private fun getCpuCores(): List<CpuCore> {
+        val cores = mutableListOf<CpuCore>()
+        val coreCount = Runtime.getRuntime().availableProcessors()
+        
+        for (i in 0 until coreCount) {
+            val maxFreq = readCpuFreq(i, "cpuinfo_max_freq")
+            val minFreq = readCpuFreq(i, "cpuinfo_min_freq")
+            val curFreq = readCpuFreq(i, "scaling_cur_freq")
+            
+            cores.add(
+                CpuCore(
+                    name = "Core $i",
+                    minFrequency = minFreq,
+                    maxFrequency = maxFreq,
+                    currentFrequency = curFreq
+                )
+            )
+        }
+        
+        return cores
+    }
+    
+    private fun readCpuFreq(core: Int, file: String): Long {
+        return try {
+            val path = "/sys/devices/system/cpu/cpu$core/cpufreq/$file"
+            File(path).readText().trim().toLongOrNull() ?: 0L
+        } catch (e: Exception) {
+            0L
+        }
     }
 }
