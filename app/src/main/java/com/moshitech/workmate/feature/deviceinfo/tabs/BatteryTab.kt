@@ -346,15 +346,23 @@ fun BatteryTab(isDark: Boolean) {
                     0
                 }
 
+                // Calculate remaining time string
+                var remainingTimeString: String? = null
+                
+                // Try accurate calculation first
                 if (current != 0 && effectiveChargeCounter > 0) {
-                    val remainingHours = if (current < 0) {
-                        // Discharging
-                        abs(effectiveChargeCounter.toFloat() / current)
-                    } else {
-                        // Charging - estimate time to full
-                        if (designCapacity > 0) {
-                            (designCapacity - effectiveChargeCounter).toFloat() / current
-                        } else 0f
+                    val remainingHours = try {
+                        if (current < 0) {
+                            // Discharging
+                            abs(effectiveChargeCounter.toFloat() / current)
+                        } else {
+                            // Charging - estimate time to full
+                            if (designCapacity > 0) {
+                                (designCapacity - effectiveChargeCounter).toFloat() / current
+                            } else 0f
+                        }
+                    } catch (e: Exception) {
+                        0f
                     }
                     
                     if (remainingHours > 0 && remainingHours < 100) {
@@ -364,15 +372,48 @@ fun BatteryTab(isDark: Boolean) {
                         val minutes = (totalSeconds % 3600) / 60
                         val seconds = totalSeconds % 60
                         
-                        val timeString = buildString {
+                        remainingTimeString = buildString {
                             if (days > 0) append("${days}d ")
                             if (hours > 0) append("${hours}h ")
                             if (minutes > 0) append("${minutes}m ")
                             append("${seconds}s")
                         }
-                        
-                        BatteryInfoRow("Remaining", timeString, textColor)
                     }
+                }
+                
+                // Fallback estimation when current sensor is unavailable
+                if (remainingTimeString == null && designCapacity > 0 && batteryLevel > 0) {
+                    val estimatedCurrent = if (isCharging) 1500 else 300 // mA
+                    
+                    val estimatedHours = try {
+                        if (isCharging) {
+                            // Time to charge from current level to 100%
+                            ((designCapacity * (100 - batteryLevel)) / 100).toFloat() / estimatedCurrent
+                        } else {
+                            // Time to discharge from current level to 0%
+                            ((designCapacity * batteryLevel) / 100).toFloat() / estimatedCurrent
+                        }
+                    } catch (e: Exception) {
+                        0f
+                    }
+                    
+                    if (estimatedHours > 0 && estimatedHours < 100) {
+                        val totalSeconds = (estimatedHours * 3600).toLong()
+                        val hours = totalSeconds / 3600
+                        val minutes = (totalSeconds % 3600) / 60
+                        
+                        remainingTimeString = buildString {
+                            if (hours > 0) append("~${hours}h ")
+                            append("${minutes}m (est.)")
+                        }
+                    }
+                }
+                
+                // Display remaining time
+                if (remainingTimeString != null) {
+                    BatteryInfoRow("Remaining", remainingTimeString, textColor)
+                } else if (isCharging || batteryLevel < 100) {
+                    BatteryInfoRow("Remaining", "Calculating...", textColor)
                 }
                 
 

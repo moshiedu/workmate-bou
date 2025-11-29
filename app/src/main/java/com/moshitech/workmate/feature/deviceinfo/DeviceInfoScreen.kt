@@ -71,13 +71,13 @@ fun DeviceInfoScreen(
                 modifier = Modifier.fillMaxSize()
             ) { page ->
                 when (page) {
-                    0 -> DashboardTab(navController, viewModel, isDark, textColor)
+                    0 -> com.moshitech.workmate.feature.deviceinfo.tabs.DashboardTabEnhanced(navController, viewModel, isDark, textColor)
                     1 -> com.moshitech.workmate.feature.deviceinfo.tabs.HardwareTabEnhanced(viewModel, isDark, textColor)
                     2 -> com.moshitech.workmate.feature.deviceinfo.tabs.SystemTabEnhanced(viewModel, isDark, textColor)
                     3 -> com.moshitech.workmate.feature.deviceinfo.tabs.BatteryTab(isDark)
                     4 -> com.moshitech.workmate.feature.deviceinfo.tabs.NetworkTab(viewModel, isDark, textColor)
                     5 -> com.moshitech.workmate.feature.deviceinfo.tabs.CameraTab(viewModel, isDark, textColor)
-                    6 -> com.moshitech.workmate.feature.deviceinfo.tabs.SensorsTab(viewModel, isDark, textColor)
+                    6 -> com.moshitech.workmate.feature.deviceinfo.tabs.SensorsTab(navController, viewModel, isDark, textColor)
                     7 -> com.moshitech.workmate.feature.deviceinfo.tabs.AppsTab(viewModel, isDark, textColor)
                 }
             }

@@ -81,8 +81,33 @@ class DeviceInfoViewModel(application: Application) : AndroidViewModel(applicati
     
     private fun startDashboardUpdates() {
         viewModelScope.launch {
+            var lastRx = android.net.TrafficStats.getTotalRxBytes()
+            var lastTx = android.net.TrafficStats.getTotalTxBytes()
+            var lastTime = System.currentTimeMillis()
+
             while (isActive) {
-                _dashboardInfo.value = repository.getDashboardInfo()
+                val baseInfo = repository.getDashboardInfo()
+                val netInfo = _networkInfo.value
+                
+                val currentRx = android.net.TrafficStats.getTotalRxBytes()
+                val currentTx = android.net.TrafficStats.getTotalTxBytes()
+                val currentTime = System.currentTimeMillis()
+                
+                val timeDelta = currentTime - lastTime
+                val rxSpeed = if (timeDelta > 0) ((currentRx - lastRx) * 1000 / timeDelta) else 0
+                val txSpeed = if (timeDelta > 0) ((currentTx - lastTx) * 1000 / timeDelta) else 0
+                
+                lastRx = currentRx
+                lastTx = currentTx
+                lastTime = currentTime
+
+                _dashboardInfo.value = baseInfo.copy(
+                    networkType = netInfo?.connectionStatus?.description ?: "None",
+                    signalStrength = if (netInfo?.connectionStatus?.isConnected == true) 
+                        "${netInfo.connectionStatus.signalStrengthDbm} dBm" else "--",
+                    networkSpeedDownload = rxSpeed,
+                    networkSpeedUpload = txSpeed
+                )
                 delay(2000) // Update every 2 seconds
             }
         }
@@ -117,6 +142,8 @@ class DeviceInfoViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    private var publicIpAutoHideJob: kotlinx.coroutines.Job? = null
+
     fun refreshPublicIp() {
         viewModelScope.launch {
             val currentInfo = _networkInfo.value
@@ -125,6 +152,20 @@ class DeviceInfoViewModel(application: Application) : AndroidViewModel(applicati
                 _networkInfo.value = currentInfo.copy(
                     dhcpDetails = currentInfo.dhcpDetails.copy(publicIp = publicIp)
                 )
+                
+                // Cancel previous auto-hide job if exists
+                publicIpAutoHideJob?.cancel()
+                
+                // Auto-hide after 30 seconds
+                publicIpAutoHideJob = viewModelScope.launch {
+                    delay(30000) // 30 seconds
+                    val info = _networkInfo.value
+                    if (info?.dhcpDetails != null) {
+                        _networkInfo.value = info.copy(
+                            dhcpDetails = info.dhcpDetails.copy(publicIp = "Tap to show")
+                        )
+                    }
+                }
             }
         }
     }

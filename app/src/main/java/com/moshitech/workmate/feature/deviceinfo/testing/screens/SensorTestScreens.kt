@@ -422,7 +422,7 @@ fun LightSensorTestScreen(
 ) {
     val context = LocalContext.current
     var lightValue by remember { mutableStateOf(0f) }
-    var maxValue by remember { mutableStateOf(0f) }
+    var maxValue by remember { mutableStateOf(10000f) }
     
     DisposableEffect(Unit) {
         val sensorManager = context.getSystemService(android.content.Context.SENSOR_SERVICE) as? android.hardware.SensorManager

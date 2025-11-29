@@ -4,8 +4,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -114,6 +118,7 @@ fun SystemTabEnhanced(
             DetailRow("Version", systemInfo.javaVmVersion, textColor, subtitleColor, indent = 1)
             DetailRow("SELinux", systemInfo.seLinuxStatus, textColor, subtitleColor)
             DetailRow("Mode", systemInfo.seLinuxMode, textColor, subtitleColor, indent = 1)
+            DetailRow("SSL Version", systemInfo.sslVersion, textColor, subtitleColor)
         }
         
         // Locale Section
@@ -199,7 +204,16 @@ fun SystemTabEnhanced(
             textColor = textColor,
             subtitleColor = subtitleColor
         ) {
-            DetailRow("Uptime", FormatUtils.formatUptime(systemInfo.uptimeMillis), textColor, subtitleColor)
+            var uptime by remember { mutableLongStateOf(android.os.SystemClock.elapsedRealtime()) }
+            
+            LaunchedEffect(Unit) {
+                while (true) {
+                    uptime = android.os.SystemClock.elapsedRealtime()
+                    kotlinx.coroutines.delay(1000)
+                }
+            }
+            
+            DetailRow("Uptime", FormatUtils.formatUptime(uptime), textColor, subtitleColor)
         }
     }
 }
