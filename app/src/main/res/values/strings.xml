@@ -2,4 +2,5 @@
     <string name="app_name">Workmate</string>
     <string name="network_speed_widget_description">Real-time network speed monitor</string>
     <string name="battery_widget_description">Real-time battery monitor with temperature and voltage</string>
+    <string name="accessibility_service_description">Workmate App Lock uses this service to detect when locked apps are opened and display the unlock screen.</string>
 </resources>

@@ -85,6 +85,81 @@ fun DashboardView(viewModel: AppLockViewModel, isDark: Boolean, textColor: Color
         }
 
         Spacer(modifier = Modifier.height(16.dp))
+        
+        // Accessibility Service Setup Guide
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val isAccessibilityEnabled = remember {
+            mutableStateOf(isAccessibilityServiceEnabled(context))
+        }
+        
+        // Auto-refresh when returning to this screen
+        androidx.compose.runtime.DisposableEffect(Unit) {
+            val listener = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                    isAccessibilityEnabled.value = isAccessibilityServiceEnabled(context)
+                }
+            }
+            val lifecycle = (context as? androidx.lifecycle.LifecycleOwner)?.lifecycle
+            lifecycle?.addObserver(listener)
+            
+            onDispose {
+                lifecycle?.removeObserver(listener)
+            }
+        }
+        
+        if (!isAccessibilityEnabled.value && lockedApps.isNotEmpty()) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF3C7)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Lock,
+                            contentDescription = null,
+                            tint = Color(0xFFF59E0B),
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "Setup Required",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF92400E)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "To lock apps, you need to enable the Accessibility Service:",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color(0xFF78350F)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "1. Tap the button below\n2. Find 'Workmate App Lock'\n3. Toggle it ON\n4. Accept the permission",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF78350F)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = {
+                            val intent = android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                            intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                            context.startActivity(intent)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Open Accessibility Settings")
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
         Text("Select Apps to Lock", style = MaterialTheme.typography.titleMedium, color = textColor, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -96,6 +171,16 @@ fun DashboardView(viewModel: AppLockViewModel, isDark: Boolean, textColor: Color
             }
         }
     }
+}
+
+// Helper function to check if accessibility service is enabled
+private fun isAccessibilityServiceEnabled(context: android.content.Context): Boolean {
+    val accessibilityManager = context.getSystemService(android.content.Context.ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager
+    val enabledServices = android.provider.Settings.Secure.getString(
+        context.contentResolver,
+        android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+    )
+    return enabledServices?.contains(context.packageName) == true
 }
 
 @Composable
