@@ -38,7 +38,7 @@ class TestsViewModel(application: Application) : AndroidViewModel(application) {
             HardwareTest("earpiece", "Earpiece", "earpiece", isPro = true),
             HardwareTest("microphone", "Microphone", "microphone", isPro = true),
             HardwareTest("fingerprint", "Fingerprint", "fingerprint", isPro = true),
-            HardwareTest("usb", "USB", "usb")
+            HardwareTest("usb", "USB", "usb", isPro = true)
         )
     )
     

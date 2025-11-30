@@ -54,7 +54,11 @@ sealed class Screen(val route: String) {
     object NfcTest : Screen("test_nfc")
     object UsbTest : Screen("test_usb")
     object Benchmarks : Screen("benchmarks")
+    object BenchmarkResults : Screen("benchmark_results")
+    object BenchmarkTrends : Screen("benchmark_trends")
     object Widgets : Screen("widgets")
+    object PermissionsExplorer : Screen("permissions_explorer")
+    object IntegrityCheck : Screen("integrity_check")
 }
 
 @Composable
@@ -113,6 +117,12 @@ fun WorkmateNavigation(
         }
         composable(Screen.Benchmarks.route) {
             com.moshitech.workmate.feature.deviceinfo.screens.BenchmarksScreen(navController)
+        }
+        composable(Screen.BenchmarkResults.route) {
+            com.moshitech.workmate.feature.deviceinfo.screens.BenchmarkResultsScreen(navController)
+        }
+        composable(Screen.BenchmarkTrends.route) {
+            com.moshitech.workmate.feature.deviceinfo.screens.BenchmarkTrendsScreen(navController)
         }
         composable(Screen.Tests.route) {
             com.moshitech.workmate.feature.deviceinfo.screens.TestsScreen(
@@ -225,6 +235,12 @@ fun WorkmateNavigation(
         }
         composable(Screen.Widgets.route) {
             com.moshitech.workmate.feature.widgets.WidgetsScreen(navController)
+        }
+        composable(Screen.PermissionsExplorer.route) {
+            com.moshitech.workmate.feature.deviceinfo.screens.PermissionsExplorerScreen(navController, isSystemInDarkTheme())
+        }
+        composable(Screen.IntegrityCheck.route) {
+            com.moshitech.workmate.feature.deviceinfo.screens.IntegrityCheckScreen(navController, isSystemInDarkTheme())
         }
     }
 }

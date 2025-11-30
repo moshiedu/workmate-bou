@@ -25,6 +25,8 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import com.moshitech.workmate.widget.NetworkSpeedService
+import com.moshitech.workmate.widget.BatteryMonitorService
+import com.moshitech.workmate.widget.FloatingMonitorService
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,7 +35,9 @@ fun WidgetsScreen(
     isDark: Boolean = true
 ) {
     val context = LocalContext.current
-    var isServiceRunning by remember { mutableStateOf(false) }
+    var isServiceRunning by remember { mutableStateOf(NetworkSpeedService.isServiceRunning) }
+    var isBatteryServiceRunning by remember { mutableStateOf(BatteryMonitorService.isServiceRunning) }
+    var isFloatingServiceRunning by remember { mutableStateOf(FloatingMonitorService.isServiceRunning) }
     var hasNotificationPermission by remember {
         mutableStateOf(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -214,6 +218,54 @@ fun WidgetsScreen(
                         }
                     }
 
+                    // Notification Settings
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = backgroundColor),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Hide Notification",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = textColor
+                                )
+                                Text(
+                                    "To hide the icon, disable notifications for this category in System Settings.",
+                                    fontSize = 12.sp,
+                                    color = textColor.copy(alpha = 0.7f)
+                                )
+                            }
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                IconButton(
+                                    onClick = {
+                                        val intent = Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).apply {
+                                            putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                            putExtra(Settings.EXTRA_CHANNEL_ID, "network_speed_monitor")
+                                        }
+                                        try {
+                                            context.startActivity(intent)
+                                        } catch (e: Exception) {
+                                            // Fallback to app notification settings
+                                            val appIntent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                                putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                            }
+                                            context.startActivity(appIntent)
+                                        }
+                                    }
+                                ) {
+                                    Icon(Icons.Default.Settings, "Settings", tint = Color(0xFF10B981))
+                                }
+                            }
+                        }
+                    }
+
                     // Control Buttons
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -266,7 +318,11 @@ fun WidgetsScreen(
                                 Button(
                                     onClick = {
                                         val serviceIntent = Intent(context, NetworkSpeedService::class.java)
-                                        context.startForegroundService(serviceIntent)
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                            context.startForegroundService(serviceIntent)
+                                        } else {
+                                            context.startService(serviceIntent)
+                                        }
                                         isServiceRunning = true
                                     },
                                     modifier = Modifier.weight(1f),
@@ -304,10 +360,10 @@ fun WidgetsScreen(
                 }
             }
 
-            // Coming Soon Card
+            // Battery Monitor Widget Card
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = cardColor.copy(alpha = 0.5f)),
+                colors = CardDefaults.cardColors(containerColor = cardColor),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Column(
@@ -321,7 +377,7 @@ fun WidgetsScreen(
                         Icon(
                             Icons.Default.BatteryChargingFull,
                             contentDescription = "Battery",
-                            tint = textColor.copy(alpha = 0.5f),
+                            tint = Color(0xFF4CAF50),
                             modifier = Modifier.size(32.dp)
                         )
                         Column {
@@ -329,13 +385,248 @@ fun WidgetsScreen(
                                 "Battery Monitor Widget",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = textColor.copy(alpha = 0.5f)
+                                color = textColor
                             )
                             Text(
-                                "Coming Soon",
+                                "Real-time battery stats & temperature",
                                 fontSize = 14.sp,
-                                color = textColor.copy(alpha = 0.4f)
+                                color = textColor.copy(alpha = 0.7f)
                             )
+                        }
+                    }
+
+                    HorizontalDivider(color = textColor.copy(alpha = 0.1f))
+
+                    // Status
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(12.dp)
+                                .padding(2.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = if (isBatteryServiceRunning) Color(0xFF10B981) else Color.Gray,
+                                modifier = Modifier.fillMaxSize()
+                            ) {}
+                        }
+                        Text(
+                            if (isBatteryServiceRunning) "Service Running" else "Service Stopped",
+                            fontSize = 14.sp,
+                            color = textColor.copy(alpha = 0.8f)
+                        )
+                    }
+
+                    // Control Buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (isBatteryServiceRunning) {
+                            Button(
+                                onClick = {
+                                    val serviceIntent = Intent(context, BatteryMonitorService::class.java)
+                                    context.stopService(serviceIntent)
+                                    isBatteryServiceRunning = false
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                            ) {
+                                Icon(Icons.Default.Stop, "Stop", modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Stop Service")
+                            }
+                        } else {
+                            Button(
+                                onClick = {
+                                    val serviceIntent = Intent(context, BatteryMonitorService::class.java)
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                        context.startForegroundService(serviceIntent)
+                                    } else {
+                                        context.startService(serviceIntent)
+                                    }
+                                    isBatteryServiceRunning = true
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
+                            ) {
+                                Icon(Icons.Default.PlayArrow, "Start", modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Start Service")
+                            }
+                        }
+                    }
+
+                    // Instructions
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = backgroundColor),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                "How to add widget:",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = textColor
+                            )
+                            InstructionStep("1", "Long-press on your home screen", textColor)
+                            InstructionStep("2", "Tap 'Widgets'", textColor)
+                            InstructionStep("3", "Find 'Workmate' → 'Battery Monitor'", textColor)
+                            InstructionStep("4", "Drag widget to home screen", textColor)
+                        }
+                    }
+                }
+            }
+
+            // Floating Hardware Monitor Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = cardColor),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Layers,
+                            contentDescription = "Floating Monitor",
+                            tint = Color(0xFF3B82F6),
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Column {
+                            Text(
+                                "Floating Hardware Monitor",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = textColor
+                            )
+                            Text(
+                                "Overlay CPU, RAM & Network stats",
+                                fontSize = 14.sp,
+                                color = textColor.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(color = textColor.copy(alpha = 0.1f))
+
+                    // Status
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(12.dp)
+                                .padding(2.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = if (isFloatingServiceRunning) Color(0xFF10B981) else Color.Gray,
+                                modifier = Modifier.fillMaxSize()
+                            ) {}
+                        }
+                        Text(
+                            if (isFloatingServiceRunning) "Overlay Active" else "Overlay Inactive",
+                            fontSize = 14.sp,
+                            color = textColor.copy(alpha = 0.8f)
+                        )
+                    }
+
+                    // Overlay Permission Warning
+                    if (!hasOverlayPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3CD)),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Warning,
+                                    contentDescription = "Warning",
+                                    tint = Color(0xFF856404),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    "Overlay permission required",
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF856404)
+                                )
+                            }
+                        }
+                    }
+
+                    // Control Buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (!hasOverlayPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            Button(
+                                onClick = {
+                                    val intent = Intent(
+                                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                        Uri.parse("package:${context.packageName}")
+                                    )
+                                    context.startActivity(intent)
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFA500))
+                            ) {
+                                Icon(Icons.Default.Visibility, "Overlay", modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Grant Permission")
+                            }
+                        } else {
+                            if (isFloatingServiceRunning) {
+                                Button(
+                                    onClick = {
+                                        val serviceIntent = Intent(context, FloatingMonitorService::class.java)
+                                        context.stopService(serviceIntent)
+                                        isFloatingServiceRunning = false
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                                ) {
+                                    Icon(Icons.Default.Stop, "Stop", modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Stop Overlay")
+                                }
+                            } else {
+                                Button(
+                                    onClick = {
+                                        val serviceIntent = Intent(context, FloatingMonitorService::class.java)
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                            context.startForegroundService(serviceIntent)
+                                        } else {
+                                            context.startService(serviceIntent)
+                                        }
+                                        isFloatingServiceRunning = true
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
+                                ) {
+                                    Icon(Icons.Default.PlayArrow, "Start", modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Start Overlay")
+                                }
+                            }
                         }
                     }
                 }

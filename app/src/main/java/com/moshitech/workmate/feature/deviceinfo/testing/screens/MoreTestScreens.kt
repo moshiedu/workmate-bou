@@ -317,13 +317,13 @@ fun ButtonTestScreen(
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            "💡 Tip:",
+                            "⚠️ Limitation:",
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF856404)
                         )
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            "Tap screen first to ensure focus. Pressing buttons will vibrate and show volume level.",
+                            "Hardware button detection is very limited on Android. Volume buttons can only be detected when the app is in focus, and the Power button cannot be detected at all due to system restrictions.",
                             style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFF856404)
                         )
