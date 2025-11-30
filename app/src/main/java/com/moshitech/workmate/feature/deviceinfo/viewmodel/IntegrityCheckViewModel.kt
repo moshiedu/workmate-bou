@@ -47,6 +47,10 @@ class IntegrityCheckViewModel(application: Application) : AndroidViewModel(appli
                 overallStatus = score >= 70
             )
             
+            // Check for permission changes
+            val permissionTracker = com.moshitech.workmate.feature.deviceinfo.utils.PermissionTracker(getApplication())
+            permissionTracker.checkForPermissionChanges() // Just update the snapshot, no notification for manual scan
+            
             _scanResult.value = result
             _scanHistory.value = listOf(result) + _scanHistory.value.take(9) // Keep last 10
             _isScanning.value = false
@@ -133,7 +137,15 @@ class IntegrityCheckViewModel(application: Application) : AndroidViewModel(appli
             severity = SecuritySeverity.WARNING,
             passed = !isEnabled,
             recommendation = if (isEnabled) "Disable USB Debugging when not needed to prevent unauthorized access." else "USB Debugging is safely disabled.",
-            details = ""
+            details = "",
+            fixSteps = if (isEnabled) listOf(
+                "Open Settings app",
+                "Go to 'System' or 'About phone'",
+                "Tap 'Developer options'",
+                "Find 'USB debugging' toggle",
+                "Turn OFF USB debugging"
+            ) else emptyList(),
+            settingsAction = if (isEnabled) Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS else null
         )
     }
 
@@ -151,7 +163,15 @@ class IntegrityCheckViewModel(application: Application) : AndroidViewModel(appli
             severity = SecuritySeverity.INFO,
             passed = !isEnabled,
             recommendation = if (isEnabled) "Developer options provide advanced settings that could affect security." else "Developer options are disabled.",
-            details = ""
+            details = "",
+            fixSteps = if (isEnabled) listOf(
+                "Developer options cannot be fully disabled once enabled",
+                "You can disable individual developer settings",
+                "Go to Settings > System > Developer options",
+                "Turn off USB debugging and other dev features",
+                "Note: The menu will remain visible"
+            ) else emptyList(),
+            settingsAction = if (isEnabled) Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS else null
         )
     }
 
@@ -175,7 +195,15 @@ class IntegrityCheckViewModel(application: Application) : AndroidViewModel(appli
             severity = SecuritySeverity.CRITICAL,
             passed = hasLock,
             recommendation = if (!hasLock) "Enable a screen lock (PIN, pattern, or biometric) to protect your device." else "Screen lock is active.",
-            details = ""
+            details = "",
+            fixSteps = if (!hasLock) listOf(
+                "Open Settings app",
+                "Go to 'Security' or 'Lock screen'",
+                "Tap 'Screen lock'",
+                "Choose PIN, Pattern, or Password",
+                "Set up your screen lock"
+            ) else emptyList(),
+            settingsAction = if (!hasLock) Settings.ACTION_SECURITY_SETTINGS else null
         )
     }
 
@@ -198,7 +226,15 @@ class IntegrityCheckViewModel(application: Application) : AndroidViewModel(appli
             severity = SecuritySeverity.WARNING,
             passed = !isEnabled,
             recommendation = if (isEnabled) "Disable installation from unknown sources to prevent malicious apps." else "Unknown sources are safely blocked.",
-            details = ""
+            details = "",
+            fixSteps = if (isEnabled) listOf(
+                "Open Settings app",
+                "Go to 'Security' or 'Apps'",
+                "Find 'Install unknown apps' or 'Unknown sources'",
+                "Disable for all apps or specific apps",
+                "Confirm your choice"
+            ) else emptyList(),
+            settingsAction = if (isEnabled) Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES else null
         )
     }
 

@@ -31,6 +31,8 @@ data class AppPermissionInfo(
 data class PermissionStats(
     val totalPermissions: Int,
     val totalApps: Int,
+    val totalGranted: Int,
+    val totalDenied: Int,
     val mostRequestedPermission: String,
     val appsWithMostPermissions: String
 )
@@ -38,6 +40,18 @@ data class PermissionStats(
 enum class GroupingMode {
     BY_PERMISSION,
     BY_APP
+}
+
+enum class PermissionStatusFilter {
+    ALL,
+    GRANTED,
+    DENIED
+}
+
+enum class AppTypeFilter {
+    ALL,
+    USER_APPS,
+    SYSTEM_APPS
 }
 
 class PermissionsViewModel(application: Application) : AndroidViewModel(application) {
@@ -57,6 +71,12 @@ class PermissionsViewModel(application: Application) : AndroidViewModel(applicat
     private val _stats = MutableStateFlow<PermissionStats?>(null)
     val stats: StateFlow<PermissionStats?> = _stats.asStateFlow()
 
+    private val _statusFilter = MutableStateFlow(PermissionStatusFilter.ALL)
+    val statusFilter: StateFlow<PermissionStatusFilter> = _statusFilter.asStateFlow()
+
+    private val _appTypeFilter = MutableStateFlow(AppTypeFilter.ALL)
+    val appTypeFilter: StateFlow<AppTypeFilter> = _appTypeFilter.asStateFlow()
+
     private var allGroups: List<PermissionGroup> = emptyList()
 
     init {
@@ -65,6 +85,16 @@ class PermissionsViewModel(application: Application) : AndroidViewModel(applicat
 
     fun setSearchQuery(query: String) {
         _searchQuery.value = query
+        filterGroups()
+    }
+
+    fun setStatusFilter(filter: PermissionStatusFilter) {
+        _statusFilter.value = filter
+        filterGroups()
+    }
+
+    fun setAppTypeFilter(filter: AppTypeFilter) {
+        _appTypeFilter.value = filter
         filterGroups()
     }
 
@@ -96,21 +126,53 @@ class PermissionsViewModel(application: Application) : AndroidViewModel(applicat
 
     private fun filterGroups() {
         val query = _searchQuery.value.lowercase()
-        _permissionGroups.value = if (query.isEmpty()) {
-            allGroups
-        } else {
-            allGroups.map { group ->
-                group.copy(apps = group.apps.filter { app ->
+        val statusFilter = _statusFilter.value
+        val appTypeFilter = _appTypeFilter.value
+        
+        _permissionGroups.value = allGroups.map { group ->
+            group.copy(apps = group.apps.filter { app ->
+                // Search filter
+                val matchesSearch = query.isEmpty() || 
                     app.appName.lowercase().contains(query) ||
                     app.packageName.lowercase().contains(query)
-                })
-            }.filter { it.apps.isNotEmpty() }
+                
+                // Status filter
+                val matchesStatus = when (statusFilter) {
+                    PermissionStatusFilter.ALL -> true
+                    PermissionStatusFilter.GRANTED -> app.isGranted
+                    PermissionStatusFilter.DENIED -> !app.isGranted
+                }
+                
+                // App type filter
+                val matchesAppType = when (appTypeFilter) {
+                    AppTypeFilter.ALL -> true
+                    AppTypeFilter.USER_APPS -> !isSystemApp(app.packageName)
+                    AppTypeFilter.SYSTEM_APPS -> isSystemApp(app.packageName)
+                }
+                
+                matchesSearch && matchesStatus && matchesAppType
+            })
+        }.filter { it.apps.isNotEmpty() }
+    }
+
+    private fun isSystemApp(packageName: String): Boolean {
+        return try {
+            val pm = getApplication<Application>().packageManager
+            val appInfo = pm.getApplicationInfo(packageName, 0)
+            (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+        } catch (e: Exception) {
+            false
         }
     }
 
     private fun calculateStats(groups: List<PermissionGroup>): PermissionStats {
         val totalApps = groups.flatMap { it.apps }.distinctBy { it.packageName }.size
         val totalPermissions = groups.size
+        
+        // Calculate granted/denied
+        val allAppPermissions = groups.flatMap { it.apps }
+        val totalGranted = allAppPermissions.count { it.isGranted }
+        val totalDenied = allAppPermissions.count { !it.isGranted }
         
         val mostRequested = groups.maxByOrNull { it.apps.size }?.name ?: "N/A"
         
@@ -125,6 +187,8 @@ class PermissionsViewModel(application: Application) : AndroidViewModel(applicat
         return PermissionStats(
             totalPermissions = totalPermissions,
             totalApps = totalApps,
+            totalGranted = totalGranted,
+            totalDenied = totalDenied,
             mostRequestedPermission = mostRequested,
             appsWithMostPermissions = appWithMost
         )

@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -28,6 +29,8 @@ import com.moshitech.workmate.feature.deviceinfo.viewmodel.AppPermissionInfo
 import com.moshitech.workmate.feature.deviceinfo.viewmodel.GroupingMode
 import com.moshitech.workmate.feature.deviceinfo.viewmodel.PermissionGroup
 import com.moshitech.workmate.feature.deviceinfo.viewmodel.PermissionsViewModel
+import com.moshitech.workmate.feature.deviceinfo.viewmodel.AppTypeFilter
+import com.moshitech.workmate.feature.deviceinfo.viewmodel.PermissionStatusFilter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,6 +72,12 @@ fun PermissionsExplorerScreen(
             TopAppBar(
                 title = { 
                     if (showSearch) {
+                        val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+                        
+                        LaunchedEffect(Unit) {
+                            focusRequester.requestFocus()
+                        }
+                        
                         TextField(
                             value = searchQuery,
                             onValueChange = { viewModel.setSearchQuery(it) },
@@ -77,10 +86,14 @@ fun PermissionsExplorerScreen(
                                 focusedContainerColor = Color.Transparent,
                                 unfocusedContainerColor = Color.Transparent,
                                 focusedTextColor = textColor,
-                                unfocusedTextColor = textColor
+                                unfocusedTextColor = textColor,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent
                             ),
                             singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(focusRequester)
                         )
                     } else {
                         Column {
@@ -154,6 +167,17 @@ fun PermissionsExplorerScreen(
                     }
                 }
                 
+                // Filter Chips
+                item {
+                    FilterChipsRow(
+                        statusFilter = viewModel.statusFilter.collectAsState().value,
+                        appTypeFilter = viewModel.appTypeFilter.collectAsState().value,
+                        onStatusFilterChange = { viewModel.setStatusFilter(it) },
+                        onAppTypeFilterChange = { viewModel.setAppTypeFilter(it) },
+                        textColor = textColor
+                    )
+                }
+                
                 // Group/App Cards
                 items(permissionGroups) { group ->
                     if (groupingMode == GroupingMode.BY_PERMISSION) {
@@ -192,92 +216,16 @@ fun StatisticsCard(
         shape = RoundedCornerShape(12.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            // Stats Grid
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Icon(
-                    Icons.Default.BarChart,
-                    contentDescription = null,
-                    tint = Color(0xFF3B82F6),
-                    modifier = Modifier.size(24.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    "Statistics",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = textColor
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            Row(modifier = Modifier.fillMaxWidth()) {
                 StatItem("Permissions", stats.totalPermissions.toString(), Modifier.weight(1f), textColor, subtitleColor)
                 StatItem("Apps", stats.totalApps.toString(), Modifier.weight(1f), textColor, subtitleColor)
-            }
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            StatItem("Most Requested", stats.mostRequestedPermission, Modifier.fillMaxWidth(), textColor, subtitleColor)
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            StatItem("App w/ Most Perms", stats.appsWithMostPermissions, Modifier.fillMaxWidth(), textColor, subtitleColor)
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            // Permission Status Summary
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .background(Color(0xFF10B981).copy(alpha = 0.1f), RoundedCornerShape(8.dp))
-                        .padding(8.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            tint = Color(0xFF10B981),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            "= Allowed",
-                            fontSize = 12.sp,
-                            color = textColor,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .background(Color(0xFFEF4444).copy(alpha = 0.1f), RoundedCornerShape(8.dp))
-                        .padding(8.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.Cancel,
-                            contentDescription = null,
-                            tint = Color(0xFFEF4444),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            "= Denied",
-                            fontSize = 12.sp,
-                            color = textColor,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
+                StatItem("Allowed", stats.totalGranted.toString(), Modifier.weight(1f), Color(0xFF10B981), subtitleColor)
+                StatItem("Denied", stats.totalDenied.toString(), Modifier.weight(1f), Color(0xFFEF4444), subtitleColor)
             }
         }
     }
@@ -285,17 +233,22 @@ fun StatisticsCard(
 
 @Composable
 fun StatItem(label: String, value: String, modifier: Modifier, textColor: Color, subtitleColor: Color) {
-    Column(modifier = modifier) {
-        Text(
-            text = label,
-            fontSize = 12.sp,
-            color = subtitleColor
-        )
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
         Text(
             text = value,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
             color = textColor
+        )
+        Text(
+            text = label,
+            fontSize = 11.sp,
+            color = subtitleColor,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
     }
 }
@@ -316,9 +269,9 @@ fun AppGroupCard(
             .clickable { expanded = !expanded },
         colors = CardDefaults.cardColors(containerColor = cardColor),
         shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(12.dp)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
@@ -328,63 +281,66 @@ fun AppGroupCard(
                         painter = rememberAsyncImagePainter(app.icon),
                         contentDescription = null,
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(32.dp)
                             .clip(CircleShape)
                     )
                 } else {
                     Box(
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(32.dp)
                             .background(Color.Gray.copy(alpha = 0.2f), CircleShape)
                     )
                 }
                 
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(12.dp))
                 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = group.name,
-                        fontSize = 16.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = textColor
                     )
                     Text(
                         text = group.description,
-                        fontSize = 13.sp,
-                        color = subtitleColor
+                        fontSize = 12.sp,
+                        color = subtitleColor,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                 }
                 
                 Icon(
                     imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                     contentDescription = null,
-                    tint = subtitleColor
+                    tint = subtitleColor,
+                    modifier = Modifier.size(20.dp)
                 )
             }
             
             AnimatedVisibility(visible = expanded) {
                 Column {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Divider(color = subtitleColor.copy(alpha = 0.1f))
                     Spacer(modifier = Modifier.height(12.dp))
+                    Divider(color = subtitleColor.copy(alpha = 0.1f))
+                    Spacer(modifier = Modifier.height(8.dp))
                     
                     app.permissions.forEach { permission ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 4.dp),
+                                .padding(vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
                                 imageVector = getPermissionIcon(permission),
                                 contentDescription = null,
                                 tint = getPermissionColor(permission),
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(16.dp)
                             )
-                            Spacer(modifier = Modifier.width(12.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = permission,
-                                fontSize = 14.sp,
+                                text = permission.substringAfterLast("."),
+                                fontSize = 13.sp,
                                 color = textColor
                             )
                         }
@@ -410,16 +366,16 @@ fun PermissionGroupCard(
             .clickable { expanded = !expanded },
         colors = CardDefaults.cardColors(containerColor = cardColor),
         shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(12.dp)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(32.dp)
                         .background(
                             getPermissionColor(group.name).copy(alpha = 0.1f),
                             CircleShape
@@ -430,22 +386,22 @@ fun PermissionGroupCard(
                         imageVector = getPermissionIcon(group.name),
                         contentDescription = null,
                         tint = getPermissionColor(group.name),
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(16.dp)
                     )
                 }
                 
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(12.dp))
                 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = group.name,
-                        fontSize = 16.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = textColor
                     )
                     Text(
                         text = "${group.apps.size} apps allowed",
-                        fontSize = 13.sp,
+                        fontSize = 12.sp,
                         color = subtitleColor
                     )
                 }
@@ -453,17 +409,18 @@ fun PermissionGroupCard(
                 Icon(
                     imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                     contentDescription = null,
-                    tint = subtitleColor
+                    tint = subtitleColor,
+                    modifier = Modifier.size(20.dp)
                 )
             }
             
             AnimatedVisibility(visible = expanded) {
                 Column {
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
                     Divider(color = subtitleColor.copy(alpha = 0.1f))
                     Spacer(modifier = Modifier.height(8.dp))
                     
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         group.apps.forEach { app ->
                             AppPermissionItem(app, textColor)
                         }
@@ -482,20 +439,20 @@ fun AppPermissionItem(app: AppPermissionInfo, textColor: Color) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp)
+            .padding(vertical = 2.dp)
     ) {
         if (app.icon != null) {
             Image(
                 painter = rememberAsyncImagePainter(app.icon),
                 contentDescription = null,
                 modifier = Modifier
-                    .size(32.dp)
+                    .size(28.dp)
                     .clip(CircleShape)
             )
         } else {
             Box(
                 modifier = Modifier
-                    .size(32.dp)
+                    .size(28.dp)
                     .background(Color.Gray.copy(alpha = 0.2f), CircleShape)
             )
         }
@@ -506,7 +463,7 @@ fun AppPermissionItem(app: AppPermissionInfo, textColor: Color) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = app.appName,
-                    fontSize = 14.sp,
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
                     color = textColor
                 )
@@ -516,7 +473,7 @@ fun AppPermissionItem(app: AppPermissionInfo, textColor: Color) {
                     imageVector = if (app.isGranted) Icons.Default.CheckCircle else Icons.Default.Cancel,
                     contentDescription = if (app.isGranted) "Allowed" else "Denied",
                     tint = if (app.isGranted) Color(0xFF10B981) else Color(0xFFEF4444),
-                    modifier = Modifier.size(14.dp)
+                    modifier = Modifier.size(12.dp)
                 )
             }
             Text(
@@ -536,13 +493,13 @@ fun AppPermissionItem(app: AppPermissionInfo, textColor: Color) {
                 }
                 context.startActivity(intent)
             },
-            modifier = Modifier.size(32.dp)
+            modifier = Modifier.size(28.dp)
         ) {
             Icon(
                 imageVector = Icons.Default.Settings,
                 contentDescription = "App Settings",
                 tint = textColor.copy(alpha = 0.7f),
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(16.dp)
             )
         }
     }

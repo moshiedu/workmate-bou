@@ -14,7 +14,9 @@ data class SecurityCheck(
     val severity: SecuritySeverity,
     val passed: Boolean,
     val recommendation: String,
-    val details: String = ""
+    val details: String = "",
+    val fixSteps: List<String> = emptyList(),
+    val settingsAction: String? = null  // Intent action to open relevant settings
 )
 
 data class SecurityScanResult(
