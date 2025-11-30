@@ -69,6 +69,44 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/network_speed_widget_info" />
         </receiver>
+
+        <!-- Battery Monitor Widget Service -->
+        <service
+            android:name=".widget.BatteryMonitorService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- Battery Monitor Widget -->
+        <receiver
+            android:name=".widget.BatteryMonitorWidget"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/battery_monitor_widget_info" />
+        </receiver>
+
+        <!-- Floating Monitor Service -->
+        <service
+            android:name=".widget.FloatingMonitorService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- FileProvider for sharing reports -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
     </application>
 
 </manifest>

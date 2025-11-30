@@ -30,9 +30,9 @@ class NetworkSpeedWidget : AppWidgetProvider() {
 
     override fun onDisabled(context: Context) {
         super.onDisabled(context)
-        // Stop the service when last widget is removed
-        val serviceIntent = Intent(context, NetworkSpeedService::class.java)
-        context.stopService(serviceIntent)
+        // We don't stop the service here anymore. 
+        // The user might want the floating widget to persist even if the home screen widget is removed.
+        // The service can be stopped via the App UI.
     }
 
     override fun onReceive(context: Context, intent: Intent) {
