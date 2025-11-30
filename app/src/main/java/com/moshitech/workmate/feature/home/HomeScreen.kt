@@ -26,8 +26,12 @@ import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RocketLaunch
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -86,6 +90,10 @@ fun HomeScreen(
         HomeItem("Unit Converter", "Convert various units", Icons.Default.Calculate, Screen.UnitConversion.route, primaryBlue),
         HomeItem("Compass", "Find your direction", Icons.Default.Explore, Screen.Compass.route, primaryBlue),
         HomeItem("Device Info", "System information", Icons.Default.Dashboard, Screen.DeviceInfo.route, primaryBlue),
+        HomeItem("Hardware Tests", "Test device sensors", Icons.Default.PhoneAndroid, Screen.Tests.route, primaryBlue),
+        HomeItem("Benchmarks", "Performance scores", Icons.Default.PlayArrow, Screen.Benchmarks.route, primaryBlue),
+        HomeItem("Permissions", "App privacy explorer", Icons.Default.Security, Screen.PermissionsExplorer.route, primaryBlue),
+        HomeItem("Integrity", "Device security check", Icons.Default.VerifiedUser, Screen.IntegrityCheck.route, primaryBlue),
         HomeItem("App Lock", "Secure your apps", Icons.Default.Lock, Screen.AppLock.route, primaryBlue)
     )
 

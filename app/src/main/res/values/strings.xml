@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">Workmate</string>
     <string name="network_speed_widget_description">Real-time network speed monitor</string>
+    <string name="battery_widget_description">Real-time battery monitor with temperature and voltage</string>
 </resources>

@@ -18,6 +18,8 @@ import com.moshitech.workmate.feature.compass.data.TripEntity
 import com.moshitech.workmate.feature.compass.data.TripDao
 
 import androidx.room.TypeConverters
+import com.moshitech.workmate.feature.deviceinfo.data.BenchmarkHistoryEntity
+import com.moshitech.workmate.feature.deviceinfo.data.BenchmarkHistoryDao
 
 @Database(
     entities = [
@@ -25,9 +27,10 @@ import androidx.room.TypeConverters
         ConversionFavoriteEntity::class,
         UnitConversionHistoryEntity::class,
         WaypointEntity::class,
-        TripEntity::class
+        TripEntity::class,
+        BenchmarkHistoryEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -37,6 +40,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun unitConversionHistoryDao(): UnitConversionHistoryDao
     abstract fun waypointDao(): WaypointDao
     abstract fun tripDao(): TripDao
+    abstract fun benchmarkHistoryDao(): BenchmarkHistoryDao
 
     companion object {
         @Volatile

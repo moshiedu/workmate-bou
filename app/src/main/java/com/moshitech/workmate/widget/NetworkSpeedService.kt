@@ -38,19 +38,25 @@ class NetworkSpeedService : Service() {
         const val ACTION_UPDATE_WIDGET = "com.moshitech.workmate.ACTION_UPDATE_WIDGET"
         const val EXTRA_DOWNLOAD_SPEED = "download_speed"
         const val EXTRA_UPLOAD_SPEED = "upload_speed"
+        
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "network_speed_monitor"
+        
+        var isServiceRunning = false
     }
 
     override fun onCreate() {
         super.onCreate()
+        isServiceRunning = true
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, createNotification(0L, 0L))
+        // startForeground moved to onStartCommand to respect preference
         createFloatingView()
         startSpeedMonitoring()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Always start as foreground service to prevent system killing it
+        startForeground(NOTIFICATION_ID, createNotification(0L, 0L))
         return START_STICKY
     }
 
@@ -58,6 +64,7 @@ class NetworkSpeedService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        isServiceRunning = false
         serviceScope.cancel()
         removeFloatingView()
     }
@@ -180,7 +187,7 @@ class NetworkSpeedService : Service() {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "Network Speed Monitor",
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_MIN
             ).apply {
                 description = "Shows real-time network speed"
                 setShowBadge(false)
@@ -209,7 +216,7 @@ class NetworkSpeedService : Service() {
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setSilent(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
             .setShowWhen(false)
             .build()
     }

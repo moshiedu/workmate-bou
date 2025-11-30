@@ -52,6 +52,10 @@ class DeviceInfoViewModel(application: Application) : AndroidViewModel(applicati
     private val _networkInfo = MutableStateFlow<NetworkInfo?>(null)
     val networkInfo: StateFlow<NetworkInfo?> = _networkInfo.asStateFlow()
     
+    // Network State
+    private var currentPublicIp: String = "Tap to show"
+    private var publicIpAutoHideJob: kotlinx.coroutines.Job? = null
+
     init {
         loadHardwareInfo()
         loadSystemInfo()
@@ -127,10 +131,20 @@ class DeviceInfoViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+
     private fun startNetworkUpdates() {
         viewModelScope.launch {
             while (isActive) {
-                _networkInfo.value = networkInfoProvider.getNetworkInfo()
+                val newInfo = networkInfoProvider.getNetworkInfo()
+                // Preserve the current Public IP state
+                val updatedInfo = if (newInfo.dhcpDetails != null) {
+                    newInfo.copy(
+                        dhcpDetails = newInfo.dhcpDetails.copy(publicIp = currentPublicIp)
+                    )
+                } else {
+                    newInfo
+                }
+                _networkInfo.value = updatedInfo
                 delay(2000) // Update every 2 seconds
             }
         }
@@ -138,19 +152,31 @@ class DeviceInfoViewModel(application: Application) : AndroidViewModel(applicati
 
     fun refreshNetworkInfo() {
         viewModelScope.launch {
-            _networkInfo.value = networkInfoProvider.getNetworkInfo()
+            val newInfo = networkInfoProvider.getNetworkInfo()
+            // Preserve the current Public IP state
+            val updatedInfo = if (newInfo.dhcpDetails != null) {
+                newInfo.copy(
+                    dhcpDetails = newInfo.dhcpDetails.copy(publicIp = currentPublicIp)
+                )
+            } else {
+                newInfo
+            }
+            _networkInfo.value = updatedInfo
         }
     }
-
-    private var publicIpAutoHideJob: kotlinx.coroutines.Job? = null
 
     fun refreshPublicIp() {
         viewModelScope.launch {
             val currentInfo = _networkInfo.value
             if (currentInfo?.dhcpDetails != null) {
+                // Set loading state or keep previous while fetching? 
+                // Let's fetch first then update to avoid flickering
                 val publicIp = networkInfoProvider.fetchPublicIp()
+                
+                currentPublicIp = publicIp
+                
                 _networkInfo.value = currentInfo.copy(
-                    dhcpDetails = currentInfo.dhcpDetails.copy(publicIp = publicIp)
+                    dhcpDetails = currentInfo.dhcpDetails.copy(publicIp = currentPublicIp)
                 )
                 
                 // Cancel previous auto-hide job if exists
@@ -159,10 +185,11 @@ class DeviceInfoViewModel(application: Application) : AndroidViewModel(applicati
                 // Auto-hide after 30 seconds
                 publicIpAutoHideJob = viewModelScope.launch {
                     delay(30000) // 30 seconds
+                    currentPublicIp = "Tap to show"
                     val info = _networkInfo.value
                     if (info?.dhcpDetails != null) {
                         _networkInfo.value = info.copy(
-                            dhcpDetails = info.dhcpDetails.copy(publicIp = "Tap to show")
+                            dhcpDetails = info.dhcpDetails.copy(publicIp = currentPublicIp)
                         )
                     }
                 }
