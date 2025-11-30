@@ -205,3 +205,66 @@ NetworkSpeedService → Broadcast → NetworkSpeedWidget → RemoteViews → Hom
 ---
 
 **Implementation Status**: ✅ Complete and Ready for Testing
+
+Phase 4: App Lock Module
+ Design App Lock architecture (Service vs UsageStats)
+ Implement App Selection UI (Lock/Unlock apps)
+ Create PIN/Pattern/Biometric Setup Screen
+ Implement AppLockService (Accessibility/UsageStats)
+ Create Lock Screen Overlay
+ Integrate Logic to Block Apps
+
+ 🔐 Phase 4: App Lock Module
+Goal
+Allow users to lock specific applications behind a PIN, Pattern, or Biometric authentication to prevent unauthorized access.
+
+Architecture
+1. Core Logic (AppLockManager)
+Detection: Use AccessibilityService to monitor WINDOW_STATE_CHANGED events and detect when a locked app is opened.
+Blocking: When a locked app is detected, immediately launch a full-screen LockActivity on top of it.
+Authentication: Verify PIN/Biometric in LockActivity. If successful, finish LockActivity and allow access for a session duration.
+2. Data Storage
+Locked Apps: Store list of locked package names in SharedPreferences (or Room if complex).
+Security Credentials: Store hashed PIN/Pattern in EncryptedSharedPreferences.
+Settings: Store preferences like "Relock delay", "Biometric enabled".
+3. UI Components
+AppLockSetupScreen: Initial setup to create a PIN/Pattern.
+AppSelectionScreen: List of installed apps with checkboxes to enable locking.
+LockScreenActivity: The overlay screen requesting PIN/Biometric.
+Must exclude itself from Recents.
+Must override onBackPressed to go to Home instead of the locked app.
+Implementation Steps
+Setup & Permissions
+
+Add BIND_ACCESSIBILITY_SERVICE to Manifest.
+Create AppLockService extending AccessibilityService.
+Create accessibility_service_config.xml.
+Authentication UI
+
+Implement PinEntryScreen / PatternLockScreen.
+Integrate BiometricPrompt API.
+App Selection
+
+Reuse/Adapt 
+PermissionsExplorer
+ list logic to show all apps.
+Add "Lock" toggle for each app.
+Service Implementation
+
+In onAccessibilityEvent, check event.packageName.
+Compare with locked list.
+If locked and not currently authenticated, start LockScreenActivity.
+Lock Screen Logic
+
+Handle authentication.
+On success: Mark app as "unlocked" for X minutes (optional) and finish().
+On failure/exit: Launch Home intent to minimize the locked app.
+Files to Create
+AppLockService.kt
+AppLockManager.kt
+LockScreenActivity.kt
+AppLockSetupScreen.kt
+AppSelectionScreen.kt
+Dependencies
+androidx.biometric:biometric (Already added)
+androidx.security:security-crypto (For EncryptedSharedPreferences)
