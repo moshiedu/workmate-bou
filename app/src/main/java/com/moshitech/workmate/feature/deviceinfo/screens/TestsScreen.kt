@@ -128,6 +128,8 @@ fun TestItem(
                         "light" -> "test_light_sensor"
                         "light_sensor" -> "test_light_sensor"
                         "accelerometer" -> "test_accelerometer"
+                        "gyroscope" -> "test_gyroscope"
+                        "magnetometer" -> "test_magnetometer"
                         "flashlight" -> "test_flashlight"
                         "vibration" -> "test_vibration"
                         "charging" -> "test_charging"
@@ -138,7 +140,7 @@ fun TestItem(
                         "wifi" -> "test_wifi"
                         "gps" -> "test_gps"
                         "nfc" -> "test_nfc"
-                        "usb" -> "test_usb"
+                        "usb" -> "test_otg"
                         else -> null
                     }
                     route?.let { navController.navigate(it) }

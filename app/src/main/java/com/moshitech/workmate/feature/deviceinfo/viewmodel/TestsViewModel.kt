@@ -28,6 +28,8 @@ class TestsViewModel(application: Application) : AndroidViewModel(application) {
             HardwareTest("light_sensor", "Light sensor", "light"),
             HardwareTest("proximity", "Proximity", "proximity"),
             HardwareTest("accelerometer", "Accelerometer", "accelerometer"),
+            HardwareTest("gyroscope", "Gyroscope", "gyroscope"),
+            HardwareTest("magnetometer", "Magnetometer", "magnetometer"),
             HardwareTest("bluetooth", "Bluetooth", "bluetooth"),
             HardwareTest("wifi", "Wi-Fi", "wifi", isPro = true),
             HardwareTest("gps", "GPS", "gps", isPro = true),

@@ -38,6 +38,9 @@ sealed class Screen(val route: String) {
     object ProximityTest : Screen("test_proximity")
     object LightSensorTest : Screen("test_light_sensor")
     object AccelerometerTest : Screen("test_accelerometer")
+    object GyroscopeTest : Screen("test_gyroscope")
+    object MagnetometerTest : Screen("test_magnetometer")
+    object OTGTest : Screen("test_otg")
     object FlashlightTest : Screen("test_flashlight")
     object VibrationTest : Screen("test_vibration")
     object FingerprintTest : Screen("test_fingerprint")
@@ -173,6 +176,21 @@ fun WorkmateNavigation(
         composable(Screen.AccelerometerTest.route) {
             com.moshitech.workmate.feature.deviceinfo.testing.screens.AccelerometerTestScreen(navController) { passed ->
                 navController.previousBackStackEntry?.savedStateHandle?.set("test_result", Pair("accelerometer", passed))
+            }
+        }
+        composable(Screen.GyroscopeTest.route) {
+            com.moshitech.workmate.feature.deviceinfo.testing.screens.GyroscopeTestScreen(navController) { passed ->
+                navController.previousBackStackEntry?.savedStateHandle?.set("test_result", Pair("gyroscope", passed))
+            }
+        }
+        composable(Screen.MagnetometerTest.route) {
+            com.moshitech.workmate.feature.deviceinfo.testing.screens.MagnetometerTestScreen(navController) { passed ->
+                navController.previousBackStackEntry?.savedStateHandle?.set("test_result", Pair("magnetometer", passed))
+            }
+        }
+        composable(Screen.OTGTest.route) {
+            com.moshitech.workmate.feature.deviceinfo.testing.screens.OTGTestScreen(navController) { passed ->
+                navController.previousBackStackEntry?.savedStateHandle?.set("test_result", Pair("usb", passed))
             }
         }
         composable(Screen.FlashlightTest.route) {
