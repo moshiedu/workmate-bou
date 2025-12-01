@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class LockScreenActivity : FragmentActivity() {
@@ -36,6 +37,7 @@ class LockScreenActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         
         lockManager = AppLockManager.getInstance(applicationContext)
+        val repository = com.moshitech.workmate.data.repository.UserPreferencesRepository(applicationContext)
         lockedPackage = intent.getStringExtra("locked_package")
         
         // Exclude from recents (API 33+)
@@ -46,12 +48,23 @@ class LockScreenActivity : FragmentActivity() {
             setTaskDescription(android.app.ActivityManager.TaskDescription())
         }
         
-        setContent {
-            LockScreenContent(
-                onPinEntered = { pin, onError -> verifyAndUnlock(pin, onError) },
-                onBiometricRequested = { showBiometricPrompt() },
-                onCancel = { goHome() }
-            )
+        lifecycleScope.launch {
+            val usePin = repository.usePinAuth.first()
+            val useBiometric = repository.useBiometricAuth.first()
+            
+            if (useBiometric && savedInstanceState == null) {
+                showBiometricPrompt()
+            }
+            
+            setContent {
+                LockScreenContent(
+                    usePin = usePin,
+                    useBiometric = useBiometric,
+                    onPinEntered = { pin, onError -> verifyAndUnlock(pin, onError) },
+                    onBiometricRequested = { showBiometricPrompt() },
+                    onCancel = { goHome() }
+                )
+            }
         }
     }
     
@@ -86,7 +99,7 @@ class LockScreenActivity : FragmentActivity() {
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
             .setTitle("Unlock App")
             .setSubtitle("Use your fingerprint to unlock")
-            .setNegativeButtonText("Use PIN")
+            .setNegativeButtonText("Cancel")
             .build()
         
         biometricPrompt.authenticate(promptInfo)
@@ -109,6 +122,8 @@ class LockScreenActivity : FragmentActivity() {
 
 @Composable
 fun LockScreenContent(
+    usePin: Boolean,
+    useBiometric: Boolean,
     onPinEntered: (String, () -> Unit) -> Unit,
     onBiometricRequested: () -> Unit,
     onCancel: () -> Unit
@@ -149,66 +164,78 @@ fun LockScreenContent(
                     color = Color.White
                 )
                 
-                Text(
-                    text = "Enter your PIN to continue",
-                    fontSize = 14.sp,
-                    color = Color.White.copy(alpha = 0.7f)
-                )
-                
-                Spacer(modifier = Modifier.height(24.dp))
-                
-                OutlinedTextField(
-                    value = pin,
-                    onValueChange = { 
-                        pin = it
-                        showError = false
-                    },
-                    label = { Text("PIN") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    singleLine = true,
-                    isError = showError,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF3B82F6),
-                        unfocusedBorderColor = Color.White.copy(alpha = 0.5f)
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                
-                if (showError) {
+                if (usePin) {
                     Text(
-                        text = "Incorrect PIN",
-                        color = Color(0xFFEF4444),
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(top = 4.dp)
+                        text = "Enter your PIN to continue",
+                        fontSize = 14.sp,
+                        color = Color.White.copy(alpha = 0.7f)
                     )
-                }
-                
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                Button(
-                    onClick = {
-                        if (pin.isNotEmpty()) {
-                            onPinEntered(pin) {
-                                showError = true
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
+                    OutlinedTextField(
+                        value = pin,
+                        onValueChange = { 
+                            pin = it
+                            showError = false
+                        },
+                        label = { Text("PIN") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        singleLine = true,
+                        isError = showError,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = Color(0xFF3B82F6),
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.5f)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    if (showError) {
+                        Text(
+                            text = "Incorrect PIN",
+                            color = Color(0xFFEF4444),
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Button(
+                        onClick = {
+                            if (pin.isNotEmpty()) {
+                                onPinEntered(pin) {
+                                    showError = true
+                                }
                             }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6))
-                ) {
-                    Text("Unlock")
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6))
+                    ) {
+                        Text("Unlock")
+                    }
+                } else {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Authentication Required",
+                        fontSize = 14.sp,
+                        color = Color.White.copy(alpha = 0.7f)
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
                 }
                 
                 Spacer(modifier = Modifier.height(8.dp))
                 
-                TextButton(
-                    onClick = onBiometricRequested,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Use Biometric", color = Color(0xFF3B82F6))
+                if (useBiometric) {
+                    TextButton(
+                        onClick = onBiometricRequested,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Use Biometric", color = Color(0xFF3B82F6))
+                    }
                 }
                 
                 TextButton(
