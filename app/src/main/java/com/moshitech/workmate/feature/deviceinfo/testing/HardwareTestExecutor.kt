@@ -43,12 +43,15 @@ class HardwareTestExecutor(private val context: Context) {
             "light_sensor" -> testLightSensor(onComplete)
             "proximity" -> testProximitySensor(onComplete)
             "accelerometer" -> testAccelerometer(onComplete)
+            "gyroscope" -> testGyroscope(onComplete)
+            "magnetometer" -> testMagnetometer(onComplete)
             "charging" -> testCharging(onComplete)
             "speakers" -> testSpeakers(onComplete)
             "headset" -> testHeadset(onComplete)
             "earpiece" -> testEarpiece(onComplete)
             "microphone" -> testMicrophone(onComplete)
             "fingerprint" -> testFingerprint(onComplete)
+            "usb" -> testUSB(onComplete)
             else -> onComplete(false)
         }
     }
@@ -188,6 +191,36 @@ class HardwareTestExecutor(private val context: Context) {
             } else {
                 onComplete(false)
             }
+        } catch (e: Exception) {
+            onComplete(false)
+        }
+    }
+    
+    private fun testGyroscope(onComplete: (Boolean) -> Unit) {
+        try {
+            val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as android.hardware.SensorManager
+            val gyroscope = sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_GYROSCOPE)
+            onComplete(gyroscope != null)
+        } catch (e: Exception) {
+            onComplete(false)
+        }
+    }
+    
+    private fun testMagnetometer(onComplete: (Boolean) -> Unit) {
+        try {
+            val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as android.hardware.SensorManager
+            val magnetometer = sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_MAGNETIC_FIELD)
+            onComplete(magnetometer != null)
+        } catch (e: Exception) {
+            onComplete(false)
+        }
+    }
+    
+    private fun testUSB(onComplete: (Boolean) -> Unit) {
+        try {
+            val packageManager = context.packageManager
+            val hasOTGSupport = packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_USB_HOST)
+            onComplete(hasOTGSupport)
         } catch (e: Exception) {
             onComplete(false)
         }

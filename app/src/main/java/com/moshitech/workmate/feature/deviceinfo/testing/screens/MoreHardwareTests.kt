@@ -433,3 +433,433 @@ fun VibrationTestScreen(
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GyroscopeTestScreen(
+    navController: NavController,
+    onResult: (Boolean) -> Unit
+) {
+    val context = LocalContext.current
+    var xValue by remember { mutableStateOf(0f) }
+    var yValue by remember { mutableStateOf(0f) }
+    var zValue by remember { mutableStateOf(0f) }
+    
+    LaunchedEffect(Unit) {
+        val sensorManager = context.getSystemService(android.content.Context.SENSOR_SERVICE) as android.hardware.SensorManager
+        val gyroscope = sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_GYROSCOPE)
+        
+        val listener = object : android.hardware.SensorEventListener {
+            override fun onSensorChanged(event: android.hardware.SensorEvent?) {
+                event?.let {
+                    xValue = it.values[0]
+                    yValue = it.values[1]
+                    zValue = it.values[2]
+                }
+            }
+            
+            override fun onAccuracyChanged(sensor: android.hardware.Sensor?, accuracy: Int) {}
+        }
+        
+        sensorManager.registerListener(listener, gyroscope, android.hardware.SensorManager.SENSOR_DELAY_UI)
+    }
+    
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Gyroscope Test") },
+                navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(Icons.Default.ArrowBack, "Back")
+                    }
+                }
+            )
+        },
+        bottomBar = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = {
+                        onResult(false)
+                        navController.popBackStack()
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                ) {
+                    Icon(Icons.Default.Close, "Failed")
+                    Spacer(Modifier.width(8.dp))
+                    Text("Failed")
+                }
+                Button(
+                    onClick = {
+                        onResult(true)
+                        navController.popBackStack()
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
+                ) {
+                    Icon(Icons.Default.Check, "Passed")
+                    Spacer(Modifier.width(8.dp))
+                    Text("Passed")
+                }
+            }
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                Icons.Default.RotateRight,
+                contentDescription = "Gyroscope",
+                modifier = Modifier.size(120.dp),
+                tint = Color(0xFF8B5CF6)
+            )
+            
+            Spacer(Modifier.height(32.dp))
+            
+            Text(
+                "Rotate your device",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+            
+            Spacer(Modifier.height(32.dp))
+            
+            // X Axis
+            AxisDisplay("X Rotation", xValue, Color(0xFFEF4444))
+            Spacer(Modifier.height(16.dp))
+            
+            // Y Axis
+            AxisDisplay("Y Rotation", yValue, Color(0xFF10B981))
+            Spacer(Modifier.height(16.dp))
+            
+            // Z Axis
+            AxisDisplay("Z Rotation", zValue, Color(0xFF8B5CF6))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MagnetometerTestScreen(
+    navController: NavController,
+    onResult: (Boolean) -> Unit
+) {
+    val context = LocalContext.current
+    var xValue by remember { mutableStateOf(0f) }
+    var yValue by remember { mutableStateOf(0f) }
+    var zValue by remember { mutableStateOf(0f) }
+    var magnitude by remember { mutableStateOf(0f) }
+    
+    LaunchedEffect(Unit) {
+        val sensorManager = context.getSystemService(android.content.Context.SENSOR_SERVICE) as android.hardware.SensorManager
+        val magnetometer = sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_MAGNETIC_FIELD)
+        
+        val listener = object : android.hardware.SensorEventListener {
+            override fun onSensorChanged(event: android.hardware.SensorEvent?) {
+                event?.let {
+                    xValue = it.values[0]
+                    yValue = it.values[1]
+                    zValue = it.values[2]
+                    magnitude = kotlin.math.sqrt(xValue * xValue + yValue * yValue + zValue * zValue)
+                }
+            }
+            
+            override fun onAccuracyChanged(sensor: android.hardware.Sensor?, accuracy: Int) {}
+        }
+        
+        sensorManager.registerListener(listener, magnetometer, android.hardware.SensorManager.SENSOR_DELAY_UI)
+    }
+    
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Magnetometer Test") },
+                navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(Icons.Default.ArrowBack, "Back")
+                    }
+                }
+            )
+        },
+        bottomBar = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = {
+                        onResult(false)
+                        navController.popBackStack()
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                ) {
+                    Icon(Icons.Default.Close, "Failed")
+                    Spacer(Modifier.width(8.dp))
+                    Text("Failed")
+                }
+                Button(
+                    onClick = {
+                        onResult(true)
+                        navController.popBackStack()
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
+                ) {
+                    Icon(Icons.Default.Check, "Passed")
+                    Spacer(Modifier.width(8.dp))
+                    Text("Passed")
+                }
+            }
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                Icons.Default.Explore,
+                contentDescription = "Magnetometer",
+                modifier = Modifier.size(120.dp),
+                tint = Color(0xFF1890FF)
+            )
+            
+            Spacer(Modifier.height(32.dp))
+            
+            Text(
+                "Magnetic Field Strength",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+            
+            Spacer(Modifier.height(32.dp))
+            
+            // X Axis
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF3F4F6))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("X Axis", fontWeight = FontWeight.Medium)
+                    Text(
+                        String.format("%.2f µT", xValue),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color(0xFFEF4444),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            
+            // Y Axis
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF3F4F6))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Y Axis", fontWeight = FontWeight.Medium)
+                    Text(
+                        String.format("%.2f µT", yValue),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color(0xFF10B981),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            
+            // Z Axis
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF3F4F6))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Z Axis", fontWeight = FontWeight.Medium)
+                    Text(
+                        String.format("%.2f µT", zValue),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color(0xFF1890FF),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+            Spacer(Modifier.height(24.dp))
+            
+            // Magnitude
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF3F4F6))
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("Total Magnitude", fontWeight = FontWeight.Bold)
+                    Text(
+                        String.format("%.2f µT", magnitude),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Color(0xFF1890FF)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun OTGTestScreen(
+    navController: NavController,
+    onResult: (Boolean) -> Unit
+) {
+    val context = LocalContext.current
+    var hasOTGSupport by remember { mutableStateOf(false) }
+    var connectedDevices by remember { mutableStateOf(0) }
+    
+    LaunchedEffect(Unit) {
+        val packageManager = context.packageManager
+        hasOTGSupport = packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_USB_HOST)
+        
+        try {
+            val usbManager = context.getSystemService(android.content.Context.USB_SERVICE) as android.hardware.usb.UsbManager
+            connectedDevices = usbManager.deviceList.size
+        } catch (e: Exception) {
+            connectedDevices = 0
+        }
+    }
+    
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("USB OTG Test") },
+                navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(Icons.Default.ArrowBack, "Back")
+                    }
+                }
+            )
+        },
+        bottomBar = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = {
+                        onResult(false)
+                        navController.popBackStack()
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                ) {
+                    Icon(Icons.Default.Close, "Failed")
+                    Spacer(Modifier.width(8.dp))
+                    Text("Failed")
+                }
+                Button(
+                    onClick = {
+                        onResult(true)
+                        navController.popBackStack()
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
+                ) {
+                    Icon(Icons.Default.Check, "Passed")
+                    Spacer(Modifier.width(8.dp))
+                    Text("Passed")
+                }
+            }
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                Icons.Default.Usb,
+                contentDescription = "USB OTG",
+                modifier = Modifier.size(120.dp),
+                tint = if (hasOTGSupport) Color(0xFF10B981) else Color.Gray
+            )
+            
+            Spacer(Modifier.height(32.dp))
+            
+            Text(
+                if (hasOTGSupport) "OTG Supported" else "OTG Not Supported",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = if (hasOTGSupport) Color(0xFF10B981) else Color.Gray
+            )
+            
+            Spacer(Modifier.height(48.dp))
+            
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (hasOTGSupport) Color(0xFFD1FAE5) else Color(0xFFF3F4F6)
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("Connected Devices", fontWeight = FontWeight.Bold)
+                    Text(
+                        connectedDevices.toString(),
+                        style = MaterialTheme.typography.displayMedium,
+                        color = if (connectedDevices > 0) Color(0xFF10B981) else Color.Gray,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+            
+            Spacer(Modifier.height(16.dp))
+            
+            Text(
+                if (connectedDevices > 0) "USB device(s) detected" else "No USB devices connected",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.Gray
+            )
+        }
+    }
+}

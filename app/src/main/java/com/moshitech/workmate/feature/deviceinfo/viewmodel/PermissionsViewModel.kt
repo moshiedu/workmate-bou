@@ -208,7 +208,8 @@ class PermissionsViewModel(application: Application) : AndroidViewModel(applicat
                     try {
                         val permInfo = pm.getPermissionInfo(permission, 0)
                         if (permInfo.protectionLevel and PermissionInfo.PROTECTION_DANGEROUS != 0) {
-                            val group = permInfo.group ?: "Other"
+                            // Map permission to a proper group name
+                            val group = getPermissionGroupName(permInfo.group, permission)
                             
                             if (!permissionMap.containsKey(group)) {
                                 permissionMap[group] = mutableListOf()
@@ -249,6 +250,38 @@ class PermissionsViewModel(application: Application) : AndroidViewModel(applicat
                 dangerous = true
             )
         }.sortedBy { it.name }
+    }
+    
+    // Helper function to map permissions to proper group names
+    private fun getPermissionGroupName(group: String?, permission: String): String {
+        // If group is provided and valid, use it
+        if (!group.isNullOrBlank() && group != "android.permission-group.UNDEFINED") {
+            return group
+        }
+        
+        // Otherwise, map based on permission name
+        return when {
+            permission.contains("CAMERA", ignoreCase = true) -> "android.permission-group.CAMERA"
+            permission.contains("LOCATION", ignoreCase = true) || 
+            permission.contains("GPS", ignoreCase = true) -> "android.permission-group.LOCATION"
+            permission.contains("MICROPHONE", ignoreCase = true) || 
+            permission.contains("RECORD_AUDIO", ignoreCase = true) -> "android.permission-group.MICROPHONE"
+            permission.contains("CONTACTS", ignoreCase = true) -> "android.permission-group.CONTACTS"
+            permission.contains("PHONE", ignoreCase = true) || 
+            permission.contains("CALL", ignoreCase = true) -> "android.permission-group.PHONE"
+            permission.contains("SMS", ignoreCase = true) || 
+            permission.contains("MMS", ignoreCase = true) -> "android.permission-group.SMS"
+            permission.contains("STORAGE", ignoreCase = true) || 
+            permission.contains("READ_EXTERNAL", ignoreCase = true) || 
+            permission.contains("WRITE_EXTERNAL", ignoreCase = true) -> "android.permission-group.STORAGE"
+            permission.contains("CALENDAR", ignoreCase = true) -> "android.permission-group.CALENDAR"
+            permission.contains("SENSORS", ignoreCase = true) || 
+            permission.contains("BODY_SENSORS", ignoreCase = true) -> "android.permission-group.SENSORS"
+            permission.contains("ACTIVITY_RECOGNITION", ignoreCase = true) -> "android.permission-group.ACTIVITY_RECOGNITION"
+            permission.contains("NEARBY_DEVICES", ignoreCase = true) || 
+            permission.contains("BLUETOOTH", ignoreCase = true) -> "android.permission-group.NEARBY_DEVICES"
+            else -> "android.permission-group.OTHER"
+        }
     }
 
     private fun fetchPermissionsByApp(): List<PermissionGroup> {
