@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -22,6 +23,11 @@ class UserPreferencesRepository(private val context: Context) {
     private val APP_LOCK_PIN_KEY = stringPreferencesKey("app_lock_pin")
     private val LOCKED_APPS_KEY = stringSetPreferencesKey("locked_apps")
     private val APP_LOCK_ENABLED_KEY = booleanPreferencesKey("app_lock_enabled")
+
+    private val USE_PIN_AUTH_KEY = booleanPreferencesKey("use_pin_auth")
+    private val USE_BIOMETRIC_AUTH_KEY = booleanPreferencesKey("use_biometric_auth")
+    private val SECURITY_QUESTION_KEY = stringPreferencesKey("security_question")
+    private val SECURITY_ANSWER_KEY = stringPreferencesKey("security_answer")
 
     val theme: Flow<AppTheme> = context.dataStore.data
         .map { preferences ->
@@ -37,6 +43,18 @@ class UserPreferencesRepository(private val context: Context) {
 
     val isAppLockEnabled: Flow<Boolean> = context.dataStore.data
         .map { preferences -> preferences[APP_LOCK_ENABLED_KEY] ?: false }
+
+    val usePinAuth: Flow<Boolean> = context.dataStore.data
+        .map { preferences -> preferences[USE_PIN_AUTH_KEY] ?: true }
+
+    val useBiometricAuth: Flow<Boolean> = context.dataStore.data
+        .map { preferences -> preferences[USE_BIOMETRIC_AUTH_KEY] ?: true }
+
+    val securityQuestion: Flow<String?> = context.dataStore.data
+        .map { preferences -> preferences[SECURITY_QUESTION_KEY] }
+
+    val securityAnswer: Flow<String?> = context.dataStore.data
+        .map { preferences -> preferences[SECURITY_ANSWER_KEY] }
 
     suspend fun setTheme(theme: AppTheme) {
         context.dataStore.edit { preferences ->
@@ -60,5 +78,29 @@ class UserPreferencesRepository(private val context: Context) {
         context.dataStore.edit { preferences ->
             preferences[APP_LOCK_ENABLED_KEY] = enabled
         }
+    }
+
+    suspend fun setUsePinAuth(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[USE_PIN_AUTH_KEY] = enabled
+        }
+    }
+
+    suspend fun setUseBiometricAuth(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[USE_BIOMETRIC_AUTH_KEY] = enabled
+        }
+    }
+
+    suspend fun setSecurityQuestion(question: String, answer: String) {
+        context.dataStore.edit { preferences ->
+            preferences[SECURITY_QUESTION_KEY] = question
+            preferences[SECURITY_ANSWER_KEY] = answer.lowercase().trim()
+        }
+    }
+
+    suspend fun verifySecurityAnswer(answer: String): Boolean {
+        val savedAnswer = securityAnswer.firstOrNull()
+        return savedAnswer != null && savedAnswer == answer.lowercase().trim()
     }
 }
