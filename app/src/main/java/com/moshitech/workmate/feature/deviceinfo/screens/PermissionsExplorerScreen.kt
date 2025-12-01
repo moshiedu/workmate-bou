@@ -97,8 +97,8 @@ fun PermissionsExplorerScreen(
                         )
                     } else {
                         Column {
-                            Text("Permissions Explorer", fontWeight = FontWeight.Bold, color = textColor)
-                            Text("Pro Feature", fontSize = 12.sp, color = Color(0xFFFF9800), fontWeight = FontWeight.Bold)
+                            Text("Permissions Explorer", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = textColor)
+                            Text("Pro Feature", fontSize = 10.sp, color = Color(0xFFFF9800), fontWeight = FontWeight.Bold)
                         }
                     }
                 },
@@ -115,13 +115,6 @@ fun PermissionsExplorerScreen(
                     }
                 },
                 actions = {
-                    if (isLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            strokeWidth = 2.dp,
-                            color = textColor
-                        )
-                    }
                     IconButton(onClick = { showSearch = !showSearch }) {
                         Icon(
                             if (showSearch) Icons.Default.Close else Icons.Default.Search,
@@ -213,42 +206,88 @@ fun StatisticsCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = cardColor),
-        shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = RoundedCornerShape(12.dp)
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            // Stats Grid
+            // Header
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(bottom = 8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = null,
+                    tint = Color(0xFF3B82F6),
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Permission Summary",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = textColor
+                )
+            }
+            
+            HorizontalDivider(
+                modifier = Modifier.padding(bottom = 12.dp),
+                color = subtitleColor.copy(alpha = 0.1f)
+            )
+
+            // Stats Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                StatItem("Permissions", stats.totalPermissions.toString(), Modifier.weight(1f), textColor, subtitleColor)
-                StatItem("Apps", stats.totalApps.toString(), Modifier.weight(1f), textColor, subtitleColor)
-                StatItem("Allowed", stats.totalGranted.toString(), Modifier.weight(1f), Color(0xFF10B981), subtitleColor)
-                StatItem("Denied", stats.totalDenied.toString(), Modifier.weight(1f), Color(0xFFEF4444), subtitleColor)
+                StatItem(
+                    label = "Permissions",
+                    value = stats.totalPermissions.toString(),
+                    color = Color(0xFF3B82F6),
+                    textColor = textColor
+                )
+                StatItem(
+                    label = "Apps",
+                    value = stats.totalApps.toString(),
+                    color = Color(0xFF8B5CF6),
+                    textColor = textColor
+                )
+                StatItem(
+                    label = "Allowed",
+                    value = stats.totalGranted.toString(),
+                    color = Color(0xFF10B981),
+                    textColor = textColor
+                )
+                StatItem(
+                    label = "Denied",
+                    value = stats.totalDenied.toString(),
+                    color = Color(0xFFEF4444),
+                    textColor = textColor
+                )
             }
         }
     }
 }
 
 @Composable
-fun StatItem(label: String, value: String, modifier: Modifier, textColor: Color, subtitleColor: Color) {
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
+fun StatItem(
+    label: String,
+    value: String,
+    color: Color,
+    textColor: Color
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = value,
-            fontSize = 20.sp,
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
-            color = textColor
+            color = color
         )
         Text(
             text = label,
             fontSize = 11.sp,
-            color = subtitleColor,
-            maxLines = 1,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            color = textColor.copy(alpha = 0.6f),
+            fontWeight = FontWeight.Medium
         )
     }
 }
@@ -269,7 +308,7 @@ fun AppGroupCard(
             .clickable { expanded = !expanded },
         colors = CardDefaults.cardColors(containerColor = cardColor),
         shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(
@@ -366,7 +405,7 @@ fun PermissionGroupCard(
             .clickable { expanded = !expanded },
         colors = CardDefaults.cardColors(containerColor = cardColor),
         shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(
