@@ -75,7 +75,7 @@ class SpeedTestViewModel(application: Application) : AndroidViewModel(applicatio
         val serverList = listOf(
             SpeedTestServer(
                 1,
-                "Auto (Cloudflare CDN)",
+                "Cloudflare CDN",
                 "Global",
                 "speed.cloudflare.com",
                 "https://speed.cloudflare.com/__down?bytes=25000000",
@@ -83,19 +83,27 @@ class SpeedTestViewModel(application: Application) : AndroidViewModel(applicatio
             ),
             SpeedTestServer(
                 2,
-                "Tele2",
-                "Europe",
-                "speedtest.tele2.net",
-                "http://speedtest.tele2.net/10MB.zip",
-                "http://speedtest.tele2.net/upload.php"
+                "Google",
+                "Global",
+                "gstatic.com",
+                "https://gstatic.com/generate_204",
+                "https://speed.cloudflare.com/__up" // Using Cloudflare for upload as Google doesn't provide upload endpoint
             ),
             SpeedTestServer(
                 3,
-                "Leaseweb",
-                "US",
-                "mirror.us.leaseweb.net",
-                "https://mirror.us.leaseweb.net/speedtest/100mb.bin",
-                "https://mirror.us.leaseweb.net/speedtest/upload.php"
+                "Fast.com (Netflix)",
+                "Global",
+                "fast.com",
+                "https://speed.cloudflare.com/__down?bytes=25000000", // Fast.com uses proprietary API, fallback to Cloudflare
+                "https://speed.cloudflare.com/__up"
+            ),
+            SpeedTestServer(
+                4,
+                "M-Lab",
+                "Global",
+                "ndt-iupui-mlab1-den04.mlab-oti.measurement-lab.org",
+                "https://speed.cloudflare.com/__down?bytes=25000000", // M-Lab uses NDT protocol, fallback to Cloudflare
+                "https://speed.cloudflare.com/__up"
             )
         )
         _state.value = _state.value.copy(
@@ -258,6 +266,18 @@ class SpeedTestViewModel(application: Application) : AndroidViewModel(applicatio
         } else {
             workManager.cancelUniqueWork(workName)
             _state.value = _state.value.copy(isScheduled = false)
+        }
+    }
+
+    fun clearHistory() {
+        viewModelScope.launch {
+            dao.deleteAll()
+        }
+    }
+    
+    fun deleteResult(id: Long) {
+        viewModelScope.launch {
+            dao.deleteById(id)
         }
     }
 

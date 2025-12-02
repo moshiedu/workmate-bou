@@ -56,25 +56,54 @@ class SpeedTestManager(private val context: Context) {
         }
 
         // Fetch IP and ISP info
-        var ip = "Unknown"
-        var isp = "Unknown"
-        try {
-            val request = Request.Builder()
-                .url("http://ip-api.com/json")
-                .build()
-            
-            client.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    val body = response.body?.string()
-                    if (body != null) {
-                        val apiResponse = gson.fromJson(body, IpApiResponse::class.java)
-                        ip = apiResponse.query
-                        isp = apiResponse.isp
+        var ip = ""
+        var isp = ""
+        
+        // Try to get carrier name first for mobile networks (faster and more reliable)
+        if (type == "Mobile Data") {
+            try {
+                val telephonyManager = context.getSystemService(Context.TELEPHONY_SERVICE) as? android.telephony.TelephonyManager
+                val carrierName = telephonyManager?.networkOperatorName
+                if (!carrierName.isNullOrEmpty() && carrierName != "Android") {
+                    isp = carrierName
+                }
+            } catch (ex: Exception) {
+                ex.printStackTrace()
+            }
+        }
+        
+        // Try to fetch from API if we don't have ISP yet
+        if (isp.isEmpty()) {
+            try {
+                val request = Request.Builder()
+                    .url("http://ip-api.com/json")
+                    .build()
+                
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val body = response.body?.string()
+                        if (body != null) {
+                            val apiResponse = gson.fromJson(body, IpApiResponse::class.java)
+                            ip = apiResponse.query
+                            if (apiResponse.isp.isNotEmpty()) {
+                                isp = apiResponse.isp
+                            }
+                        }
                     }
                 }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
+        }
+        
+        // Final fallback based on network type
+        if (isp.isEmpty()) {
+            isp = when (type) {
+                "WiFi" -> "WiFi Network"
+                "Mobile Data" -> "Mobile Network"
+                "Ethernet" -> "Ethernet Network"
+                else -> "Unknown"
+            }
         }
 
         return@withContext NetworkInfo(ip, isp, type)

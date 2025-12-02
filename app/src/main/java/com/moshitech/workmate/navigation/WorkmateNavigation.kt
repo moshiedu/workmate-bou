@@ -65,6 +65,7 @@ sealed class Screen(val route: String) {
     object PermissionsExplorer : Screen("permissions_explorer")
     object IntegrityCheck : Screen("integrity_check")
     object SpeedTest : Screen("speed_test")
+    object SpeedTestHistory : Screen("speed_test_history")
 }
 
 @Composable
@@ -272,6 +273,27 @@ fun WorkmateNavigation(
                 navController = navController,
                 viewModel = speedTestViewModel,
                 mainViewModel = mainViewModel
+            )
+        }
+        composable(Screen.SpeedTestHistory.route) {
+            val speedTestViewModel: SpeedTestViewModel = viewModel()
+            com.moshitech.workmate.feature.speedtest.SpeedTestHistoryScreen(
+                navController = navController,
+                viewModel = speedTestViewModel
+            )
+        }
+        composable(
+            route = "speed_test_detail/{testId}",
+            arguments = listOf(
+                androidx.navigation.navArgument("testId") { type = androidx.navigation.NavType.LongType }
+            )
+        ) { backStackEntry ->
+            val testId = backStackEntry.arguments?.getLong("testId") ?: 0L
+            val speedTestViewModel: SpeedTestViewModel = viewModel()
+            com.moshitech.workmate.feature.speedtest.SpeedTestDetailScreen(
+                navController = navController,
+                testId = testId,
+                viewModel = speedTestViewModel
             )
         }
     }
