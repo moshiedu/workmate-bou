@@ -42,6 +42,8 @@ class UnitConverterRepository(context: Context) {
 
     // History methods
     fun getHistory() = historyDao.getHistory()
+    
+    fun getHistoryByCategory(category: String) = historyDao.getHistoryByCategory(category)
 
     suspend fun saveConversion(
         category: String,

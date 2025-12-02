@@ -1,7 +1,10 @@
 package com.moshitech.workmate.feature.unitconverter
 
+
 import android.app.DatePickerDialog
+import android.os.Build
 import android.widget.DatePicker
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -22,6 +25,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.CompareArrows
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import android.content.Intent
+import android.widget.Toast
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -65,15 +79,34 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun TimeToolsScreen(
     navController: NavController,
-    viewModel: TimeToolsViewModel = viewModel()
+    initialCategory: String = "TIME",
+    viewModel: TimeToolsViewModel = viewModel(),
+    unitViewModel: UnitConverterViewModel = viewModel()
 ) {
     val isDark = isSystemInDarkTheme()
     val backgroundColor = if (isDark) Color(0xFF0F172A) else Color(0xFFF8F9FA)
     val textColor = if (isDark) Color.White else Color(0xFF111827)
     val primaryBlue = Color(0xFF1976D2)
 
-    var selectedTabIndex by remember { mutableStateOf(0) }
+    val initialIndex = when (initialCategory) {
+        "TIME" -> 0
+        "TIME_DATE_CALC" -> 1
+        "TIME_DIFFERENCE" -> 2
+        "TIME_TIMESTAMP" -> 3
+        "TIME_ZONES" -> 4
+        "TIME_BIZ_DAYS" -> 5
+        "TIME_AGE" -> 6
+        else -> 0
+    }
+
+    var selectedTabIndex by remember { mutableStateOf(initialIndex) }
     val tabs = listOf("Converter", "Date Calc", "Difference", "Timestamp", "Zones", "Biz Days", "Age")
+
+    val isFav by if (selectedTabIndex == 0) {
+        unitViewModel.isCurrentFavorite.collectAsState()
+    } else {
+        viewModel.isFavoriteForTab(selectedTabIndex).collectAsState(initial = false)
+    }
 
     Scaffold(
         containerColor = backgroundColor,
@@ -85,7 +118,19 @@ fun TimeToolsScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = textColor)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor),
+                actions = {
+                    IconButton(onClick = {
+                        if (selectedTabIndex == 0) unitViewModel.toggleFavorite()
+                        else viewModel.toggleFavoriteForTab(selectedTabIndex)
+                    }) {
+                        Icon(
+                            imageVector = if (isFav) Icons.Default.Star else Icons.Default.StarBorder,
+                            contentDescription = "Favorite",
+                            tint = if (isFav) primaryBlue else textColor
+                        )
+                    }
+                }
             )
         }
     ) { innerPadding ->
@@ -123,7 +168,16 @@ fun TimeToolsScreen(
                     onDismissRequest = { categoryExpanded = false },
                     modifier = Modifier.background(MaterialTheme.colorScheme.surface)
                 ) {
-                    UnitCategory.values().filter { it != UnitCategory.MORE }.forEach { category ->
+                    val internalCategories = setOf(
+                        UnitCategory.TIME_DATE_CALC,
+                        UnitCategory.TIME_DIFFERENCE,
+                        UnitCategory.TIME_TIMESTAMP,
+                        UnitCategory.TIME_ZONES,
+                        UnitCategory.TIME_BIZ_DAYS,
+                        UnitCategory.TIME_AGE,
+                        UnitCategory.MORE
+                    )
+                    UnitCategory.values().filter { !internalCategories.contains(it) }.forEach { category ->
                         DropdownMenuItem(
                             text = { 
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -176,7 +230,7 @@ fun TimeToolsScreen(
 
             Box(modifier = Modifier.padding(16.dp)) {
                 when (selectedTabIndex) {
-                    0 -> UnitConverterTab(navController)
+                    0 -> UnitConverterTab(navController, unitViewModel)
                     1 -> DateCalculatorTab(viewModel, isDark)
                     2 -> TimeDifferenceTab(viewModel, isDark)
                     3 -> TimestampTab(viewModel, isDark)
@@ -190,62 +244,161 @@ fun TimeToolsScreen(
 }
 
 @Composable
-fun UnitConverterTab(navController: NavController) {
-    // We can reuse the ConversionDetailsScreen logic here, but since that expects navigation args,
-    // we might need to instantiate the view model and UI directly or just embed a simplified version.
-    // For simplicity, let's just call the existing screen logic but we need to pass "TIME" category.
-    // However, ConversionDetailsScreen is a full screen with Scaffold. We should probably refactor or just
-    // instantiate the content.
-    // Let's instantiate a local ConversionDetailsContent if we refactored, but for now let's just
-    // show a button to go to standard converter or re-implement simple UI.
-    // Better: Re-use ConversionDetailsScreen but we can't embed Scaffold in Scaffold easily.
-    // Let's just create a simplified version here using the same ViewModel logic.
-    
-    val viewModel: UnitConverterViewModel = viewModel()
+fun UnitConverterTab(navController: NavController, viewModel: UnitConverterViewModel) {
     val isDark = isSystemInDarkTheme()
     val textColor = if (isDark) Color.White else Color(0xFF111827)
+    val secondaryTextColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF6B7280)
     
-    // Force select TIME category
+    // Ensure we are in TIME category
     androidx.compose.runtime.LaunchedEffect(Unit) {
         viewModel.selectCategory(UnitCategory.TIME)
     }
-    
-    // We need to replicate the UI from ConversionDetailsScreen without the Scaffold/TopBar
-    // This is a bit of duplication but cleanest for now without major refactor.
-    // ... (Simplified UI code)
-    
-    Column {
-        Text("Standard Time Unit Conversion", color = textColor, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(16.dp))
-        // Re-using the core UI parts would be ideal. 
-        // Let's just call the ConversionDetailsScreen content if we can extract it.
-        // Since we didn't extract it, I'll just put a placeholder or basic implementation.
+
+    val inputValue by viewModel.inputValue.collectAsState()
+    val resultValue by viewModel.resultValue.collectAsState()
+    val sourceUnit by viewModel.sourceUnit.collectAsState()
+    val targetUnit by viewModel.targetUnit.collectAsState()
+    val availableUnits by viewModel.availableUnits.collectAsState()
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text("Time Unit Converter", color = textColor, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // From Section
+        Text("From", color = secondaryTextColor, style = MaterialTheme.typography.bodyMedium)
+        Spacer(modifier = Modifier.height(8.dp))
         
-        // Basic Implementation reusing ViewModel
-        val inputValue by viewModel.inputValue.collectAsState()
-        val resultValue by viewModel.resultValue.collectAsState()
-        val sourceUnit by viewModel.sourceUnit.collectAsState()
-        val targetUnit by viewModel.targetUnit.collectAsState()
-        val availableUnits by viewModel.availableUnits.collectAsState()
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = inputValue,
+                onValueChange = { viewModel.onInputValueChanged(it) },
+                modifier = Modifier.weight(1f),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = textColor,
+                    unfocusedTextColor = textColor,
+                    focusedBorderColor = Color(0xFF1976D2),
+                    unfocusedBorderColor = if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)
+                )
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Box(modifier = Modifier.weight(1f)) {
+                var expanded by remember { mutableStateOf(false) }
+                OutlinedTextField(
+                    value = sourceUnit?.name ?: "",
+                    onValueChange = {},
+                    readOnly = true,
+                    trailingIcon = { Icon(Icons.Default.ArrowDropDown, null) },
+                    modifier = Modifier.fillMaxWidth().clickable { expanded = true },
+                    enabled = false,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        disabledTextColor = textColor,
+                        disabledBorderColor = if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0),
+                        disabledLabelColor = secondaryTextColor,
+                        disabledTrailingIconColor = textColor
+                    )
+                )
+                Box(modifier = Modifier.matchParentSize().clickable { expanded = true })
+                
+                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                    availableUnits.forEach { unit ->
+                        DropdownMenuItem(
+                            text = { Text(unit.name) },
+                            onClick = { 
+                                viewModel.onSourceUnitChanged(unit)
+                                expanded = false 
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Swap Button
+        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            IconButton(
+                onClick = { viewModel.swapUnits() },
+                modifier = Modifier
+                    .background(Color(0xFF1976D2).copy(alpha = 0.1f), androidx.compose.foundation.shape.CircleShape)
+            ) {
+                Icon(
+                    imageVector = androidx.compose.material.icons.Icons.Default.CompareArrows,
+                    contentDescription = "Swap",
+                    tint = Color(0xFF1976D2)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // To Section
+        Text("To", color = secondaryTextColor, style = MaterialTheme.typography.bodyMedium)
+        Spacer(modifier = Modifier.height(8.dp))
         
-        OutlinedTextField(
-            value = inputValue,
-            onValueChange = { viewModel.onInputValueChanged(it) },
-            label = { Text("Value") },
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            // Result is read-only
+            OutlinedTextField(
+                value = resultValue,
+                onValueChange = {},
+                readOnly = true,
+                modifier = Modifier.weight(1f),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = textColor,
+                    unfocusedTextColor = textColor,
+                    focusedBorderColor = Color(0xFF1976D2),
+                    unfocusedBorderColor = if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)
+                )
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Box(modifier = Modifier.weight(1f)) {
+                var expanded by remember { mutableStateOf(false) }
+                OutlinedTextField(
+                    value = targetUnit?.name ?: "",
+                    onValueChange = {},
+                    readOnly = true,
+                    trailingIcon = { Icon(Icons.Default.ArrowDropDown, null) },
+                    modifier = Modifier.fillMaxWidth().clickable { expanded = true },
+                    enabled = false,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        disabledTextColor = textColor,
+                        disabledBorderColor = if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0),
+                        disabledLabelColor = secondaryTextColor,
+                        disabledTrailingIconColor = textColor
+                    )
+                )
+                Box(modifier = Modifier.matchParentSize().clickable { expanded = true })
+                
+                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                    availableUnits.forEach { unit ->
+                        DropdownMenuItem(
+                            text = { Text(unit.name) },
+                            onClick = { 
+                                viewModel.onTargetUnitChanged(unit)
+                                expanded = false 
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        ResultCard(
+            title = "Result",
+            result = "$resultValue ${targetUnit?.symbol ?: ""}",
+            icon = Icons.Default.Schedule,
+            isDark = isDark,
+            onSave = { /* Auto-saved or manual save not needed for standard converter as it's not history-heavy? 
+                         Actually standard converter usually saves on every calculation or debounced.
+                         Let's leave empty or implement manual save if desired. */ }
         )
-        Spacer(modifier = Modifier.height(8.dp))
-        UnitDropdown(sourceUnit, availableUnits, { viewModel.onSourceUnitChanged(it) }, textColor, Color.Gray)
-        Spacer(modifier = Modifier.height(8.dp))
-        Text("=", color = textColor, style = MaterialTheme.typography.headlineSmall)
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(resultValue, color = textColor, style = MaterialTheme.typography.headlineMedium)
-        Spacer(modifier = Modifier.height(8.dp))
-        UnitDropdown(targetUnit, availableUnits, { viewModel.onTargetUnitChanged(it) }, textColor, Color.Gray)
     }
 }
 
+@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun DateCalculatorTab(viewModel: TimeToolsViewModel, isDark: Boolean) {
     val startDate by viewModel.calcStartDate.collectAsState()
@@ -256,15 +409,14 @@ fun DateCalculatorTab(viewModel: TimeToolsViewModel, isDark: Boolean) {
     val resultDate by viewModel.calcResultDate.collectAsState()
     
     val textColor = if (isDark) Color.White else Color(0xFF111827)
-    val cardColor = if (isDark) Color(0xFF1E293B) else Color.White
-
-    Column {
+    
+    Column(modifier = Modifier.fillMaxWidth()) {
         Text("Date Calculator", color = textColor, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
         
         DateSelector(label = "Start Date", date = startDate) { viewModel.onCalcStartDateChanged(it) }
         
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
         
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             Button(
@@ -281,7 +433,7 @@ fun DateCalculatorTab(viewModel: TimeToolsViewModel, isDark: Boolean) {
             ) { Text("Subtract") }
         }
         
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
         
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
@@ -303,20 +455,13 @@ fun DateCalculatorTab(viewModel: TimeToolsViewModel, isDark: Boolean) {
         
         Spacer(modifier = Modifier.height(24.dp))
         
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = cardColor)
-        ) {
-            Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Result Date", color = Color.Gray)
-                Text(
-                    text = resultDate.format(DateTimeFormatter.ofPattern("EEE, MMM dd, yyyy")),
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = textColor,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
+        ResultCard(
+            title = "Result Date",
+            result = resultDate.format(DateTimeFormatter.ofPattern("EEE, MMM dd, yyyy")),
+            icon = Icons.Default.CalendarToday,
+            isDark = isDark,
+            onSave = { viewModel.saveDateCalcHistory() }
+        )
     }
 }
 
@@ -327,33 +472,24 @@ fun TimeDifferenceTab(viewModel: TimeToolsViewModel, isDark: Boolean) {
     val result by viewModel.diffResult.collectAsState()
     
     val textColor = if (isDark) Color.White else Color(0xFF111827)
-    val cardColor = if (isDark) Color(0xFF1E293B) else Color.White
 
-    Column {
+    Column(modifier = Modifier.fillMaxWidth()) {
         Text("Time Difference", color = textColor, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
         
         DateSelector(label = "Start Date", date = startDate) { viewModel.onDiffStartDateChanged(it) }
         Spacer(modifier = Modifier.height(8.dp))
         DateSelector(label = "End Date", date = endDate) { viewModel.onDiffEndDateChanged(it) }
         
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
         
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = cardColor)
-        ) {
-            Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Difference", color = Color.Gray)
-                Text(
-                    text = result,
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = textColor,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
-            }
-        }
+        ResultCard(
+            title = "Time Difference",
+            result = result,
+            icon = androidx.compose.material.icons.Icons.Default.History,
+            isDark = isDark,
+            onSave = { viewModel.saveDiffHistory() }
+        )
     }
 }
 
@@ -361,43 +497,200 @@ fun TimeDifferenceTab(viewModel: TimeToolsViewModel, isDark: Boolean) {
 fun TimestampTab(viewModel: TimeToolsViewModel, isDark: Boolean) {
     val input by viewModel.timestampInput.collectAsState()
     val result by viewModel.timestampResult.collectAsState()
+    val isToDate by viewModel.isTimestampToDate.collectAsState()
+    val format by viewModel.timestampFormat.collectAsState()
+    val zoneId by viewModel.timestampZoneId.collectAsState()
     
     val textColor = if (isDark) Color.White else Color(0xFF111827)
-    val cardColor = if (isDark) Color(0xFF1E293B) else Color.White
+    val primaryBlue = Color(0xFF1976D2)
+    
+    // Common Timezones
+    val commonZones = listOf(
+        "UTC", "GMT", "America/New_York", "America/Los_Angeles", "Europe/London", 
+        "Europe/Paris", "Asia/Tokyo", "Asia/Dhaka", "Australia/Sydney"
+    )
 
-    Column {
+    Column(modifier = Modifier.fillMaxWidth()) {
         Text("Timestamp Converter", color = textColor, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
         
-        OutlinedTextField(
-            value = input,
-            onValueChange = { viewModel.onTimestampInputChanged(it) },
-            label = { Text("Unix Timestamp (ms or sec)") },
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+        // Direction Toggle
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            androidx.compose.material3.RadioButton(
+                selected = isToDate,
+                onClick = { viewModel.onTimestampDirectionChanged(true) },
+                colors = androidx.compose.material3.RadioButtonDefaults.colors(selectedColor = primaryBlue)
+            )
+            Text("Timestamp → Date", color = textColor, style = MaterialTheme.typography.bodyMedium)
+            Spacer(modifier = Modifier.width(12.dp))
+            androidx.compose.material3.RadioButton(
+                selected = !isToDate,
+                onClick = { viewModel.onTimestampDirectionChanged(false) },
+                colors = androidx.compose.material3.RadioButtonDefaults.colors(selectedColor = primaryBlue)
+            )
+            Text("Date → Timestamp", color = textColor, style = MaterialTheme.typography.bodyMedium)
+        }
+        
+        Spacer(modifier = Modifier.height(12.dp))
+        
+        // Format Selector
+        var formatExpanded by remember { mutableStateOf(false) }
+        val formats = listOf(
+            "yyyy-MM-dd HH:mm:ss",
+            "dd/MM/yyyy HH:mm:ss",
+            "MM/dd/yyyy HH:mm:ss",
+            "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+            "EEE, dd MMM yyyy HH:mm:ss z"
         )
         
-        Spacer(modifier = Modifier.height(24.dp))
-        
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = cardColor)
-        ) {
-            Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Formatted Date", color = Color.Gray)
-                Text(
-                    text = result,
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = textColor,
-                    fontWeight = FontWeight.Bold
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(modifier = Modifier.weight(1f)) {
+                OutlinedTextField(
+                    value = format,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Format") },
+                    trailingIcon = { Icon(Icons.Default.ArrowDropDown, null) },
+                    modifier = Modifier.fillMaxWidth().clickable { formatExpanded = true },
+                    enabled = false,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        disabledTextColor = textColor,
+                        disabledBorderColor = if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0),
+                        disabledLabelColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF6B7280),
+                        disabledTrailingIconColor = textColor
+                    )
                 )
+                Box(modifier = Modifier.matchParentSize().clickable { formatExpanded = true })
+                
+                DropdownMenu(expanded = formatExpanded, onDismissRequest = { formatExpanded = false }) {
+                    formats.forEach { f ->
+                        DropdownMenuItem(
+                            text = { Text(f) },
+                            onClick = { 
+                                viewModel.onTimestampFormatChanged(f)
+                                formatExpanded = false 
+                            }
+                        )
+                    }
+                }
+            }
+            
+            // Timezone Selector
+            Box(modifier = Modifier.weight(1f)) {
+                 var zoneExpanded by remember { mutableStateOf(false) }
+                 OutlinedTextField(
+                    value = zoneId,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Timezone") },
+                    trailingIcon = { Icon(Icons.Default.ArrowDropDown, null) },
+                    modifier = Modifier.fillMaxWidth().clickable { zoneExpanded = true },
+                    enabled = false,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        disabledTextColor = textColor,
+                        disabledBorderColor = if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0),
+                        disabledLabelColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF6B7280),
+                        disabledTrailingIconColor = textColor
+                    )
+                )
+                Box(modifier = Modifier.matchParentSize().clickable { zoneExpanded = true })
+                
+                DropdownMenu(expanded = zoneExpanded, onDismissRequest = { zoneExpanded = false }) {
+                    commonZones.forEach { z ->
+                        DropdownMenuItem(
+                            text = { Text(z) },
+                            onClick = { 
+                                viewModel.onTimestampZoneIdChanged(z)
+                                zoneExpanded = false 
+                            }
+                        )
+                    }
+                }
             }
         }
         
+        Spacer(modifier = Modifier.height(12.dp))
+        
+        if (isToDate) {
+            OutlinedTextField(
+                value = input,
+                onValueChange = { viewModel.onTimestampInputChanged(it) },
+                label = { Text("Unix Timestamp (ms or sec)") },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+            )
+        } else {
+            // Date -> Timestamp Input
+            val context = LocalContext.current
+            val calendar = java.util.Calendar.getInstance()
+            
+            val datePickerDialog = DatePickerDialog(
+                context,
+                { _, year, month, dayOfMonth ->
+                    val timePickerDialog = android.app.TimePickerDialog(
+                        context,
+                        { _, hourOfDay, minute ->
+                            val selectedDateTime = java.time.LocalDateTime.of(year, month + 1, dayOfMonth, hourOfDay, minute)
+                            val formatter = java.time.format.DateTimeFormatter.ofPattern(format)
+                            try {
+                                viewModel.onTimestampInputChanged(selectedDateTime.format(formatter))
+                            } catch (e: Exception) {
+                                viewModel.onTimestampInputChanged(selectedDateTime.toString())
+                            }
+                        },
+                        calendar.get(java.util.Calendar.HOUR_OF_DAY),
+                        calendar.get(java.util.Calendar.MINUTE),
+                        false 
+                    )
+                    timePickerDialog.show()
+                },
+                calendar.get(java.util.Calendar.YEAR),
+                calendar.get(java.util.Calendar.MONTH),
+                calendar.get(java.util.Calendar.DAY_OF_MONTH)
+            )
+
+            OutlinedTextField(
+                value = input,
+                onValueChange = { viewModel.onTimestampInputChanged(it) },
+                label = { Text("Date String") },
+                modifier = Modifier.fillMaxWidth().clickable { datePickerDialog.show() },
+                enabled = false, 
+                trailingIcon = { 
+                    IconButton(onClick = { datePickerDialog.show() }) {
+                        Icon(Icons.Default.CalendarToday, "Select Date")
+                    }
+                },
+                colors = OutlinedTextFieldDefaults.colors(
+                    disabledTextColor = textColor,
+                    disabledBorderColor = if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0),
+                    disabledLabelColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF6B7280),
+                    disabledTrailingIconColor = textColor
+                )
+            )
+        }
+        
         Spacer(modifier = Modifier.height(16.dp))
+        
+        ResultCard(
+            title = if (isToDate) "Formatted Date" else "Timestamp (ms)",
+            result = result,
+            icon = androidx.compose.material.icons.Icons.Default.CalendarToday,
+            isDark = isDark,
+            onSave = { viewModel.saveTimestampHistory() }
+        )
+        
+        Spacer(modifier = Modifier.height(12.dp))
         Button(
-            onClick = { viewModel.onTimestampInputChanged(System.currentTimeMillis().toString()) },
-            modifier = Modifier.align(Alignment.CenterHorizontally)
+            onClick = { 
+                if (isToDate) {
+                    viewModel.onTimestampInputChanged(System.currentTimeMillis().toString()) 
+                } else {
+                    val formatter = java.time.format.DateTimeFormatter.ofPattern(format)
+                    viewModel.onTimestampInputChanged(java.time.LocalDateTime.now().format(formatter))
+                }
+            },
+            modifier = Modifier.align(Alignment.CenterHorizontally),
+            colors = ButtonDefaults.buttonColors(containerColor = primaryBlue)
         ) {
             Text("Set to Now")
         }
@@ -412,46 +705,38 @@ fun TimeZoneTab(viewModel: TimeToolsViewModel, isDark: Boolean) {
     val result by viewModel.timeZoneResult.collectAsState()
     
     val textColor = if (isDark) Color.White else Color(0xFF111827)
-    val cardColor = if (isDark) Color(0xFF1E293B) else Color.White
     
     // Simplified Zone List for Demo
     val commonZones = listOf("UTC", "America/New_York", "Europe/London", "Asia/Tokyo", "Australia/Sydney", "Asia/Dhaka", "Europe/Paris")
 
-    Column {
+    Column(modifier = Modifier.fillMaxWidth()) {
         Text("Time Zone Converter", color = textColor, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
         
         // Source Time (Just Date Selector for now, ideally TimePicker too)
         DateSelector(label = "Source Date", date = sourceTime.toLocalDate()) { 
             viewModel.onTimeZoneSourceTimeChanged(it.atTime(sourceTime.toLocalTime()))
         }
         
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
         
         Text("Source Zone", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
         ZoneDropdown(selected = sourceId, zones = commonZones) { viewModel.onTimeZoneSourceIdChanged(it) }
         
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
         
         Text("Target Zone", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
         ZoneDropdown(selected = targetId, zones = commonZones) { viewModel.onTimeZoneTargetIdChanged(it) }
         
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
         
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = cardColor)
-        ) {
-            Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Converted Time", color = Color.Gray)
-                Text(
-                    text = result,
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = textColor,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
+        ResultCard(
+            title = "Converted Time",
+            result = result,
+            icon = androidx.compose.material.icons.Icons.Default.CalendarToday,
+            isDark = isDark,
+            onSave = { viewModel.saveTimeZoneHistory() }
+        )
     }
 }
 
@@ -463,15 +748,14 @@ fun BusinessDayTab(viewModel: TimeToolsViewModel, isDark: Boolean) {
     val resultDate by viewModel.bizResultDate.collectAsState()
     
     val textColor = if (isDark) Color.White else Color(0xFF111827)
-    val cardColor = if (isDark) Color(0xFF1E293B) else Color.White
 
-    Column {
+    Column(modifier = Modifier.fillMaxWidth()) {
         Text("Business Day Calculator", color = textColor, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
         
         DateSelector(label = "Start Date", date = startDate) { viewModel.onBizStartDateChanged(it) }
         
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
         
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             Button(
@@ -488,7 +772,7 @@ fun BusinessDayTab(viewModel: TimeToolsViewModel, isDark: Boolean) {
             ) { Text("Subtract") }
         }
         
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
         
         OutlinedTextField(
             value = days,
@@ -498,22 +782,15 @@ fun BusinessDayTab(viewModel: TimeToolsViewModel, isDark: Boolean) {
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
         )
         
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
         
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = cardColor)
-        ) {
-            Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Result Date (Excl. Weekends)", color = Color.Gray)
-                Text(
-                    text = resultDate.format(DateTimeFormatter.ofPattern("EEE, MMM dd, yyyy")),
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = textColor,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
+        ResultCard(
+            title = "Result Date (Excluding Weekends)",
+            result = resultDate.format(DateTimeFormatter.ofPattern("EEE, MMM dd, yyyy")),
+            icon = Icons.Default.CalendarToday,
+            isDark = isDark,
+            onSave = { viewModel.saveBizDaysHistory() }
+        )
     }
 }
 
@@ -523,31 +800,22 @@ fun AgeCalculatorTab(viewModel: TimeToolsViewModel, isDark: Boolean) {
     val result by viewModel.ageResult.collectAsState()
     
     val textColor = if (isDark) Color.White else Color(0xFF111827)
-    val cardColor = if (isDark) Color(0xFF1E293B) else Color.White
 
-    Column {
+    Column(modifier = Modifier.fillMaxWidth()) {
         Text("Age Calculator", color = textColor, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
         
         DateSelector(label = "Birth Date", date = birthDate) { viewModel.onAgeBirthDateChanged(it) }
         
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
         
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = cardColor)
-        ) {
-            Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Your Age", color = Color.Gray)
-                Text(
-                    text = result,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = textColor,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
-            }
-        }
+        ResultCard(
+            title = "Your Age",
+            result = result,
+            icon = androidx.compose.material.icons.Icons.Default.CalendarToday,
+            isDark = isDark,
+            onSave = { viewModel.saveAgeHistory() }
+        )
     }
 }
 
@@ -593,5 +861,99 @@ fun DateSelector(label: String, date: LocalDate, onDateSelected: (LocalDate) -> 
         )
         // Hack to make the disabled text field clickable
         Box(modifier = Modifier.matchParentSize().clickable { dialog.show() })
+    }
+}
+
+@Composable
+fun ResultCard(
+    title: String,
+    result: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    isDark: Boolean,
+    onSave: () -> Unit
+) {
+    val cardColor = if (isDark) Color(0xFF1E293B) else Color.White
+    val textColor = if (isDark) Color.White else Color(0xFF111827)
+    val primaryBlue = Color(0xFF1976D2)
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = cardColor),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = primaryBlue,
+                    modifier = Modifier.size(32.dp)
+                )
+                
+                Row {
+                    IconButton(onClick = {
+                        clipboardManager.setText(AnnotatedString(result))
+                        Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+                    }) {
+                        Icon(
+                            imageVector = androidx.compose.material.icons.Icons.Default.ContentCopy,
+                            contentDescription = "Copy",
+                            tint = primaryBlue
+                        )
+                    }
+                    IconButton(onClick = {
+                        val sendIntent: Intent = Intent().apply {
+                            action = Intent.ACTION_SEND
+                            putExtra(Intent.EXTRA_TEXT, result)
+                            type = "text/plain"
+                        }
+                        val shareIntent = Intent.createChooser(sendIntent, null)
+                        context.startActivity(shareIntent)
+                    }) {
+                        Icon(
+                            imageVector = androidx.compose.material.icons.Icons.Default.Share,
+                            contentDescription = "Share",
+                            tint = primaryBlue
+                        )
+                    }
+                    IconButton(onClick = {
+                        onSave()
+                        Toast.makeText(context, "Saved to History", Toast.LENGTH_SHORT).show()
+                    }) {
+                        Icon(
+                            imageVector = androidx.compose.material.icons.Icons.Default.History,
+                            contentDescription = "Save to History",
+                            tint = primaryBlue
+                        )
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Text(
+                title,
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.Gray
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = result,
+                style = MaterialTheme.typography.headlineSmall,
+                color = textColor,
+                fontWeight = FontWeight.Bold,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+        }
     }
 }
