@@ -4,5 +4,15 @@ Time converter Under Unit converter has multiple tabs but favourite and recent h
 We can make favorites and history tab-specific for all Time Tools tabs. Let me update the plan to support this.
 
 also some result card like Age calculator Result card, and other tabs card should be more modern, aligned, iconified, polished.
-ok proceed
 
+
+--------------------
+
+Server Selection: Currently uses hardcoded servers (Cloudflare/Google). No selection UI exists.
+Jitter Measurement: I added the jitter field to the state, but the calculation logic and UI display are still missing.
+Packet Loss Detection: Not implemented.
+Export Test Results: "Share" is implemented (text sharing), but "Export" (saving as CSV/PDF) is not.
+Schedule Automatic Tests: Not implemented (requires WorkManager setup).
+Comparison with Previous Tests: Not implemented.
+Improve History UI: Currently shows a simple graph. A detailed list view with expanded metrics is missing.
+Summary: All 7 items you listed remain to be fully developed.
