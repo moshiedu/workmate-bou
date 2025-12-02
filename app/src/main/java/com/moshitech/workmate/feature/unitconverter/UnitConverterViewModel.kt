@@ -19,11 +19,54 @@ import kotlinx.coroutines.launch
 class UnitConverterViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: UnitConverterRepository by lazy { UnitConverterRepository(application) }
+    private val preferencesRepository: com.moshitech.workmate.repository.UserPreferencesRepository by lazy { 
+        com.moshitech.workmate.repository.UserPreferencesRepository(application) 
+    }
+    
+    val viewMode: StateFlow<com.moshitech.workmate.repository.UserPreferencesRepository.ViewMode> = 
+        preferencesRepository.viewMode.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = com.moshitech.workmate.repository.UserPreferencesRepository.ViewMode.GRID
+        )
+    
+    val hapticFeedbackEnabled: StateFlow<Boolean> = 
+        preferencesRepository.hapticFeedbackEnabled.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false
+        )
+    
+    fun toggleViewMode() {
+        viewModelScope.launch {
+            val newMode = if (viewMode.value == com.moshitech.workmate.repository.UserPreferencesRepository.ViewMode.GRID) {
+                com.moshitech.workmate.repository.UserPreferencesRepository.ViewMode.LIST
+            } else {
+                com.moshitech.workmate.repository.UserPreferencesRepository.ViewMode.GRID
+            }
+            preferencesRepository.setViewMode(newMode)
+        }
+    }
+    
+    fun setHapticFeedback(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setHapticFeedback(enabled)
+        }
+    }
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    private val _categories = MutableStateFlow(UnitCategory.values().toList())
+    private val internalCategories = setOf(
+        UnitCategory.TIME_DATE_CALC,
+        UnitCategory.TIME_DIFFERENCE,
+        UnitCategory.TIME_TIMESTAMP,
+        UnitCategory.TIME_ZONES,
+        UnitCategory.TIME_BIZ_DAYS,
+        UnitCategory.TIME_AGE
+    )
+
+    private val _categories = MutableStateFlow(UnitCategory.values().filter { !internalCategories.contains(it) })
     val categories: StateFlow<List<UnitCategory>> = _categories.asStateFlow()
 
     val favorites: StateFlow<List<ConversionFavoriteEntity>> = repository.getFavorites()
@@ -65,9 +108,11 @@ class UnitConverterViewModel(application: Application) : AndroidViewModel(applic
     fun onSearchQueryChanged(query: String) {
         _searchQuery.value = query
         if (query.isEmpty()) {
-            _categories.value = UnitCategory.values().toList()
+            _categories.value = UnitCategory.values().filter { !internalCategories.contains(it) }
         } else {
             _categories.value = UnitCategory.values().filter { category ->
+                if (internalCategories.contains(category)) return@filter false
+                
                 // Search in category title
                 if (category.title.contains(query, ignoreCase = true)) return@filter true
                 

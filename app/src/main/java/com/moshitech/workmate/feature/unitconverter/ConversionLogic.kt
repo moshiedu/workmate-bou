@@ -16,23 +16,35 @@ import androidx.compose.material.icons.filled.SquareFoot
 import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material.icons.filled.Waves
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Calculate
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 
-enum class UnitCategory(val title: String, val icon: ImageVector) {
-    LENGTH("Length", Icons.Default.Straighten),
-    WEIGHT("Weight", Icons.Default.FitnessCenter),
-    TEMPERATURE("Temperature", Icons.Default.Thermostat),
-    VOLUME("Volume", Icons.Default.Opacity),
-    AREA("Area", Icons.Default.SquareFoot),
-    SPEED("Speed", Icons.Default.Speed),
-    TIME("Time", Icons.Default.Schedule),
-    DATA_STORAGE("Data Storage", Icons.Default.DataUsage),
-    FUEL("Fuel", Icons.Default.LocalGasStation),
-    PRESSURE("Pressure", Icons.Default.Compress),
-    ENERGY("Energy", Icons.Default.Bolt),
-    FREQUENCY("Frequency", Icons.Default.Waves),
-    DIGITAL_IMAGE("Digital Image", Icons.Default.Image),
-    MORE("More", Icons.Default.MoreHoriz)
+enum class UnitCategory(val title: String, val icon: ImageVector, val accentColor: Color) {
+    LENGTH("Length", Icons.Default.Straighten, Color(0xFF2196F3)), // Blue
+    WEIGHT("Weight", Icons.Default.FitnessCenter, Color(0xFF4CAF50)), // Green
+    TEMPERATURE("Temperature", Icons.Default.Thermostat, Color(0xFFF44336)), // Red
+    VOLUME("Volume", Icons.Default.Opacity, Color(0xFF00BCD4)), // Cyan
+    AREA("Area", Icons.Default.SquareFoot, Color(0xFF9C27B0)), // Purple
+    SPEED("Speed", Icons.Default.Speed, Color(0xFFFF9800)), // Orange
+    TIME("Time", Icons.Default.Schedule, Color(0xFF1976D2)), // Dark Blue
+    DATA_STORAGE("Data Storage", Icons.Default.DataUsage, Color(0xFF3F51B5)), // Indigo
+    FUEL("Fuel", Icons.Default.LocalGasStation, Color(0xFFFFEB3B)), // Yellow
+    PRESSURE("Pressure", Icons.Default.Compress, Color(0xFF795548)), // Brown
+    ENERGY("Energy", Icons.Default.Bolt, Color(0xFFFFEB3B)), // Yellow/Gold
+    FREQUENCY("Frequency", Icons.Default.Waves, Color(0xFF009688)), // Teal
+    DIGITAL_IMAGE("Digital Image", Icons.Default.Image, Color(0xFFE91E63)), // Pink
+    TIME_DATE_CALC("Date Calc", Icons.Default.DateRange, Color(0xFF1976D2)),
+    TIME_DIFFERENCE("Difference", Icons.Default.History, Color(0xFF1976D2)),
+    TIME_TIMESTAMP("Timestamp", Icons.Default.Schedule, Color(0xFF1976D2)),
+    TIME_ZONES("Zones", Icons.Default.Public, Color(0xFF1976D2)),
+    TIME_BIZ_DAYS("Biz Days", Icons.Default.Calculate, Color(0xFF1976D2)),
+    TIME_AGE("Age", Icons.Default.Timer, Color(0xFF1976D2)),
+    MORE("More", Icons.Default.MoreHoriz, Color(0xFF9E9E9E)) // Gray
 }
 
 data class ConversionUnit(

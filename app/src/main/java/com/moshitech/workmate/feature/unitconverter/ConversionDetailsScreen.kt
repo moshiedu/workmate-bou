@@ -146,7 +146,16 @@ fun ConversionDetailsScreen(
                     onDismissRequest = { categoryExpanded = false },
                     modifier = Modifier.background(MaterialTheme.colorScheme.surface)
                 ) {
-                    UnitCategory.values().filter { it != UnitCategory.MORE }.forEach { category ->
+                    val internalCategories = setOf(
+                        UnitCategory.TIME_DATE_CALC,
+                        UnitCategory.TIME_DIFFERENCE,
+                        UnitCategory.TIME_TIMESTAMP,
+                        UnitCategory.TIME_ZONES,
+                        UnitCategory.TIME_BIZ_DAYS,
+                        UnitCategory.TIME_AGE,
+                        UnitCategory.MORE
+                    )
+                    UnitCategory.values().filter { !internalCategories.contains(it) }.forEach { category ->
                         DropdownMenuItem(
                             text = { 
                                 Row(verticalAlignment = Alignment.CenterVertically) {

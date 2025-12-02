@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.moshitech.workmate.feature.home.HomeScreen
 import com.moshitech.workmate.feature.photoconversion.ui.PhotoConversionScreen
 import com.moshitech.workmate.feature.rambooster.RamBoosterScreen
@@ -18,6 +19,7 @@ import com.moshitech.workmate.feature.unitconverter.UnitConverterScreen
 import com.moshitech.workmate.feature.settings.SettingsScreen
 import com.moshitech.workmate.feature.splash.SplashScreen
 import com.moshitech.workmate.MainViewModel
+import com.moshitech.workmate.feature.speedtest.SpeedTestViewModel
 
 sealed class Screen(val route: String) {
     object Splash : Screen("splash")
@@ -91,8 +93,8 @@ fun WorkmateNavigation(
             arguments = listOf(androidx.navigation.navArgument("categoryName") { type = androidx.navigation.NavType.StringType })
         ) { backStackEntry ->
             val categoryName = backStackEntry.arguments?.getString("categoryName") ?: "LENGTH"
-            if (categoryName == "TIME") {
-                com.moshitech.workmate.feature.unitconverter.TimeToolsScreen(navController)
+            if (categoryName == "TIME" || categoryName.startsWith("TIME_")) {
+                com.moshitech.workmate.feature.unitconverter.TimeToolsScreen(navController, categoryName)
             } else {
                 com.moshitech.workmate.feature.unitconverter.ConversionDetailsScreen(navController, categoryName)
             }
@@ -261,8 +263,16 @@ fun WorkmateNavigation(
         composable(Screen.IntegrityCheck.route) {
             com.moshitech.workmate.feature.deviceinfo.screens.IntegrityCheckScreen(navController, isSystemInDarkTheme())
         }
+//        composable(Screen.SpeedTest.route) {
+//            com.moshitech.workmate.feature.speedtest.SpeedTestScreen(navController, mainViewModel = mainViewModel)
+//        }
         composable(Screen.SpeedTest.route) {
-            com.moshitech.workmate.feature.speedtest.SpeedTestScreen(navController)
+            val speedTestViewModel: SpeedTestViewModel = viewModel()
+            com.moshitech.workmate.feature.speedtest.SpeedTestScreen(
+                navController = navController,
+                viewModel = speedTestViewModel,
+                mainViewModel = mainViewModel
+            )
         }
     }
 }

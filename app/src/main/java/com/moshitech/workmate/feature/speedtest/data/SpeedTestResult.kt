@@ -10,8 +10,10 @@ data class SpeedTestResult(
     val timestamp: Long,
     val downloadSpeed: Float, // Mbps
     val uploadSpeed: Float, // Mbps
-    val ping: Long, // ms
+    val ping: Long,          // ms
     val networkType: String, // WiFi, 5G, 4G, etc.
     val ipAddress: String,
-    val isp: String
+    val isp: String,
+    val jitter: Long = 0,        // NEW: ms
+    val packetLoss: Float = 0f   // NEW: percentage
 )
