@@ -62,6 +62,7 @@ sealed class Screen(val route: String) {
     object Widgets : Screen("widgets")
     object PermissionsExplorer : Screen("permissions_explorer")
     object IntegrityCheck : Screen("integrity_check")
+    object SpeedTest : Screen("speed_test")
 }
 
 @Composable
@@ -259,6 +260,9 @@ fun WorkmateNavigation(
         }
         composable(Screen.IntegrityCheck.route) {
             com.moshitech.workmate.feature.deviceinfo.screens.IntegrityCheckScreen(navController, isSystemInDarkTheme())
+        }
+        composable(Screen.SpeedTest.route) {
+            com.moshitech.workmate.feature.speedtest.SpeedTestScreen(navController)
         }
     }
 }

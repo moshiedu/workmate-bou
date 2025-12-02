@@ -1,9 +1,13 @@
 package com.moshitech.workmate.feature.unitconverter
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.moshitech.workmate.feature.unitconverter.repository.UnitConverterRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -11,7 +15,10 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
-class TimeToolsViewModel : ViewModel() {
+class TimeToolsViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val repository = UnitConverterRepository(application)
+
 
     // --- Date Calculator State ---
     private val _calcStartDate = MutableStateFlow(LocalDate.now())

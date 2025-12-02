@@ -226,15 +226,6 @@ class UnitConverterViewModel(application: Application) : AndroidViewModel(applic
         }
     }
 
-    // Quick edit from history
-    data class QuickEditResult(
-        val inputValue: String,
-        val resultValue: String,
-        val fromUnit: String,
-        val toUnit: String,
-        val category: String
-    )
-
     fun recalculateFromHistory(
         categoryName: String,
         fromUnitName: String,
@@ -286,3 +277,12 @@ class UnitConverterViewModel(application: Application) : AndroidViewModel(applic
         }
     }
 }
+
+// Quick edit from history
+data class QuickEditResult(
+    val inputValue: String,
+    val resultValue: String,
+    val fromUnit: String,
+    val toUnit: String,
+    val category: String
+)

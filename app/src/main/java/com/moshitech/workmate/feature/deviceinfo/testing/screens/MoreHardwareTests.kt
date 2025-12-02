@@ -749,16 +749,50 @@ fun OTGTestScreen(
     val context = LocalContext.current
     var hasOTGSupport by remember { mutableStateOf(false) }
     var connectedDevices by remember { mutableStateOf(0) }
+    var deviceNames by remember { mutableStateOf<List<String>>(emptyList()) }
     
-    LaunchedEffect(Unit) {
+    // Function to update device list
+    fun updateDeviceList() {
+        try {
+            val usbManager = context.getSystemService(android.content.Context.USB_SERVICE) as android.hardware.usb.UsbManager
+            val devices = usbManager.deviceList
+            connectedDevices = devices.size
+            deviceNames = devices.values.map { device ->
+                device.productName ?: device.deviceName ?: "Unknown Device"
+            }
+        } catch (e: Exception) {
+            connectedDevices = 0
+            deviceNames = emptyList()
+        }
+    }
+    
+    DisposableEffect(context) {
         val packageManager = context.packageManager
         hasOTGSupport = packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_USB_HOST)
         
-        try {
-            val usbManager = context.getSystemService(android.content.Context.USB_SERVICE) as android.hardware.usb.UsbManager
-            connectedDevices = usbManager.deviceList.size
-        } catch (e: Exception) {
-            connectedDevices = 0
+        // Initial device list
+        updateDeviceList()
+        
+        // Listen for USB device attach/detach
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                when (intent.action) {
+                    android.hardware.usb.UsbManager.ACTION_USB_DEVICE_ATTACHED,
+                    android.hardware.usb.UsbManager.ACTION_USB_DEVICE_DETACHED -> {
+                        updateDeviceList()
+                    }
+                }
+            }
+        }
+        
+        val filter = IntentFilter().apply {
+            addAction(android.hardware.usb.UsbManager.ACTION_USB_DEVICE_ATTACHED)
+            addAction(android.hardware.usb.UsbManager.ACTION_USB_DEVICE_DETACHED)
+        }
+        context.registerReceiver(receiver, filter)
+        
+        onDispose {
+            context.unregisterReceiver(receiver)
         }
     }
     
@@ -819,24 +853,34 @@ fun OTGTestScreen(
                 Icons.Default.Usb,
                 contentDescription = "USB OTG",
                 modifier = Modifier.size(120.dp),
-                tint = if (hasOTGSupport) Color(0xFF10B981) else Color.Gray
+                tint = if (hasOTGSupport) Color(0xFF10B981) else Color(0xFFEF4444)
             )
             
             Spacer(Modifier.height(32.dp))
             
             Text(
-                if (hasOTGSupport) "OTG Supported" else "OTG Not Supported",
+                if (hasOTGSupport) "✅ OTG Supported" else "❌ OTG Not Supported",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
-                color = if (hasOTGSupport) Color(0xFF10B981) else Color.Gray
+                color = if (hasOTGSupport) Color(0xFF10B981) else Color(0xFFEF4444)
             )
+            
+            Spacer(Modifier.height(16.dp))
+            
+            if (!hasOTGSupport) {
+                Text(
+                    "This device does not support USB OTG",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.Gray
+                )
+            }
             
             Spacer(Modifier.height(48.dp))
             
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
-                    containerColor = if (hasOTGSupport) Color(0xFFD1FAE5) else Color(0xFFF3F4F6)
+                    containerColor = if (connectedDevices > 0) Color(0xFFD1FAE5) else Color(0xFFF3F4F6)
                 )
             ) {
                 Column(
@@ -855,11 +899,37 @@ fun OTGTestScreen(
             
             Spacer(Modifier.height(16.dp))
             
-            Text(
-                if (connectedDevices > 0) "USB device(s) detected" else "No USB devices connected",
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color.Gray
-            )
+            if (connectedDevices > 0) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF3F4F6))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Text(
+                            "Device List:",
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        deviceNames.forEach { name ->
+                            Text(
+                                "• $name",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color(0xFF10B981),
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+            } else {
+                Text(
+                    if (hasOTGSupport) "Connect a USB device via OTG adapter" else "No USB devices connected",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.Gray
+                )
+            }
         }
     }
 }
+

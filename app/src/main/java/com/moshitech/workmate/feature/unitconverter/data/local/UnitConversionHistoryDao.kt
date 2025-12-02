@@ -16,4 +16,7 @@ interface UnitConversionHistoryDao {
 
     @Query("DELETE FROM unit_conversion_history")
     suspend fun clearHistory()
+
+    @Query("SELECT * FROM unit_conversion_history WHERE category = :category ORDER BY timestamp DESC LIMIT 20")
+    fun getHistoryByCategory(category: String): Flow<List<UnitConversionHistoryEntity>>
 }

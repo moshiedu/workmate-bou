@@ -422,7 +422,7 @@ fun QuickEditBottomSheet(
     val scope = rememberCoroutineScope()
     
     var editedInputValue by remember { mutableStateOf(historyItem.inputValue) }
-    var calculatedResult by remember { mutableStateOf<UnitConverterViewModel.QuickEditResult?>(null) }
+    var calculatedResult by remember { mutableStateOf<QuickEditResult?>(null) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -531,7 +531,7 @@ fun QuickEditBottomSheet(
                 
                 Button(
                     onClick = {
-                        calculatedResult?.let { result ->
+                        calculatedResult?.let { result: QuickEditResult ->
                             viewModel.saveQuickEditToHistory(result)
                         }
                         scope.launch {

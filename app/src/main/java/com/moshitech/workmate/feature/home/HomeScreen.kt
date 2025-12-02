@@ -94,7 +94,8 @@ fun HomeScreen(
         HomeItem("Benchmarks", "Performance scores", Icons.Default.PlayArrow, Screen.Benchmarks.route, primaryBlue),
         HomeItem("Permissions", "App privacy explorer", Icons.Default.Security, Screen.PermissionsExplorer.route, primaryBlue),
         HomeItem("Integrity", "Device security check", Icons.Default.VerifiedUser, Screen.IntegrityCheck.route, primaryBlue),
-        HomeItem("App Lock", "Secure your apps", Icons.Default.Lock, Screen.AppLock.route, primaryBlue)
+        HomeItem("App Lock", "Secure your apps", Icons.Default.Lock, Screen.AppLock.route, primaryBlue),
+        HomeItem("Speed Test", "Check internet speed", Icons.Default.RocketLaunch, Screen.SpeedTest.route, primaryBlue)
     )
 
     Scaffold(

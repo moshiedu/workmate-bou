@@ -4,43 +4,29 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import com.moshitech.workmate.feature.photoconversion.data.local.ConversionHistoryDao
-import com.moshitech.workmate.feature.photoconversion.data.local.ConversionHistoryEntity
-
+import androidx.room.TypeConverters
+import com.moshitech.workmate.feature.speedtest.data.SpeedTestDao
+import com.moshitech.workmate.feature.speedtest.data.SpeedTestResult
 import com.moshitech.workmate.feature.unitconverter.data.local.ConversionFavoriteDao
 import com.moshitech.workmate.feature.unitconverter.data.local.ConversionFavoriteEntity
 import com.moshitech.workmate.feature.unitconverter.data.local.UnitConversionHistoryDao
 import com.moshitech.workmate.feature.unitconverter.data.local.UnitConversionHistoryEntity
-
-import com.moshitech.workmate.feature.compass.data.WaypointEntity
-import com.moshitech.workmate.feature.compass.data.WaypointDao
-import com.moshitech.workmate.feature.compass.data.TripEntity
-import com.moshitech.workmate.feature.compass.data.TripDao
-
-import androidx.room.TypeConverters
-import com.moshitech.workmate.feature.deviceinfo.data.BenchmarkHistoryEntity
-import com.moshitech.workmate.feature.deviceinfo.data.BenchmarkHistoryDao
+import com.moshitech.workmate.feature.unitconverter.data.local.UnitCategoryConverter
 
 @Database(
     entities = [
-        ConversionHistoryEntity::class,
+        SpeedTestResult::class,
         ConversionFavoriteEntity::class,
-        UnitConversionHistoryEntity::class,
-        WaypointEntity::class,
-        TripEntity::class,
-        BenchmarkHistoryEntity::class
+        UnitConversionHistoryEntity::class
     ],
-    version = 5,
+    version = 2,
     exportSchema = false
 )
-@TypeConverters(Converters::class)
+@TypeConverters(UnitCategoryConverter::class)
 abstract class AppDatabase : RoomDatabase() {
-    abstract fun conversionHistoryDao(): ConversionHistoryDao
+    abstract fun speedTestDao(): SpeedTestDao
     abstract fun conversionFavoriteDao(): ConversionFavoriteDao
     abstract fun unitConversionHistoryDao(): UnitConversionHistoryDao
-    abstract fun waypointDao(): WaypointDao
-    abstract fun tripDao(): TripDao
-    abstract fun benchmarkHistoryDao(): BenchmarkHistoryDao
 
     companion object {
         @Volatile
@@ -53,8 +39,8 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "workmate_database"
                 )
-                .fallbackToDestructiveMigration()
-                .build()
+                    .fallbackToDestructiveMigration()
+                    .build()
                 INSTANCE = instance
                 instance
             }

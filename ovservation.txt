@@ -1,0 +1,8 @@
+In the Unit converter Module while scrolling category sections up then search and category should be sticky to top,
+Time converter Under Unit converter has multiple tabs but favourite and recent history does not work based on those tab specific
+
+We can make favorites and history tab-specific for all Time Tools tabs. Let me update the plan to support this.
+
+also some result card like Age calculator Result card, and other tabs card should be more modern, aligned, iconified, polished.
+ok proceed
+
