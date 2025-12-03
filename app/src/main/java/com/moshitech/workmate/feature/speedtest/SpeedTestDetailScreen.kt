@@ -18,6 +18,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -38,7 +39,8 @@ fun SpeedTestDetailScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
-    val isDark = isSystemInDarkTheme()
+    // Fix: Check luminance of background color to determine if we are in dark mode
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     
     val textColor = if (isDark) Color.White else Color(0xFF1E293B)
     val cardBg = if (isDark) Color(0xFF1E293B) else Color.White

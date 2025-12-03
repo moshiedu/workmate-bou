@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -128,6 +129,13 @@ fun UnitConverterScreen(
                                 androidx.compose.material.icons.Icons.Default.GridView
                             },
                             contentDescription = "Toggle View",
+                            tint = textColor
+                        )
+                    }
+                    IconButton(onClick = { navController.navigate(com.moshitech.workmate.navigation.Screen.Settings.route) }) {
+                        Icon(
+                            imageVector = androidx.compose.material.icons.Icons.Default.Settings,
+                            contentDescription = "Settings",
                             tint = textColor
                         )
                     }

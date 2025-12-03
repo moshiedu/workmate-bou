@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ColorLens
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
@@ -151,6 +152,9 @@ fun CompassScreen(
                 actions = {
                     IconButton(onClick = { showHelpDialog = true }) {
                         Icon(androidx.compose.material.icons.Icons.Default.Info, "Help", tint = textColor)
+                    }
+                    IconButton(onClick = { navController.navigate(com.moshitech.workmate.navigation.Screen.Settings.route) }) {
+                        Icon(androidx.compose.material.icons.Icons.Default.Settings, "Settings", tint = textColor)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)

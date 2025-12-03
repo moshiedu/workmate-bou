@@ -20,6 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -95,8 +96,9 @@ fun RamBoosterScreen(
                     }
                 },
                 actions = {
-                    // Placeholder for balance
-                    IconButton(onClick = { }, enabled = false) { }
+                    IconButton(onClick = { navController.navigate(com.moshitech.workmate.navigation.Screen.Settings.route) }) {
+                        Icon(androidx.compose.material.icons.Icons.Default.Settings, "Settings", tint = textColor)
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)
             )

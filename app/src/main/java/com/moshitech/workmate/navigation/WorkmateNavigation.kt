@@ -84,7 +84,7 @@ fun WorkmateNavigation(
             HomeScreen(navController = navController)
         }
         composable(Screen.PhotoConversion.route) {
-             PhotoConversionScreen()
+             PhotoConversionScreen(navController = navController)
         }
         composable(Screen.UnitConversion.route) {
              UnitConverterScreen(navController = navController)

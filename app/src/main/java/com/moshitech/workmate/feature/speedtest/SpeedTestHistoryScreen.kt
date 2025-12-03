@@ -26,11 +26,14 @@ import java.util.Date
 import java.util.Locale
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.ui.graphics.luminance
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,7 +42,9 @@ fun SpeedTestHistoryScreen(
     viewModel: SpeedTestViewModel = viewModel()
 ) {
     val state by viewModel.state.collectAsState()
-    val isDark = isSystemInDarkTheme()
+    // Fix: Check luminance of background color to determine if we are in dark mode,
+    // as isSystemInDarkTheme() only checks the system setting, not the app-level override.
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     
     val textColor = if (isDark) Color.White else Color(0xFF1E293B)
     val cardBg = if (isDark) Color(0xFF1E293B) else Color.White
@@ -54,7 +59,7 @@ fun SpeedTestHistoryScreen(
                 title = { Text("Test History", color = textColor) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = textColor)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = textColor)
                     }
                 },
                 actions = {

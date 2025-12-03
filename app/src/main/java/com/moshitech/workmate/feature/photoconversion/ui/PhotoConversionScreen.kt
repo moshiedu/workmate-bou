@@ -28,6 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -73,6 +74,7 @@ import androidx.compose.material.icons.filled.Crop
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PhotoConversionScreen(
+    navController: androidx.navigation.NavController,
     viewModel: PhotoConversionViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -129,6 +131,11 @@ fun PhotoConversionScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Image Converter") },
+                actions = {
+                    IconButton(onClick = { navController.navigate(com.moshitech.workmate.navigation.Screen.Settings.route) }) {
+                        Icon(androidx.compose.material.icons.Icons.Default.Settings, "Settings", tint = MaterialTheme.colorScheme.onPrimary)
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primary,
                     titleContentColor = MaterialTheme.colorScheme.onPrimary
