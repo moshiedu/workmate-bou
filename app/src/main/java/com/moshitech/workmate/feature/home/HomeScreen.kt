@@ -2,7 +2,7 @@ package com.moshitech.workmate.feature.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -73,7 +73,7 @@ fun HomeScreen(
     navController: NavController,
     viewModel: HomeViewModel = viewModel()
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val ramUsagePercent by viewModel.ramUsagePercent.collectAsState()
 
     // Custom Colors based on design
