@@ -3,7 +3,7 @@ package com.moshitech.workmate.feature.unitconverter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -57,7 +57,7 @@ fun ConversionDetailsScreen(
     categoryName: String,
     viewModel: UnitConverterViewModel = viewModel()
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     
     // Colors
     val backgroundColor = if (isDark) Color(0xFF0F172A) else Color(0xFFF8F9FA)
@@ -76,6 +76,9 @@ fun ConversionDetailsScreen(
 
     val dpiValue by viewModel.dpiValue.collectAsState()
     val isFavorite by viewModel.isCurrentFavorite.collectAsState()
+    val currencyRates by viewModel.currencyRates.collectAsState()
+    
+    var showRateEditor by remember { mutableStateOf(false) }
 
     LaunchedEffect(categoryName) {
         val category = UnitCategory.entries.find { it.name == categoryName } ?: UnitCategory.LENGTH
@@ -126,18 +129,19 @@ fun ConversionDetailsScreen(
                     .fillMaxWidth()
                     .clickable { categoryExpanded = true },
                 colors = CardDefaults.cardColors(containerColor = cardColor),
-                shape = RoundedCornerShape(12.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, borderColor)
+                shape = RoundedCornerShape(8.dp),
+                border = androidx.compose.foundation.BorderStroke(0.5.dp, borderColor),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
                 Row(
-                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                    modifier = Modifier.padding(12.dp).fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("Conversion Category", color = secondaryTextColor, style = MaterialTheme.typography.bodyMedium)
+                    Text("Category", color = secondaryTextColor, style = MaterialTheme.typography.bodyMedium)
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(selectedCategory.title, color = textColor, fontWeight = FontWeight.Bold)
-                        Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = textColor)
+                        Text(selectedCategory.title, color = textColor, fontWeight = FontWeight.SemiBold)
+                        Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = textColor, modifier = Modifier.size(20.dp))
                     }
                 }
                 
@@ -188,7 +192,7 @@ fun ConversionDetailsScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             
             // DPI Input for Digital Image
             if (selectedCategory == UnitCategory.DIGITAL_IMAGE) {
@@ -214,20 +218,20 @@ fun ConversionDetailsScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = cardColor),
-                shape = RoundedCornerShape(16.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, borderColor),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(0.5.dp, borderColor),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = androidx.compose.material.icons.Icons.Default.Input,
                             contentDescription = null,
                             tint = primaryBlue,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(16.dp)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("From", color = secondaryTextColor, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("From", color = secondaryTextColor, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     
@@ -240,14 +244,14 @@ fun ConversionDetailsScreen(
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedContainerColor = Color.Transparent,
                             unfocusedContainerColor = Color.Transparent,
-                            focusedBorderColor = borderColor,
-                            unfocusedBorderColor = borderColor,
+                            focusedBorderColor = primaryBlue,
+                            unfocusedBorderColor = borderColor.copy(alpha = 0.5f),
                             focusedTextColor = textColor,
                             unfocusedTextColor = textColor
                         )
                     )
                     
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
                     
                     UnitDropdown(
                         selectedUnit = sourceUnit,
@@ -259,12 +263,12 @@ fun ConversionDetailsScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Swap Button
             Box(
                 modifier = Modifier
-                    .size(56.dp)
+                    .size(48.dp)
                     .background(primaryBlue, CircleShape)
                     .clickable { viewModel.swapUnits() },
                 contentAlignment = Alignment.Center
@@ -273,41 +277,41 @@ fun ConversionDetailsScreen(
                     imageVector = Icons.Default.SwapVert,
                     contentDescription = "Swap",
                     tint = Color.White,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(24.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // To Card
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = cardColor),
-                shape = RoundedCornerShape(16.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, borderColor),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(0.5.dp, borderColor),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = androidx.compose.material.icons.Icons.Default.Output,
                             contentDescription = null,
                             tint = primaryBlue,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(16.dp)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("To", color = secondaryTextColor, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("To", color = secondaryTextColor, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp)
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)
                     ) {
                         Text(
                             text = resultValue,
                             style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-                            color = textColor,
+                            color = primaryBlue,
                             modifier = Modifier.weight(1f)
                         )
 
@@ -319,12 +323,14 @@ fun ConversionDetailsScreen(
                                 val text = "$inputValue ${sourceUnit?.symbol} = $resultValue ${targetUnit?.symbol}"
                                 clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
                                 Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
-                            }
+                            },
+                            modifier = Modifier.size(36.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ContentCopy,
                                 contentDescription = "Copy",
-                                tint = primaryBlue
+                                tint = primaryBlue,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
 
@@ -338,12 +344,14 @@ fun ConversionDetailsScreen(
                                 }
                                 val shareIntent = Intent.createChooser(sendIntent, null)
                                 context.startActivity(shareIntent)
-                            }
+                            },
+                            modifier = Modifier.size(36.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Share,
                                 contentDescription = "Share",
-                                tint = primaryBlue
+                                tint = primaryBlue,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
@@ -374,7 +382,7 @@ fun UnitDropdown(
 ) {
     var showSheet by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
-    val isDark = isSystemInDarkTheme()
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
 
     Box(
         modifier = Modifier
@@ -414,28 +422,31 @@ fun UnitDropdown(
             ) {
                 Text(
                     text = "Select Unit",
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = textColor,
-                    modifier = Modifier.padding(bottom = 16.dp)
+                    modifier = Modifier.padding(bottom = 12.dp)
                 )
 
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Search unit...", color = Color.Gray) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Color.Gray) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    placeholder = { Text("Search unit...", color = Color.Gray, style = MaterialTheme.typography.bodyMedium) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(20.dp)) },
                     singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(8.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedContainerColor = Color.Transparent,
                         unfocusedContainerColor = Color.Transparent,
-                        focusedBorderColor = borderColor,
+                        focusedBorderColor = Color(0xFF1976D2),
                         unfocusedBorderColor = borderColor,
                         focusedTextColor = textColor,
                         unfocusedTextColor = textColor
-                    )
+                    ),
+                    textStyle = MaterialTheme.typography.bodyMedium
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))

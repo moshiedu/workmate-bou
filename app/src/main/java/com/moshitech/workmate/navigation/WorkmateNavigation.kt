@@ -96,6 +96,10 @@ fun WorkmateNavigation(
             val categoryName = backStackEntry.arguments?.getString("categoryName") ?: "LENGTH"
             if (categoryName == "TIME" || categoryName.startsWith("TIME_")) {
                 com.moshitech.workmate.feature.unitconverter.TimeToolsScreen(navController, categoryName)
+            } else if (categoryName == "BMI") {
+                com.moshitech.workmate.feature.unitconverter.BMICalculatorScreen(navController)
+            } else if (categoryName == "SCREEN_PPI") {
+                com.moshitech.workmate.feature.unitconverter.ScreenPPICalculatorScreen(navController)
             } else {
                 com.moshitech.workmate.feature.unitconverter.ConversionDetailsScreen(navController, categoryName)
             }
