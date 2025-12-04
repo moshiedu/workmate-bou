@@ -9,6 +9,7 @@ import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -94,10 +95,15 @@ fun WorkmateNavigation(
             arguments = listOf(androidx.navigation.navArgument("categoryName") { type = androidx.navigation.NavType.StringType })
         ) { backStackEntry ->
             val categoryName = backStackEntry.arguments?.getString("categoryName") ?: "LENGTH"
+            val viewModel: com.moshitech.workmate.feature.unitconverter.UnitConverterViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+            
             if (categoryName == "TIME" || categoryName.startsWith("TIME_")) {
                 com.moshitech.workmate.feature.unitconverter.TimeToolsScreen(navController, categoryName)
             } else if (categoryName == "BMI") {
-                com.moshitech.workmate.feature.unitconverter.BMICalculatorScreen(navController)
+                LaunchedEffect(Unit) {
+                    viewModel.selectCategory(com.moshitech.workmate.feature.unitconverter.UnitCategory.BMI)
+                }
+                com.moshitech.workmate.feature.unitconverter.BMICalculatorScreen(navController, viewModel)
             } else if (categoryName == "SCREEN_PPI") {
                 com.moshitech.workmate.feature.unitconverter.ScreenPPICalculatorScreen(navController)
             } else {

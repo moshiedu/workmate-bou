@@ -80,6 +80,20 @@ class CurrencyRateRepository(context: Context) {
         updatedRates[currencyCode] = rate
         saveRates(updatedRates)
     }
+
+    fun addCurrency(currencyCode: String, rate: Double) {
+        val updatedRates = _currencyRates.value.toMutableMap()
+        updatedRates[currencyCode] = rate
+        saveRates(updatedRates)
+    }
+
+    fun removeCurrency(currencyCode: String) {
+        val updatedRates = _currencyRates.value.toMutableMap()
+        if (updatedRates.containsKey(currencyCode)) {
+            updatedRates.remove(currencyCode)
+            saveRates(updatedRates)
+        }
+    }
     
     fun getRate(currencyCode: String): Double {
         return _currencyRates.value[currencyCode] ?: 1.0

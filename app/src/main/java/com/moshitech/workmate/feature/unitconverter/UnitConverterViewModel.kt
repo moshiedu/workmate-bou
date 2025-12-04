@@ -207,6 +207,13 @@ class UnitConverterViewModel(application: Application) : AndroidViewModel(applic
             calculateConversion()
         }
     }
+    
+    fun addCustomCurrency(currencyCode: String, rate: Double) {
+        currencyRateRepository.addCurrency(currencyCode, rate)
+        if (_selectedCategory.value == UnitCategory.CURRENCY) {
+            calculateConversion()
+        }
+    }
 
     private fun calculateConversion() {
         checkIsFavorite()
@@ -363,9 +370,20 @@ class UnitConverterViewModel(application: Application) : AndroidViewModel(applic
     val isCurrentFavorite: StateFlow<Boolean> = _isCurrentFavorite.asStateFlow()
 
     fun checkIsFavorite() {
+        val category = _selectedCategory.value
+        
+        // For calculator categories (BMI, SCREEN_PPI), use category name as both source and target
+        val isCalculatorCategory = category == UnitCategory.BMI || category == UnitCategory.SCREEN_PPI
+        
+        if (isCalculatorCategory) {
+            viewModelScope.launch {
+                _isCurrentFavorite.value = repository.isFavorite(category, category.name, category.name)
+            }
+            return
+        }
+        
         val source = _sourceUnit.value ?: return
         val target = _targetUnit.value ?: return
-        val category = _selectedCategory.value
 
         viewModelScope.launch {
             _isCurrentFavorite.value = repository.isFavorite(category, source.name, target.name)
@@ -373,9 +391,21 @@ class UnitConverterViewModel(application: Application) : AndroidViewModel(applic
     }
 
     fun toggleFavorite() {
+        val category = _selectedCategory.value
+        
+        // For calculator categories (BMI, SCREEN_PPI), use category name as both source and target
+        val isCalculatorCategory = category == UnitCategory.BMI || category == UnitCategory.SCREEN_PPI
+        
+        if (isCalculatorCategory) {
+            viewModelScope.launch {
+                repository.toggleFavorite(category, category.name, category.name)
+                checkIsFavorite()
+            }
+            return
+        }
+        
         val source = _sourceUnit.value ?: return
         val target = _targetUnit.value ?: return
-        val category = _selectedCategory.value
 
         viewModelScope.launch {
             repository.toggleFavorite(category, source.name, target.name)

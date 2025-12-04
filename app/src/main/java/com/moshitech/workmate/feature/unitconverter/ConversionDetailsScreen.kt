@@ -48,6 +48,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.ui.text.input.KeyboardType
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -193,6 +194,20 @@ fun ConversionDetailsScreen(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
+            
+            // Edit Rates button for Currency category
+            if (selectedCategory == UnitCategory.CURRENCY) {
+                Button(
+                    onClick = { showRateEditor = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+                ) {
+                    Icon(androidx.compose.material.icons.Icons.Default.Edit, "Edit Rates", modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Edit Currency Rates")
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
             
             // DPI Input for Digital Image
             if (selectedCategory == UnitCategory.DIGITAL_IMAGE) {
@@ -368,7 +383,25 @@ fun ConversionDetailsScreen(
                 }
             }
         }
+
+        
+        // Currency Rate Editor Dialog
+        if (showRateEditor) {
+            CurrencyRateEditorDialog(
+                currencyRates = currencyRates,
+                onDismiss = { showRateEditor = false },
+                onUpdateRate = { currency, rate -> viewModel.updateCurrencyRate(currency, rate) },
+                onAddCurrency = { currency, rate -> viewModel.addCustomCurrency(currency, rate) },
+                onResetToDefaults = { viewModel.resetCurrencyRatesToDefaults() },
+                textColor = textColor,
+                secondaryTextColor = secondaryTextColor,
+                cardColor = cardColor,
+                borderColor = borderColor
+            )
+        }
     }
+
+
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -498,6 +531,10 @@ fun UnitDropdown(
                     }
                 }
             }
-        }
+
+
+        
+
+    }
     }
 }

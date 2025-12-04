@@ -5,6 +5,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -21,6 +22,7 @@ fun CurrencyRateEditorDialog(
     currencyRates: Map<String, Double>,
     onDismiss: () -> Unit,
     onUpdateRate: (String, Double) -> Unit,
+    onAddCurrency: (String, Double) -> Unit,
     onResetToDefaults: () -> Unit,
     textColor: Color,
     secondaryTextColor: Color,
@@ -28,6 +30,9 @@ fun CurrencyRateEditorDialog(
     borderColor: Color
 ) {
     var editedRates by remember { mutableStateOf(currencyRates.toMutableMap()) }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var newCurrencyCode by remember { mutableStateOf("") }
+    var newCurrencyRate by remember { mutableStateOf("") }
     
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -74,7 +79,20 @@ fun CurrencyRateEditorDialog(
                     }
                 }
                 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Add Currency Button
+                Button(
+                    onClick = { showAddDialog = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3))
+                ) {
+                    Icon(androidx.compose.material.icons.Icons.Default.Add, "Add Currency", modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Add Custom Currency")
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
                 
                 // Other currencies
                 currencyRates.filter { it.key != "USD" }.entries.sortedBy { it.key }.forEach { (currency, rate) ->
@@ -157,4 +175,63 @@ fun CurrencyRateEditorDialog(
         titleContentColor = textColor,
         textContentColor = secondaryTextColor
     )
+    
+    // Add Currency Dialog
+    if (showAddDialog) {
+        AlertDialog(
+            onDismissRequest = { 
+                showAddDialog = false
+                newCurrencyCode = ""
+                newCurrencyRate = ""
+            },
+            title = { Text("Add Custom Currency") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = newCurrencyCode,
+                        onValueChange = { if (it.length <= 10) newCurrencyCode = it.uppercase() },
+                        label = { Text("Currency Code (e.g., BDT)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newCurrencyRate,
+                        onValueChange = { if (it.all { c -> c.isDigit() || c == '.' }) newCurrencyRate = it },
+                        label = { Text("Rate (1 USD = ?)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val code = newCurrencyCode.trim()
+                        val rate = newCurrencyRate.toDoubleOrNull()
+                        if (code.isNotEmpty() && rate != null && rate > 0) {
+                            onAddCurrency(code, rate)
+                            editedRates[code] = rate
+                            showAddDialog = false
+                            newCurrencyCode = ""
+                            newCurrencyRate = ""
+                        }
+                    },
+                    enabled = newCurrencyCode.trim().isNotEmpty() && newCurrencyRate.toDoubleOrNull() != null
+                ) {
+                    Text("Add")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { 
+                    showAddDialog = false
+                    newCurrencyCode = ""
+                    newCurrencyRate = ""
+                }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }

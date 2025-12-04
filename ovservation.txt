@@ -7,5 +7,5 @@ also some result card like Age calculator Result card, and other tabs card shoul
 
 
 --------------------
-I think not all these are meaningfull to all users, so thats why i think we should give almost all those a guide/help info,
+I think not all these are meaningfull to all users, thats why i think we should give almost all those a guide/help info,
 There are several conversion we have implemented, can we group these as similar group wise?
