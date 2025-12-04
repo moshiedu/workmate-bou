@@ -24,7 +24,18 @@ fun DeviceInfoScreen(
     navController: NavController,
     viewModel: DeviceInfoViewModel = viewModel()
 ) {
-    val isDark = isSystemInDarkTheme()
+    // Read theme from repository
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val repository = remember { com.moshitech.workmate.data.repository.UserPreferencesRepository(context) }
+    val theme by repository.theme.collectAsState(initial = com.moshitech.workmate.data.repository.AppTheme.SYSTEM)
+    
+    // Determine if dark mode should be used
+    val systemDark = isSystemInDarkTheme()
+    val isDark = when (theme) {
+        com.moshitech.workmate.data.repository.AppTheme.LIGHT -> false
+        com.moshitech.workmate.data.repository.AppTheme.DARK -> true
+        com.moshitech.workmate.data.repository.AppTheme.SYSTEM -> systemDark
+    }
     
     val backgroundColor = if (isDark) Color(0xFF0F172A) else Color(0xFFF8F9FA)
     val textColor = if (isDark) Color.White else Color(0xFF111827)

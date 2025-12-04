@@ -51,6 +51,18 @@ class LockScreenActivity : FragmentActivity() {
         lifecycleScope.launch {
             val usePin = repository.usePinAuth.first()
             val useBiometric = repository.useBiometricAuth.first()
+            val theme = repository.theme.first()
+            
+            // Determine if dark mode should be used
+            val systemDark = resources.configuration.uiMode and 
+                android.content.res.Configuration.UI_MODE_NIGHT_MASK == 
+                android.content.res.Configuration.UI_MODE_NIGHT_YES
+            
+            val isDark = when (theme) {
+                com.moshitech.workmate.data.repository.AppTheme.LIGHT -> false
+                com.moshitech.workmate.data.repository.AppTheme.DARK -> true
+                com.moshitech.workmate.data.repository.AppTheme.SYSTEM -> systemDark
+            }
             
             if (useBiometric && savedInstanceState == null) {
                 showBiometricPrompt()
@@ -58,6 +70,7 @@ class LockScreenActivity : FragmentActivity() {
             
             setContent {
                 LockScreenContent(
+                    isDark = isDark,
                     usePin = usePin,
                     useBiometric = useBiometric,
                     onPinEntered = { pin, onError -> verifyAndUnlock(pin, onError) },
@@ -122,19 +135,26 @@ class LockScreenActivity : FragmentActivity() {
 
 @Composable
 fun LockScreenContent(
+    isDark: Boolean,
     usePin: Boolean,
     useBiometric: Boolean,
     onPinEntered: (String, () -> Unit) -> Unit,
     onBiometricRequested: () -> Unit,
     onCancel: () -> Unit
 ) {
+    // Theme-aware colors
+    val overlayColor = if (isDark) Color(0xF0000000) else Color(0xF0FFFFFF)
+    val cardColor = if (isDark) Color(0xFF1E293B) else Color.White
+    val textColor = if (isDark) Color.White else Color(0xFF111827)
+    val secondaryTextColor = if (isDark) Color.White.copy(alpha = 0.7f) else Color(0xFF6B7280)
+    val borderColor = if (isDark) Color.White.copy(alpha = 0.5f) else Color(0xFFE2E8F0)
     var pin by remember { mutableStateOf("") }
     var showError by remember { mutableStateOf(false) }
     
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xF0000000)),
+            .background(overlayColor),
         contentAlignment = Alignment.Center
     ) {
         Card(
@@ -142,7 +162,7 @@ fun LockScreenContent(
                 .fillMaxWidth(0.85f)
                 .padding(24.dp),
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B))
+            colors = CardDefaults.cardColors(containerColor = cardColor)
         ) {
             Column(
                 modifier = Modifier.padding(24.dp),
@@ -161,14 +181,14 @@ fun LockScreenContent(
                     text = "App Locked",
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = textColor
                 )
                 
                 if (usePin) {
                     Text(
                         text = "Enter your PIN to continue",
                         fontSize = 14.sp,
-                        color = Color.White.copy(alpha = 0.7f)
+                        color = secondaryTextColor
                     )
                     
                     Spacer(modifier = Modifier.height(24.dp))
@@ -185,10 +205,12 @@ fun LockScreenContent(
                         singleLine = true,
                         isError = showError,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
+                            focusedTextColor = textColor,
+                            unfocusedTextColor = textColor,
                             focusedBorderColor = Color(0xFF3B82F6),
-                            unfocusedBorderColor = Color.White.copy(alpha = 0.5f)
+                            unfocusedBorderColor = borderColor,
+                            focusedLabelColor = secondaryTextColor,
+                            unfocusedLabelColor = secondaryTextColor
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -222,7 +244,7 @@ fun LockScreenContent(
                     Text(
                         text = "Authentication Required",
                         fontSize = 14.sp,
-                        color = Color.White.copy(alpha = 0.7f)
+                        color = secondaryTextColor
                     )
                     Spacer(modifier = Modifier.height(24.dp))
                 }
@@ -242,7 +264,7 @@ fun LockScreenContent(
                     onClick = onCancel,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Cancel", color = Color.White.copy(alpha = 0.7f))
+                    Text("Cancel", color = secondaryTextColor)
                 }
             }
         }

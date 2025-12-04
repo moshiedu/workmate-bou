@@ -25,10 +25,22 @@ import com.moshitech.workmate.feature.deviceinfo.data.models.TestStatus
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TestsScreen(
-    navController: NavController,
-    isDark: Boolean
+    navController: NavController
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    
+    // Read theme from repository
+    val repository = remember { com.moshitech.workmate.data.repository.UserPreferencesRepository(context) }
+    val theme by repository.theme.collectAsState(initial = com.moshitech.workmate.data.repository.AppTheme.SYSTEM)
+    
+    // Determine if dark mode should be used
+    val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
+    val isDark = when (theme) {
+        com.moshitech.workmate.data.repository.AppTheme.LIGHT -> false
+        com.moshitech.workmate.data.repository.AppTheme.DARK -> true
+        com.moshitech.workmate.data.repository.AppTheme.SYSTEM -> systemDark
+    }
+    
     val testExecutor = remember { com.moshitech.workmate.feature.deviceinfo.testing.HardwareTestExecutor(context) }
     
     // Use ViewModel

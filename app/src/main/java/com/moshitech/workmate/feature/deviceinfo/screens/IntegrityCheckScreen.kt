@@ -31,9 +31,21 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun IntegrityCheckScreen(
-    navController: NavController,
-    isDark: Boolean = true
+    navController: NavController
 ) {
+    // Read theme from repository
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val repository = remember { com.moshitech.workmate.data.repository.UserPreferencesRepository(context) }
+    val theme by repository.theme.collectAsState(initial = com.moshitech.workmate.data.repository.AppTheme.SYSTEM)
+    
+    // Determine if dark mode should be used
+    val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
+    val isDark = when (theme) {
+        com.moshitech.workmate.data.repository.AppTheme.LIGHT -> false
+        com.moshitech.workmate.data.repository.AppTheme.DARK -> true
+        com.moshitech.workmate.data.repository.AppTheme.SYSTEM -> systemDark
+    }
+    
     val viewModel: IntegrityCheckViewModel = viewModel()
     val isScanning by viewModel.isScanning.collectAsState()
     val scanResult by viewModel.scanResult.collectAsState()
@@ -44,7 +56,6 @@ fun IntegrityCheckScreen(
 
     var showScheduleSheet by remember { mutableStateOf(false) }
     var scheduleRefreshTrigger by remember { mutableStateOf(0) }
-    val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(Unit) {
         viewModel.startScan()

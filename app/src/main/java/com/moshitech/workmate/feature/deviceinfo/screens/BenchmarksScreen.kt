@@ -33,18 +33,30 @@ import kotlinx.coroutines.withContext
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BenchmarksScreen(
-    navController: NavController,
-    isDark: Boolean = true
+    navController: NavController
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    
+    // Read theme from repository
+    val userPreferencesRepository = remember { com.moshitech.workmate.data.repository.UserPreferencesRepository(context) }
+    val theme by userPreferencesRepository.theme.collectAsState(initial = com.moshitech.workmate.data.repository.AppTheme.SYSTEM)
+    
+    // Determine if dark mode should be used
+    val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
+    val isDark = when (theme) {
+        com.moshitech.workmate.data.repository.AppTheme.LIGHT -> false
+        com.moshitech.workmate.data.repository.AppTheme.DARK -> true
+        com.moshitech.workmate.data.repository.AppTheme.SYSTEM -> systemDark
+    }
+    
     val backgroundColor = if (isDark) Color(0xFF0F172A) else Color(0xFFF8F9FA)
     val cardColor = if (isDark) Color(0xFF1E293B) else Color.White
     val textColor = if (isDark) Color.White else Color(0xFF111827)
     val subtitleColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF6B7280)
 
     // Initialize repository
-    val repository = remember {
+    val benchmarkRepository = remember {
         val database = AppDatabase.getDatabase(context)
         BenchmarkRepository(database.benchmarkHistoryDao())
     }
@@ -252,7 +264,7 @@ fun BenchmarksScreen(
                         
                         // Save to database
                         withContext(Dispatchers.IO) {
-                            repository.saveResult(
+                            benchmarkRepository.saveResult(
                                 cpuSingleCore = cpuRes.singleCoreScore,
                                 cpuMultiCore = cpuRes.multiCoreScore,
                                 gpuFps = gpuRes.averageFps,

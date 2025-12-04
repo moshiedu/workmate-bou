@@ -145,10 +145,7 @@ fun WorkmateNavigation(
             com.moshitech.workmate.feature.deviceinfo.screens.BenchmarkTrendsScreen(navController)
         }
         composable(Screen.Tests.route) {
-            com.moshitech.workmate.feature.deviceinfo.screens.TestsScreen(
-                navController = navController,
-                isDark = isSystemInDarkTheme()
-            )
+            com.moshitech.workmate.feature.deviceinfo.screens.TestsScreen(navController)
         }
         composable(Screen.BacklightTest.route) {
             com.moshitech.workmate.feature.deviceinfo.testing.screens.BacklightTestScreen(navController) { passed ->
@@ -272,10 +269,10 @@ fun WorkmateNavigation(
             com.moshitech.workmate.feature.widgets.WidgetsScreen(navController)
         }
         composable(Screen.PermissionsExplorer.route) {
-            com.moshitech.workmate.feature.deviceinfo.screens.PermissionsExplorerScreen(navController, isSystemInDarkTheme())
+            com.moshitech.workmate.feature.deviceinfo.screens.PermissionsExplorerScreen(navController)
         }
         composable(Screen.IntegrityCheck.route) {
-            com.moshitech.workmate.feature.deviceinfo.screens.IntegrityCheckScreen(navController, isSystemInDarkTheme())
+            com.moshitech.workmate.feature.deviceinfo.screens.IntegrityCheckScreen(navController)
         }
 //        composable(Screen.SpeedTest.route) {
 //            com.moshitech.workmate.feature.speedtest.SpeedTestScreen(navController, mainViewModel = mainViewModel)
