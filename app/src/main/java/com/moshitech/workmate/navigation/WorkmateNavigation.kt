@@ -105,7 +105,10 @@ fun WorkmateNavigation(
                 }
                 com.moshitech.workmate.feature.unitconverter.BMICalculatorScreen(navController, viewModel)
             } else if (categoryName == "SCREEN_PPI") {
-                com.moshitech.workmate.feature.unitconverter.ScreenPPICalculatorScreen(navController)
+                LaunchedEffect(Unit) {
+                    viewModel.selectCategory(com.moshitech.workmate.feature.unitconverter.UnitCategory.SCREEN_PPI)
+                }
+                com.moshitech.workmate.feature.unitconverter.ScreenPPICalculatorScreen(navController, viewModel)
             } else {
                 com.moshitech.workmate.feature.unitconverter.ConversionDetailsScreen(navController, categoryName)
             }

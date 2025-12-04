@@ -10,6 +10,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,14 +21,22 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import kotlin.math.sqrt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScreenPPICalculatorScreen(
-    navController: NavController
+    navController: NavController,
+    viewModel: UnitConverterViewModel = viewModel()
 ) {
+    val isFavorite by viewModel.isCurrentFavorite.collectAsState()
+    
+    // Select SCREEN_PPI category when screen loads
+    LaunchedEffect(Unit) {
+        viewModel.selectCategory(UnitCategory.SCREEN_PPI)
+    }
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val backgroundColor = if (isDark) Color(0xFF0F172A) else Color(0xFFF8F9FA)
     val textColor = if (isDark) Color.White else Color(0xFF111827)
@@ -89,6 +99,13 @@ fun ScreenPPICalculatorScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { viewModel.toggleFavorite() }) {
+                        Icon(
+                            imageVector = if (isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                            contentDescription = "Favorite",
+                            tint = if (isFavorite) primaryBlue else textColor
+                        )
+                    }
                     IconButton(onClick = { showInfoDialog = true }) {
                         Icon(Icons.Default.Info, "Info", tint = textColor)
                     }
@@ -259,6 +276,19 @@ fun ScreenPPICalculatorScreen(
                                             color = primaryBlue
                                         )
                                     }
+
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    // Copy and Share buttons
+                                    val resultText = "PPI: %.1f, Aspect Ratio: %s, Total Pixels: %.2f MP".format(
+                                        ppi,
+                                        aspectRatio ?: "-",
+                                        totalPixels ?: 0.0
+                                    )
+                                    CalculatorActions(
+                                        resultText = resultText,
+                                        primaryColor = primaryBlue
+                                    )
 
                                     Spacer(modifier = Modifier.height(16.dp))
                                     Divider(color = borderColor)
