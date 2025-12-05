@@ -6,6 +6,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -23,7 +24,18 @@ fun DeviceInfoScreen(
     navController: NavController,
     viewModel: DeviceInfoViewModel = viewModel()
 ) {
-    val isDark = isSystemInDarkTheme()
+    // Read theme from repository
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val repository = remember { com.moshitech.workmate.data.repository.UserPreferencesRepository(context) }
+    val theme by repository.theme.collectAsState(initial = com.moshitech.workmate.data.repository.AppTheme.SYSTEM)
+    
+    // Determine if dark mode should be used
+    val systemDark = isSystemInDarkTheme()
+    val isDark = when (theme) {
+        com.moshitech.workmate.data.repository.AppTheme.LIGHT -> false
+        com.moshitech.workmate.data.repository.AppTheme.DARK -> true
+        com.moshitech.workmate.data.repository.AppTheme.SYSTEM -> systemDark
+    }
     
     val backgroundColor = if (isDark) Color(0xFF0F172A) else Color(0xFFF8F9FA)
     val textColor = if (isDark) Color.White else Color(0xFF111827)
@@ -40,6 +52,11 @@ fun DeviceInfoScreen(
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.Default.ArrowBack, "Back", tint = textColor)
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { navController.navigate(com.moshitech.workmate.navigation.Screen.Settings.route) }) {
+                        Icon(androidx.compose.material.icons.Icons.Default.Settings, "Settings", tint = textColor)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)

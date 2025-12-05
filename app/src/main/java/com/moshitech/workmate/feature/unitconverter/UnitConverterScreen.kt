@@ -4,7 +4,7 @@ package com.moshitech.workmate.feature.unitconverter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -78,7 +79,7 @@ fun UnitConverterScreen(
     navController: NavController,
     viewModel: UnitConverterViewModel = viewModel()
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val viewMode by viewModel.viewMode.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val categories by viewModel.categories.collectAsState()
@@ -131,6 +132,13 @@ fun UnitConverterScreen(
                             tint = textColor
                         )
                     }
+                    IconButton(onClick = { navController.navigate(com.moshitech.workmate.navigation.Screen.Settings.route) }) {
+                        Icon(
+                            imageVector = androidx.compose.material.icons.Icons.Default.Settings,
+                            contentDescription = "Settings",
+                            tint = textColor
+                        )
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)
             )
@@ -157,31 +165,36 @@ fun UnitConverterScreen(
                     OutlinedTextField(
                         value = searchQuery,
                         onValueChange = { viewModel.onSearchQueryChanged(it) },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
                         placeholder = {
                             Text(
                                 "Search units or categories",
-                                color = secondaryTextColor
+                                color = secondaryTextColor,
+                                style = MaterialTheme.typography.bodyMedium
                             )
                         },
                         leadingIcon = {
                             Icon(
                                 Icons.Default.Search,
                                 contentDescription = "Search",
-                                tint = secondaryTextColor
+                                tint = secondaryTextColor,
+                                modifier = Modifier.size(20.dp)
                             )
                         },
-                        shape = RoundedCornerShape(24.dp),
+                        shape = RoundedCornerShape(16.dp),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedContainerColor = if (isDark) Color(0xFF1E293B) else Color.White,
                             unfocusedContainerColor = if (isDark) Color(0xFF1E293B) else Color.White,
-                            focusedBorderColor = borderColor,
+                            focusedBorderColor = primaryBlue,
                             unfocusedBorderColor = borderColor,
                             cursorColor = primaryBlue,
                             focusedTextColor = textColor,
                             unfocusedTextColor = textColor
                         ),
-                        singleLine = true
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyMedium
                     )
                 }
             }
@@ -232,47 +245,45 @@ fun UnitConverterScreen(
                             items(favorites) { favorite ->
                                 Card(
                                     modifier = Modifier
-                                        .width(150.dp)
-                                        .height(75.dp)
+                                        .width(140.dp)
+                                        .height(60.dp)
                                         .clickable { navController.navigate("unit_conversion_details/${favorite.category.name}") },
                                     colors = CardDefaults.cardColors(containerColor = cardColor),
                                     shape = RoundedCornerShape(12.dp),
                                     border = androidx.compose.foundation.BorderStroke(
-                                        1.dp,
-                                        borderColor
+                                        2.dp,
+                                        favorite.category.accentColor.copy(alpha = 0.5f)
                                     ),
-                                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                                 ) {
-                                    Column(
+                                    Row(
                                         modifier = Modifier
-                                            .padding(12.dp)
+                                            .padding(10.dp)
                                             .fillMaxSize(),
-                                        verticalArrangement = Arrangement.SpaceBetween
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Icon(
-                                                imageVector = favorite.category.icon,
-                                                contentDescription = null,
-                                                tint = favorite.category.accentColor,
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                            Icon(
-                                                imageVector = Icons.Default.Star,
-                                                contentDescription = null,
-                                                tint = primaryBlue,
-                                                modifier = Modifier.size(20.dp)
+                                        Icon(
+                                            imageVector = favorite.category.icon,
+                                            contentDescription = null,
+                                            tint = favorite.category.accentColor,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "${favorite.fromUnit} → ${favorite.toUnit}",
+                                                style = MaterialTheme.typography.bodySmall.copy(
+                                                    fontWeight = FontWeight.SemiBold
+                                                ),
+                                                color = textColor,
+                                                maxLines = 1
                                             )
                                         }
-                                        Text(
-                                            text = "${favorite.fromUnit} to ${favorite.toUnit}",
-                                            style = MaterialTheme.typography.bodySmall.copy(
-                                                fontWeight = FontWeight.Medium
-                                            ),
-                                            color = textColor,
-                                            maxLines = 1
+                                        Icon(
+                                            imageVector = Icons.Default.Star,
+                                            contentDescription = null,
+                                            tint = Color(0xFFFACC15),
+                                            modifier = Modifier.size(16.dp)
                                         )
                                     }
                                 }
@@ -321,8 +332,8 @@ fun UnitConverterScreen(
                             items(history.take(10)) { item ->
                                 Card(
                                     modifier = Modifier
-                                        .width(180.dp)
-                                        .height(80.dp)
+                                        .width(160.dp)
+                                        .height(65.dp)
                                         .combinedClickable(
                                             onClick = { navController.navigate("unit_conversion_details/${item.category}?from=${item.fromUnit}&to=${item.toUnit}") },
                                             onLongClick = {
@@ -333,14 +344,19 @@ fun UnitConverterScreen(
                                     colors = CardDefaults.cardColors(containerColor = cardColor),
                                     shape = RoundedCornerShape(12.dp),
                                     border = androidx.compose.foundation.BorderStroke(
-                                        1.dp,
-                                        borderColor
+                                        2.dp,
+                                        androidx.compose.ui.graphics.Brush.horizontalGradient(
+                                            colors = listOf(
+                                                Color(0xFF3B82F6),
+                                                Color(0xFF8B5CF6)
+                                            )
+                                        )
                                     ),
-                                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                                 ) {
                                     Column(
                                         modifier = Modifier
-                                            .padding(12.dp)
+                                            .padding(10.dp)
                                             .fillMaxSize(),
                                         verticalArrangement = Arrangement.SpaceBetween
                                     ) {
@@ -352,8 +368,8 @@ fun UnitConverterScreen(
                                         )
                                         Text(
                                             text = "${item.inputValue} ${item.fromUnit}",
-                                            style = MaterialTheme.typography.bodyMedium.copy(
-                                                fontWeight = FontWeight.Medium
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontWeight = FontWeight.SemiBold
                                             ),
                                             color = textColor,
                                             maxLines = 1
@@ -365,7 +381,7 @@ fun UnitConverterScreen(
                                                 imageVector = androidx.compose.material.icons.Icons.Default.ArrowForward,
                                                 contentDescription = null,
                                                 tint = primaryBlue,
-                                                modifier = Modifier.size(14.dp)
+                                                modifier = Modifier.size(12.dp)
                                             )
                                             Spacer(modifier = Modifier.width(4.dp))
                                             Text(
@@ -409,68 +425,97 @@ fun UnitConverterScreen(
                     }
                 }
 
-                // Grid Items (as Rows of 2)
-                items(categories.chunked(2)) { rowCategories ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        for (category in rowCategories) {
-                            var isPressed by remember { mutableStateOf(false) }
-                            val scale by animateFloatAsState(
-                                targetValue = if (isPressed) 0.95f else 1f,
-                                animationSpec = spring(
-                                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                                    stiffness = Spring.StiffnessLow
-                                ),
-                                label = "card_scale"
-                            )
-
-                            Card(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(60.dp)
-                                    .scale(scale)
-                                    .clickable {
-                                        isPressed = true
-                                        navController.navigate("unit_conversion_details/${category.name}")
-                                    },
-                                colors = CardDefaults.cardColors(containerColor = cardColor),
-                                shape = RoundedCornerShape(12.dp),
-                                border = androidx.compose.foundation.BorderStroke(
-                                    1.dp,
-                                    category.accentColor.copy(alpha = 0.3f)
-                                ),
-                                elevation = CardDefaults.cardElevation(
-                                    defaultElevation = if (isPressed) 4.dp else 1.dp
-                                )
-                            ) {
-                                Row(
+                // Grid Items (as Rows of 2) or List Items
+                if (viewMode == com.moshitech.workmate.repository.UserPreferencesRepository.ViewMode.GRID) {
+                    items(categories.chunked(2)) { rowCategories ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            for (category in rowCategories) {
+                                Card(
                                     modifier = Modifier
-                                        .padding(horizontal = 16.dp)
-                                        .fillMaxSize(),
-                                    verticalAlignment = Alignment.CenterVertically
+                                        .weight(1f)
+                                        .height(48.dp)
+                                        .clickable {
+                                            navController.navigate("unit_conversion_details/${category.name}")
+                                        },
+                                    colors = CardDefaults.cardColors(containerColor = cardColor),
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.5.dp,
+                                        category.accentColor.copy(alpha = 0.6f)
+                                    ),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = category.icon,
-                                        contentDescription = null,
-                                        tint = category.accentColor,
-                                        modifier = Modifier.size(28.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(16.dp))
-                                    Text(
-                                        text = category.title,
-                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                        color = textColor
-                                    )
+                                    Row(
+                                        modifier = Modifier
+                                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                                            .fillMaxSize(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = category.icon,
+                                            contentDescription = null,
+                                            tint = category.accentColor,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Text(
+                                            text = category.title,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = textColor,
+                                            maxLines = 1
+                                        )
+                                    }
                                 }
                             }
+                            if (rowCategories.size == 1) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
                         }
-                        if (rowCategories.size == 1) {
-                            Spacer(modifier = Modifier.weight(1f))
-                        }
+                        Spacer(modifier = Modifier.height(8.dp))
                     }
-                    Spacer(modifier = Modifier.height(12.dp))
+                } else {
+                    // List View - Compact Modern Style
+                    items(categories) { category ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .clickable {
+                                    navController.navigate("unit_conversion_details/${category.name}")
+                                },
+                            colors = CardDefaults.cardColors(containerColor = cardColor),
+                            shape = RoundedCornerShape(8.dp),
+                            border = androidx.compose.foundation.BorderStroke(
+                                0.5.dp,
+                                borderColor
+                            ),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                                    .fillMaxSize(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = category.icon,
+                                    contentDescription = null,
+                                    tint = category.accentColor,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = category.title,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = textColor
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
                 }
             }
 

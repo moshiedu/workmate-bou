@@ -15,10 +15,14 @@ import com.moshitech.workmate.feature.unitconverter.repository.UnitConverterRepo
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlin.math.pow
 
 class UnitConverterViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: UnitConverterRepository by lazy { UnitConverterRepository(application) }
+    private val currencyRateRepository: com.moshitech.workmate.feature.unitconverter.repository.CurrencyRateRepository by lazy {
+        com.moshitech.workmate.feature.unitconverter.repository.CurrencyRateRepository(application)
+    }
     private val preferencesRepository: com.moshitech.workmate.repository.UserPreferencesRepository by lazy { 
         com.moshitech.workmate.repository.UserPreferencesRepository(application) 
     }
@@ -101,6 +105,14 @@ class UnitConverterViewModel(application: Application) : AndroidViewModel(applic
     
     private val _dpiValue = MutableStateFlow("72") // Default DPI
     val dpiValue: StateFlow<String> = _dpiValue.asStateFlow()
+    
+    private val _baseFontSize = MutableStateFlow("16") // Default base font size (browser standard)
+    val baseFontSize: StateFlow<String> = _baseFontSize.asStateFlow()
+    
+    private val _exchangeRate = MutableStateFlow("1.0") // Default exchange rate
+    val exchangeRate: StateFlow<String> = _exchangeRate.asStateFlow()
+    
+    val currencyRates: StateFlow<Map<String, Double>> = currencyRateRepository.currencyRates
 
     private val _availableUnits = MutableStateFlow<List<ConversionUnit>>(emptyList())
     val availableUnits: StateFlow<List<ConversionUnit>> = _availableUnits.asStateFlow()
@@ -150,6 +162,20 @@ class UnitConverterViewModel(application: Application) : AndroidViewModel(applic
             calculateConversion()
         }
     }
+    
+    fun onBaseFontSizeChanged(value: String) {
+        if (value.all { it.isDigit() || it == '.' }) {
+            _baseFontSize.value = value
+            calculateConversion()
+        }
+    }
+    
+    fun onExchangeRateChanged(value: String) {
+        if (value.all { it.isDigit() || it == '.' }) {
+            _exchangeRate.value = value
+            calculateConversion()
+        }
+    }
 
     fun onSourceUnitChanged(unit: ConversionUnit) {
         _sourceUnit.value = unit
@@ -167,6 +193,27 @@ class UnitConverterViewModel(application: Application) : AndroidViewModel(applic
         _targetUnit.value = temp
         calculateConversion()
     }
+    
+    fun updateCurrencyRate(currencyCode: String, rate: Double) {
+        currencyRateRepository.updateRate(currencyCode, rate)
+        if (_selectedCategory.value == UnitCategory.CURRENCY) {
+            calculateConversion()
+        }
+    }
+    
+    fun resetCurrencyRatesToDefaults() {
+        currencyRateRepository.resetToDefaults()
+        if (_selectedCategory.value == UnitCategory.CURRENCY) {
+            calculateConversion()
+        }
+    }
+    
+    fun addCustomCurrency(currencyCode: String, rate: Double) {
+        currencyRateRepository.addCurrency(currencyCode, rate)
+        if (_selectedCategory.value == UnitCategory.CURRENCY) {
+            calculateConversion()
+        }
+    }
 
     private fun calculateConversion() {
         checkIsFavorite()
@@ -183,6 +230,18 @@ class UnitConverterViewModel(application: Application) : AndroidViewModel(applic
         } else if (category == UnitCategory.DIGITAL_IMAGE) {
             // Special case for Digital Image (Pixel Converter)
             convertDigitalImage(input, source, target)
+        } else if (category == UnitCategory.POWER) {
+            // Special case for Power (dBm is logarithmic)
+            convertPower(input, source, target)
+        } else if (category == UnitCategory.TYPOGRAPHY) {
+            // Special case for Typography (em, rem, % are context-dependent)
+            convertTypography(input, source, target)
+        } else if (category == UnitCategory.MATH_HELPER) {
+            // Special case for Math Helper (Percent/Decimal/Fraction)
+            convertMathHelper(input, source, target)
+        } else if (category == UnitCategory.CURRENCY) {
+            // Special case for Currency (user-defined exchange rate)
+            convertCurrency(input, source, target)
         } else {
             // Standard Linear Conversion
             // Convert to base unit then to target unit
@@ -205,6 +264,78 @@ class UnitConverterViewModel(application: Application) : AndroidViewModel(applic
                 )
             }
         }
+    }
+    
+    private fun convertPower(value: Double, from: ConversionUnit, to: ConversionUnit): Double {
+        // Handle dBm (logarithmic) separately
+        val isDmFrom = from.symbol == "dBm"
+        val isDbmTo = to.symbol == "dBm"
+        
+        return when {
+            isDmFrom && isDbmTo -> value // dBm to dBm
+            isDmFrom -> {
+                // dBm to linear: Convert dBm -> mW -> W -> target
+                val milliwatts = 10.0.pow(value / 10.0)
+                val watts = milliwatts / 1000.0
+                watts / to.factor
+            }
+            isDbmTo -> {
+                // Linear to dBm: Convert source -> W -> mW -> dBm
+                val watts = value * from.factor
+                val milliwatts = watts * 1000.0
+                10.0 * kotlin.math.log10(milliwatts)
+            }
+            else -> {
+                // Standard linear conversion (W, kW, HP, etc.)
+                val baseValue = value * from.factor
+                baseValue / to.factor
+            }
+        }
+    }
+    
+    private fun convertTypography(value: Double, from: ConversionUnit, to: ConversionUnit): Double {
+        val baseFont = _baseFontSize.value.toDoubleOrNull() ?: 16.0
+        
+        // Convert everything to pixels first
+        val pixels = when (from.symbol) {
+            "px" -> value
+            "pt" -> value * 1.333 // 1pt = 1.333px at 96 DPI
+            "em", "rem" -> value * baseFont
+            "%" -> (value / 100.0) * baseFont
+            else -> value
+        }
+        
+        // Convert pixels to target unit
+        return when (to.symbol) {
+            "px" -> pixels
+            "pt" -> pixels / 1.333
+            "em", "rem" -> pixels / baseFont
+            "%" -> (pixels / baseFont) * 100.0
+            else -> pixels
+        }
+    }
+    
+    private fun convertMathHelper(value: Double, from: ConversionUnit, to: ConversionUnit): Double {
+        // Convert to percent first (base unit)
+        val percent = when (from.symbol) {
+            "%" -> value
+            "dec" -> value * 100.0 // 0.5 decimal = 50%
+            "frac" -> value * 100.0 // For now, treat fraction input as decimal
+            else -> value
+        }
+        
+        // Convert from percent to target
+        return when (to.symbol) {
+            "%" -> percent
+            "dec" -> percent / 100.0 // 50% = 0.5 decimal
+            "frac" -> percent / 100.0 // Display as decimal for now
+            else -> percent
+        }
+    }
+    
+    private fun convertCurrency(value: Double, from: ConversionUnit, to: ConversionUnit): Double {
+        // Use stored currency rates from repository
+        return currencyRateRepository.convert(value, from.symbol, to.symbol)
     }
     
     private fun convertTemperature(value: Double, from: ConversionUnit, to: ConversionUnit): Double {
@@ -239,9 +370,20 @@ class UnitConverterViewModel(application: Application) : AndroidViewModel(applic
     val isCurrentFavorite: StateFlow<Boolean> = _isCurrentFavorite.asStateFlow()
 
     fun checkIsFavorite() {
+        val category = _selectedCategory.value
+        
+        // For calculator categories (BMI, SCREEN_PPI), use category name as both source and target
+        val isCalculatorCategory = category == UnitCategory.BMI || category == UnitCategory.SCREEN_PPI
+        
+        if (isCalculatorCategory) {
+            viewModelScope.launch {
+                _isCurrentFavorite.value = repository.isFavorite(category, category.name, category.name)
+            }
+            return
+        }
+        
         val source = _sourceUnit.value ?: return
         val target = _targetUnit.value ?: return
-        val category = _selectedCategory.value
 
         viewModelScope.launch {
             _isCurrentFavorite.value = repository.isFavorite(category, source.name, target.name)
@@ -249,9 +391,21 @@ class UnitConverterViewModel(application: Application) : AndroidViewModel(applic
     }
 
     fun toggleFavorite() {
+        val category = _selectedCategory.value
+        
+        // For calculator categories (BMI, SCREEN_PPI), use category name as both source and target
+        val isCalculatorCategory = category == UnitCategory.BMI || category == UnitCategory.SCREEN_PPI
+        
+        if (isCalculatorCategory) {
+            viewModelScope.launch {
+                repository.toggleFavorite(category, category.name, category.name)
+                checkIsFavorite()
+            }
+            return
+        }
+        
         val source = _sourceUnit.value ?: return
         val target = _targetUnit.value ?: return
-        val category = _selectedCategory.value
 
         viewModelScope.launch {
             repository.toggleFavorite(category, source.name, target.name)

@@ -7,7 +7,7 @@ import android.widget.DatePicker
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -83,7 +83,7 @@ fun TimeToolsScreen(
     viewModel: TimeToolsViewModel = viewModel(),
     unitViewModel: UnitConverterViewModel = viewModel()
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val backgroundColor = if (isDark) Color(0xFF0F172A) else Color(0xFFF8F9FA)
     val textColor = if (isDark) Color.White else Color(0xFF111827)
     val primaryBlue = Color(0xFF1976D2)
@@ -245,7 +245,7 @@ fun TimeToolsScreen(
 
 @Composable
 fun UnitConverterTab(navController: NavController, viewModel: UnitConverterViewModel) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val textColor = if (isDark) Color.White else Color(0xFF111827)
     val secondaryTextColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF6B7280)
     

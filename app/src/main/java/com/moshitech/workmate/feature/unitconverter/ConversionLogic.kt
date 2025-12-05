@@ -3,6 +3,7 @@ package com.moshitech.workmate.feature.unitconverter
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.ElectricBolt
 import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material.icons.filled.DataUsage
 import androidx.compose.material.icons.filled.FitnessCenter
@@ -14,6 +15,11 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.SquareFoot
 import androidx.compose.material.icons.filled.Straighten
+import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Calculate
+import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material.icons.filled.DateRange
@@ -21,6 +27,14 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.MonitorWeight
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Grain
+import androidx.compose.material.icons.filled.RotateRight
+import androidx.compose.material.icons.filled.NetworkCheck
+import androidx.compose.material.icons.filled.Hardware
+import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 
@@ -38,6 +52,21 @@ enum class UnitCategory(val title: String, val icon: ImageVector, val accentColo
     ENERGY("Energy", Icons.Default.Bolt, Color(0xFFFFEB3B)), // Yellow/Gold
     FREQUENCY("Frequency", Icons.Default.Waves, Color(0xFF009688)), // Teal
     DIGITAL_IMAGE("Digital Image", Icons.Default.Image, Color(0xFFE91E63)), // Pink
+    TORQUE("Torque", Icons.Default.Build, Color(0xFF607D8B)), // Blue Grey
+    ACCELERATION("Acceleration", Icons.Default.Speed, Color(0xFFFF5722)), // Deep Orange
+    DENSITY("Density", Icons.Default.Grain, Color(0xFF795548)), // Brown
+    ANGLE("Angle", Icons.Default.RotateRight, Color(0xFF9C27B0)), // Purple
+    DATA_RATE("Data Rate", Icons.Default.NetworkCheck, Color(0xFF4CAF50)), // Green
+    FORCE("Force", Icons.Default.Hardware, Color(0xFF607D8B)), // Blue Grey
+    ILLUMINANCE("Illuminance", Icons.Default.Lightbulb, Color(0xFFFFC107)), // Amber
+    BLOOD_GLUCOSE("Blood Glucose", Icons.Default.WaterDrop, Color(0xFFE53935)), // Red
+    POWER("Power", Icons.Default.ElectricBolt, Color(0xFFFFD700)), // Gold
+    TYPOGRAPHY("Typography", Icons.Default.TextFields, Color(0xFF3F51B5)), // Indigo
+    PAPER_SIZE("Paper Size", Icons.Default.Description, Color(0xFF00BCD4)), // Cyan
+    MATH_HELPER("Math Helper", Icons.Default.Calculate, Color(0xFFFF9800)), // Orange
+    CURRENCY("Currency", Icons.Default.AttachMoney, Color(0xFF4CAF50)), // Green
+    SCREEN_PPI("Screen PPI", Icons.Default.PhoneAndroid, Color(0xFF2196F3)), // Blue
+    BMI("BMI", Icons.Default.MonitorWeight, Color(0xFF00BCD4)), // Cyan
     TIME_DATE_CALC("Date Calc", Icons.Default.DateRange, Color(0xFF1976D2)),
     TIME_DIFFERENCE("Difference", Icons.Default.History, Color(0xFF1976D2)),
     TIME_TIMESTAMP("Timestamp", Icons.Default.Schedule, Color(0xFF1976D2)),
@@ -178,6 +207,116 @@ object ConversionRepository {
                 ConversionUnit("Inch", "in", 0.0), // Factor depends on DPI
                 ConversionUnit("Centimeter", "cm", 0.0), // Factor depends on DPI
                 ConversionUnit("Millimeter", "mm", 0.0) // Factor depends on DPI
+            )
+            UnitCategory.TORQUE -> listOf(
+                ConversionUnit("Newton Meter", "N·m", 1.0),
+                ConversionUnit("Pound-Force Foot", "lbf·ft", 1.355818),
+                ConversionUnit("Pound-Force Inch", "lbf·in", 0.112985),
+                ConversionUnit("Kilogram-Force Meter", "kgf·m", 9.80665)
+            )
+            UnitCategory.ACCELERATION -> listOf(
+                ConversionUnit("Meter/Second²", "m/s²", 1.0),
+                ConversionUnit("Foot/Second²", "ft/s²", 0.3048),
+                ConversionUnit("Standard Gravity", "g", 9.80665),
+                ConversionUnit("Gal", "Gal", 0.01)
+            )
+            UnitCategory.DENSITY -> listOf(
+                ConversionUnit("Kilogram/Cubic Meter", "kg/m³", 1.0),
+                ConversionUnit("Gram/Cubic Centimeter", "g/cm³", 1000.0),
+                ConversionUnit("Pound/Cubic Foot", "lb/ft³", 16.0185),
+                ConversionUnit("Pound/Cubic Inch", "lb/in³", 27679.9)
+            )
+            UnitCategory.ANGLE -> listOf(
+                ConversionUnit("Degree", "°", 1.0),
+                ConversionUnit("Radian", "rad", 57.2958),
+                ConversionUnit("Gradian", "grad", 0.9),
+                ConversionUnit("Arcminute", "′", 0.0166667),
+                ConversionUnit("Arcsecond", "″", 0.000277778)
+            )
+            UnitCategory.DATA_RATE -> listOf(
+                ConversionUnit("Megabit/Second", "Mbps", 1.0),
+                ConversionUnit("Kilobit/Second", "Kbps", 0.001),
+                ConversionUnit("Gigabit/Second", "Gbps", 1000.0),
+                ConversionUnit("Kilobyte/Second", "KB/s", 0.008),
+                ConversionUnit("Megabyte/Second", "MB/s", 8.0),
+                ConversionUnit("Gigabyte/Second", "GB/s", 8000.0)
+            )
+            UnitCategory.FORCE -> listOf(
+                ConversionUnit("Newton", "N", 1.0),
+                ConversionUnit("Kilonewton", "kN", 1000.0),
+                ConversionUnit("Pound-Force", "lbf", 4.44822),
+                ConversionUnit("Kilogram-Force", "kgf", 9.80665),
+                ConversionUnit("Dyne", "dyn", 0.00001)
+            )
+            UnitCategory.ILLUMINANCE -> listOf(
+                ConversionUnit("Lux", "lx", 1.0),
+                ConversionUnit("Foot-Candle", "fc", 10.7639),
+                ConversionUnit("Phot", "ph", 10000.0)
+            )
+            UnitCategory.BLOOD_GLUCOSE -> listOf(
+                ConversionUnit("mg/dL", "mg/dL", 1.0),
+                ConversionUnit("mmol/L", "mmol/L", 18.0) // 1 mmol/L = 18 mg/dL
+            )
+            UnitCategory.POWER -> listOf(
+                ConversionUnit("Watt", "W", 1.0),
+                ConversionUnit("Kilowatt", "kW", 1000.0),
+                ConversionUnit("Megawatt", "MW", 1000000.0),
+                ConversionUnit("Horsepower (Mechanical)", "HP", 745.7),
+                ConversionUnit("Metric Horsepower", "PS", 735.5),
+                ConversionUnit("BTU/Hour", "BTU/h", 0.293071),
+                ConversionUnit("dBm", "dBm", Double.NaN) // Special handling required
+            )
+            UnitCategory.TYPOGRAPHY -> listOf(
+                ConversionUnit("Pixel", "px", 1.0),
+                ConversionUnit("Point", "pt", 1.333), // 1pt = 1.333px at 96 DPI
+                ConversionUnit("Em", "em", Double.NaN), // Context-dependent
+                ConversionUnit("Rem", "rem", Double.NaN), // Context-dependent
+                ConversionUnit("Percent", "%", Double.NaN) // Context-dependent
+            )
+            UnitCategory.PAPER_SIZE -> listOf(
+                // ISO A-Series
+                ConversionUnit("A0", "841×1189 mm", 999679.0), // Area in mm²
+                ConversionUnit("A1", "594×841 mm", 499554.0),
+                ConversionUnit("A2", "420×594 mm", 249480.0),
+                ConversionUnit("A3", "297×420 mm", 124740.0),
+                ConversionUnit("A4", "210×297 mm", 62370.0),
+                ConversionUnit("A5", "148×210 mm", 31080.0),
+                ConversionUnit("A6", "105×148 mm", 15540.0),
+                ConversionUnit("A7", "74×105 mm", 7770.0),
+                // ISO B-Series
+                ConversionUnit("B4", "250×353 mm", 88250.0),
+                ConversionUnit("B5", "176×250 mm", 44000.0),
+                // North American
+                ConversionUnit("Letter", "216×279 mm", 60264.0),
+                ConversionUnit("Legal", "216×356 mm", 76896.0),
+                ConversionUnit("Tabloid", "279×432 mm", 120528.0)
+            )
+            UnitCategory.MATH_HELPER -> listOf(
+                ConversionUnit("Percent", "%", 1.0),
+                ConversionUnit("Decimal", "dec", 100.0), // 1 decimal = 100%
+                ConversionUnit("Fraction", "frac", Double.NaN) // Special handling
+            )
+            UnitCategory.CURRENCY -> listOf(
+                ConversionUnit("US Dollar", "USD", 1.0),
+                ConversionUnit("Euro", "EUR", Double.NaN), // User-defined rate
+                ConversionUnit("British Pound", "GBP", Double.NaN),
+                ConversionUnit("Japanese Yen", "JPY", Double.NaN),
+                ConversionUnit("Chinese Yuan", "CNY", Double.NaN),
+                ConversionUnit("Indian Rupee", "INR", Double.NaN),
+                ConversionUnit("Australian Dollar", "AUD", Double.NaN),
+                ConversionUnit("Canadian Dollar", "CAD", Double.NaN),
+                ConversionUnit("Swiss Franc", "CHF", Double.NaN),
+                ConversionUnit("Hong Kong Dollar", "HKD", Double.NaN),
+                ConversionUnit("Singapore Dollar", "SGD", Double.NaN),
+                ConversionUnit("Swedish Krona", "SEK", Double.NaN),
+                ConversionUnit("South Korean Won", "KRW", Double.NaN),
+                ConversionUnit("Norwegian Krone", "NOK", Double.NaN),
+                ConversionUnit("Mexican Peso", "MXN", Double.NaN),
+                ConversionUnit("Brazilian Real", "BRL", Double.NaN),
+                ConversionUnit("South African Rand", "ZAR", Double.NaN),
+                ConversionUnit("Russian Ruble", "RUB", Double.NaN),
+                ConversionUnit("UAE Dirham", "AED", Double.NaN),
+                ConversionUnit("Saudi Riyal", "SAR", Double.NaN)
             )
             else -> emptyList()
         }

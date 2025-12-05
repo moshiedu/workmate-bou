@@ -1,6 +1,6 @@
 package com.moshitech.workmate.feature.unitconverter
 
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -47,7 +47,7 @@ fun ManageFavoritesScreen(
     navController: NavController,
     viewModel: UnitConverterViewModel = viewModel()
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val backgroundColor = if (isDark) Color(0xFF0F172A) else Color(0xFFF8F9FA)
     val textColor = if (isDark) Color.White else Color(0xFF111827)
     val secondaryTextColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF6B7280)
@@ -99,20 +99,20 @@ fun ManageFavoritesScreen(
                 }
             } else {
                 LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(favorites) { favorite ->
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(containerColor = cardColor),
-                            shape = RoundedCornerShape(12.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, borderColor),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                            shape = RoundedCornerShape(8.dp),
+                            border = androidx.compose.foundation.BorderStroke(0.5.dp, borderColor),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                         ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(16.dp),
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -123,7 +123,7 @@ fun ManageFavoritesScreen(
                                     Icon(
                                         imageVector = favorite.category.icon,
                                         contentDescription = null,
-                                        tint = primaryBlue,
+                                        tint = favorite.category.accentColor,
                                         modifier = Modifier.size(24.dp)
                                     )
                                     Spacer(modifier = Modifier.width(12.dp))
@@ -135,7 +135,7 @@ fun ManageFavoritesScreen(
                                         )
                                         Text(
                                             text = "${favorite.fromUnit} → ${favorite.toUnit}",
-                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                            style = MaterialTheme.typography.bodyMedium,
                                             color = textColor
                                         )
                                     }
@@ -145,12 +145,14 @@ fun ManageFavoritesScreen(
                                         scope.launch {
                                             viewModel.removeFavorite(favorite)
                                         }
-                                    }
+                                    },
+                                    modifier = Modifier.size(36.dp)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Delete,
                                         contentDescription = "Delete",
-                                        tint = Color.Red
+                                        tint = Color.Red.copy(alpha = 0.7f),
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
                             }

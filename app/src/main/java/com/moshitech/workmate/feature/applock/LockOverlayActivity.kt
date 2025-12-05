@@ -22,9 +22,22 @@ class LockOverlayActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        val repository = com.moshitech.workmate.data.repository.UserPreferencesRepository(applicationContext)
+        
         setContent {
+            val theme by repository.theme.collectAsState(initial = com.moshitech.workmate.data.repository.AppTheme.SYSTEM)
+            
+            // Determine if dark mode should be used
+            val systemDark = isSystemInDarkTheme()
+            val isDark = when (theme) {
+                com.moshitech.workmate.data.repository.AppTheme.LIGHT -> false
+                com.moshitech.workmate.data.repository.AppTheme.DARK -> true
+                com.moshitech.workmate.data.repository.AppTheme.SYSTEM -> systemDark
+            }
+            
             WorkmateTheme {
                 LockOverlayScreen(
+                    isDark = isDark,
                     onUnlocked = { finish() }
                 )
             }
@@ -43,10 +56,10 @@ class LockOverlayActivity : ComponentActivity() {
 
 @Composable
 fun LockOverlayScreen(
+    isDark: Boolean,
     onUnlocked: () -> Unit,
     viewModel: AppLockViewModel = viewModel()
 ) {
-    val isDark = isSystemInDarkTheme()
     val backgroundColor = if (isDark) Color(0xFF0F172A) else Color(0xFFF8F9FA)
     val textColor = if (isDark) Color.White else Color(0xFF111827)
     

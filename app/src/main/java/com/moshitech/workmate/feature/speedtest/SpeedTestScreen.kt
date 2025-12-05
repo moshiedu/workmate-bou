@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.Warning
@@ -117,6 +118,9 @@ fun SpeedTestScreen(
                 actions = {
                     IconButton(onClick = { navController.navigate("speed_test_history") }) {
                         Icon(Icons.Default.History, contentDescription = "View History", tint = textColor)
+                    }
+                    IconButton(onClick = { navController.navigate(com.moshitech.workmate.navigation.Screen.Settings.route) }) {
+                        Icon(Icons.Default.Settings, contentDescription = "Settings", tint = textColor)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

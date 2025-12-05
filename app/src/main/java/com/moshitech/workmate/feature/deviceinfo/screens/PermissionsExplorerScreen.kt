@@ -35,9 +35,21 @@ import com.moshitech.workmate.feature.deviceinfo.viewmodel.PermissionStatusFilte
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PermissionsExplorerScreen(
-    navController: NavController,
-    isDark: Boolean = true
+    navController: NavController
 ) {
+    // Read theme from repository
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val repository = remember { com.moshitech.workmate.data.repository.UserPreferencesRepository(context) }
+    val theme by repository.theme.collectAsState(initial = com.moshitech.workmate.data.repository.AppTheme.SYSTEM)
+    
+    // Determine if dark mode should be used
+    val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
+    val isDark = when (theme) {
+        com.moshitech.workmate.data.repository.AppTheme.LIGHT -> false
+        com.moshitech.workmate.data.repository.AppTheme.DARK -> true
+        com.moshitech.workmate.data.repository.AppTheme.SYSTEM -> systemDark
+    }
+    
     val viewModel: PermissionsViewModel = viewModel()
     val permissionGroups by viewModel.permissionGroups.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()

@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
@@ -28,22 +29,34 @@ import java.util.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BenchmarkResultsScreen(
-    navController: NavController,
-    isDark: Boolean = true
+    navController: NavController
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    
+    // Read theme from repository
+    val userPreferencesRepository = remember { com.moshitech.workmate.data.repository.UserPreferencesRepository(context) }
+    val theme by userPreferencesRepository.theme.collectAsState(initial = com.moshitech.workmate.data.repository.AppTheme.SYSTEM)
+    
+    // Determine if dark mode should be used
+    val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
+    val isDark = when (theme) {
+        com.moshitech.workmate.data.repository.AppTheme.LIGHT -> false
+        com.moshitech.workmate.data.repository.AppTheme.DARK -> true
+        com.moshitech.workmate.data.repository.AppTheme.SYSTEM -> systemDark
+    }
+    
     val backgroundColor = if (isDark) Color(0xFF0F172A) else Color(0xFFF8F9FA)
     val cardColor = if (isDark) Color(0xFF1E293B) else Color.White
     val textColor = if (isDark) Color.White else Color(0xFF111827)
     val subtitleColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF6B7280)
 
-    val repository = remember {
+    val benchmarkRepository = remember {
         val database = AppDatabase.getDatabase(context)
         BenchmarkRepository(database.benchmarkHistoryDao())
     }
 
-    val historyList by repository.getAllHistory().collectAsState(initial = emptyList())
+    val historyList by benchmarkRepository.getAllHistory().collectAsState(initial = emptyList())
     var showExportDialog by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -53,7 +66,7 @@ fun BenchmarkResultsScreen(
                 title = { Text("Benchmark History", fontWeight = FontWeight.Bold, color = textColor) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, "Back", tint = textColor)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = textColor)
                     }
                 },
                 actions = {
@@ -66,7 +79,7 @@ fun BenchmarkResultsScreen(
                         }
                         IconButton(onClick = {
                             scope.launch {
-                                repository.deleteAll()
+                                benchmarkRepository.deleteAll()
                             }
                         }) {
                             Icon(Icons.Default.Delete, "Clear All", tint = textColor)
@@ -106,7 +119,7 @@ fun BenchmarkResultsScreen(
                         subtitleColor = subtitleColor,
                         onDelete = {
                             scope.launch {
-                                repository.deleteById(result.id)
+                                benchmarkRepository.deleteById(result.id)
                             }
                         }
                     )
@@ -124,7 +137,7 @@ fun BenchmarkResultsScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(onClick = {
                             scope.launch {
-                                val csv = repository.exportToCsv()
+                                val csv = benchmarkRepository.exportToCsv()
                                 shareText(context, csv, "benchmark_results.csv", "text/csv")
                                 showExportDialog = false
                             }
@@ -133,7 +146,7 @@ fun BenchmarkResultsScreen(
                         }
                         TextButton(onClick = {
                             scope.launch {
-                                val json = repository.exportToJson()
+                                val json = benchmarkRepository.exportToJson()
                                 shareText(context, json, "benchmark_results.json", "application/json")
                                 showExportDialog = false
                             }

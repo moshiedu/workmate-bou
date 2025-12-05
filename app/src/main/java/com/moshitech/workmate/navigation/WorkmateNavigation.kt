@@ -9,6 +9,7 @@ import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -84,7 +85,7 @@ fun WorkmateNavigation(
             HomeScreen(navController = navController)
         }
         composable(Screen.PhotoConversion.route) {
-             PhotoConversionScreen()
+             PhotoConversionScreen(navController = navController)
         }
         composable(Screen.UnitConversion.route) {
              UnitConverterScreen(navController = navController)
@@ -94,8 +95,20 @@ fun WorkmateNavigation(
             arguments = listOf(androidx.navigation.navArgument("categoryName") { type = androidx.navigation.NavType.StringType })
         ) { backStackEntry ->
             val categoryName = backStackEntry.arguments?.getString("categoryName") ?: "LENGTH"
+            val viewModel: com.moshitech.workmate.feature.unitconverter.UnitConverterViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+            
             if (categoryName == "TIME" || categoryName.startsWith("TIME_")) {
                 com.moshitech.workmate.feature.unitconverter.TimeToolsScreen(navController, categoryName)
+            } else if (categoryName == "BMI") {
+                LaunchedEffect(Unit) {
+                    viewModel.selectCategory(com.moshitech.workmate.feature.unitconverter.UnitCategory.BMI)
+                }
+                com.moshitech.workmate.feature.unitconverter.BMICalculatorScreen(navController, viewModel)
+            } else if (categoryName == "SCREEN_PPI") {
+                LaunchedEffect(Unit) {
+                    viewModel.selectCategory(com.moshitech.workmate.feature.unitconverter.UnitCategory.SCREEN_PPI)
+                }
+                com.moshitech.workmate.feature.unitconverter.ScreenPPICalculatorScreen(navController, viewModel)
             } else {
                 com.moshitech.workmate.feature.unitconverter.ConversionDetailsScreen(navController, categoryName)
             }
@@ -132,10 +145,7 @@ fun WorkmateNavigation(
             com.moshitech.workmate.feature.deviceinfo.screens.BenchmarkTrendsScreen(navController)
         }
         composable(Screen.Tests.route) {
-            com.moshitech.workmate.feature.deviceinfo.screens.TestsScreen(
-                navController = navController,
-                isDark = isSystemInDarkTheme()
-            )
+            com.moshitech.workmate.feature.deviceinfo.screens.TestsScreen(navController)
         }
         composable(Screen.BacklightTest.route) {
             com.moshitech.workmate.feature.deviceinfo.testing.screens.BacklightTestScreen(navController) { passed ->
@@ -259,10 +269,10 @@ fun WorkmateNavigation(
             com.moshitech.workmate.feature.widgets.WidgetsScreen(navController)
         }
         composable(Screen.PermissionsExplorer.route) {
-            com.moshitech.workmate.feature.deviceinfo.screens.PermissionsExplorerScreen(navController, isSystemInDarkTheme())
+            com.moshitech.workmate.feature.deviceinfo.screens.PermissionsExplorerScreen(navController)
         }
         composable(Screen.IntegrityCheck.route) {
-            com.moshitech.workmate.feature.deviceinfo.screens.IntegrityCheckScreen(navController, isSystemInDarkTheme())
+            com.moshitech.workmate.feature.deviceinfo.screens.IntegrityCheckScreen(navController)
         }
 //        composable(Screen.SpeedTest.route) {
 //            com.moshitech.workmate.feature.speedtest.SpeedTestScreen(navController, mainViewModel = mainViewModel)
