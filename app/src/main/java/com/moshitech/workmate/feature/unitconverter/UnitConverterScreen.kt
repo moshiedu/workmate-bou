@@ -85,6 +85,9 @@ fun UnitConverterScreen(
     val categories by viewModel.categories.collectAsState()
     val favorites by viewModel.favorites.collectAsState()
     val history by viewModel.history.collectAsState()
+    
+    // Help dialog state
+    val selectedHelpCategory by viewModel.selectedHelpCategory.collectAsState()
 
     // Quick edit state
     var showQuickEditSheet by remember { mutableStateOf(false) }
@@ -531,6 +534,15 @@ fun UnitConverterScreen(
                     cardColor = cardColor,
                     borderColor = borderColor,
                     primaryBlue = primaryBlue
+                )
+            }
+            
+            // Help Dialog
+            selectedHelpCategory?.let { category ->
+                CategoryHelpDialog(
+                    help = CategoryHelpRepository.getHelpForCategory(category),
+                    onDismiss = { viewModel.dismissHelpDialog() },
+                    isDark = isDark
                 )
             }
         }

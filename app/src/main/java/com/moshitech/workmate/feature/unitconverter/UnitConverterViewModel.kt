@@ -117,6 +117,41 @@ class UnitConverterViewModel(application: Application) : AndroidViewModel(applic
     private val _availableUnits = MutableStateFlow<List<ConversionUnit>>(emptyList())
     val availableUnits: StateFlow<List<ConversionUnit>> = _availableUnits.asStateFlow()
 
+    // Grouping and Help State
+    private val _showGroupedView = MutableStateFlow(false)
+    val showGroupedView: StateFlow<Boolean> = _showGroupedView.asStateFlow()
+    
+    private val _expandedGroups = MutableStateFlow<Set<CategoryGroup>>(emptySet())
+    val expandedGroups: StateFlow<Set<CategoryGroup>> = _expandedGroups.asStateFlow()
+    
+    private val _selectedHelpCategory = MutableStateFlow<UnitCategory?>(null)
+    val selectedHelpCategory: StateFlow<UnitCategory?> = _selectedHelpCategory.asStateFlow()
+    
+    val groupedCategories: StateFlow<Map<CategoryGroup, List<UnitCategory>>> = 
+        MutableStateFlow(CategoryGroup.getAllGroupedCategories()).asStateFlow()
+    
+    fun toggleGroupedView() {
+        _showGroupedView.value = !_showGroupedView.value
+    }
+    
+    fun toggleGroupExpansion(group: CategoryGroup) {
+        val current = _expandedGroups.value.toMutableSet()
+        if (group in current) {
+            current.remove(group)
+        } else {
+            current.add(group)
+        }
+        _expandedGroups.value = current
+    }
+    
+    fun showHelpDialog(category: UnitCategory) {
+        _selectedHelpCategory.value = category
+    }
+    
+    fun dismissHelpDialog() {
+        _selectedHelpCategory.value = null
+    }
+
     fun onSearchQueryChanged(query: String) {
         _searchQuery.value = query
         if (query.isEmpty()) {

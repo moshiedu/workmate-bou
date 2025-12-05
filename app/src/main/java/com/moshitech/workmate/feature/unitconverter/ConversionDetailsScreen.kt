@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -109,6 +110,13 @@ fun ConversionDetailsScreen(
                             imageVector = if (isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
                             contentDescription = "Favorite",
                             tint = if (isFavorite) primaryBlue else textColor
+                        )
+                    }
+                    IconButton(onClick = { viewModel.showHelpDialog(selectedCategory) }) {
+                        Icon(
+                            imageVector = androidx.compose.material.icons.Icons.Default.Info,
+                            contentDescription = "Info",
+                            tint = textColor
                         )
                     }
                 }
@@ -384,6 +392,15 @@ fun ConversionDetailsScreen(
             }
         }
 
+        // Help Dialog
+        val selectedHelpCategory by viewModel.selectedHelpCategory.collectAsState()
+        selectedHelpCategory?.let { category ->
+            CategoryHelpDialog(
+                help = CategoryHelpRepository.getHelpForCategory(category),
+                onDismiss = { viewModel.dismissHelpDialog() },
+                isDark = isDark
+            )
+        }
         
         // Currency Rate Editor Dialog
         if (showRateEditor) {
