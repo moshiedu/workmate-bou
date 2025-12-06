@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.Box
@@ -67,6 +68,7 @@ sealed class Screen(val route: String) {
     object IntegrityCheck : Screen("integrity_check")
     object SpeedTest : Screen("speed_test")
     object SpeedTestHistory : Screen("speed_test_history")
+    object DocumentScanner : Screen("scanner_graph")
 }
 
 @Composable

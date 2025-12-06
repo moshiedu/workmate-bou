@@ -92,6 +92,9 @@ dependencies {
     implementation(libs.camerax.lifecycle)
     implementation(libs.camerax.view)
     
+    // PDF Generation
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+    
     // Gson for JSON serialization
     implementation("com.google.code.gson:gson:2.10.1")
 }

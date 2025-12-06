@@ -43,10 +43,13 @@ class UnitConverterViewModel(application: Application) : AndroidViewModel(applic
     
     fun toggleViewMode() {
         viewModelScope.launch {
-            val newMode = if (viewMode.value == com.moshitech.workmate.repository.UserPreferencesRepository.ViewMode.GRID) {
-                com.moshitech.workmate.repository.UserPreferencesRepository.ViewMode.LIST
-            } else {
-                com.moshitech.workmate.repository.UserPreferencesRepository.ViewMode.GRID
+            val newMode = when (viewMode.value) {
+                com.moshitech.workmate.repository.UserPreferencesRepository.ViewMode.GRID -> 
+                    com.moshitech.workmate.repository.UserPreferencesRepository.ViewMode.LIST
+                com.moshitech.workmate.repository.UserPreferencesRepository.ViewMode.LIST -> 
+                    com.moshitech.workmate.repository.UserPreferencesRepository.ViewMode.GROUPED
+                com.moshitech.workmate.repository.UserPreferencesRepository.ViewMode.GROUPED -> 
+                    com.moshitech.workmate.repository.UserPreferencesRepository.ViewMode.GRID
             }
             preferencesRepository.setViewMode(newMode)
         }
@@ -61,13 +64,8 @@ class UnitConverterViewModel(application: Application) : AndroidViewModel(applic
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    private val internalCategories = setOf(
-        UnitCategory.TIME_DATE_CALC,
-        UnitCategory.TIME_DIFFERENCE,
-        UnitCategory.TIME_TIMESTAMP,
-        UnitCategory.TIME_ZONES,
-        UnitCategory.TIME_BIZ_DAYS,
-        UnitCategory.TIME_AGE
+    private val internalCategories = setOf<UnitCategory>(
+        // Empty - all time categories now visible under Time & Date group
     )
 
     private val _categories = MutableStateFlow(UnitCategory.values().filter { !internalCategories.contains(it) })
