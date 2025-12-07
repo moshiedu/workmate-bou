@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.Box
@@ -21,6 +22,7 @@ import com.moshitech.workmate.feature.settings.SettingsScreen
 import com.moshitech.workmate.feature.splash.SplashScreen
 import com.moshitech.workmate.MainViewModel
 import com.moshitech.workmate.feature.speedtest.SpeedTestViewModel
+import com.moshitech.workmate.feature.scanner.ui.home.ScannerHomeScreen
 
 sealed class Screen(val route: String) {
     object Splash : Screen("splash")
@@ -67,6 +69,7 @@ sealed class Screen(val route: String) {
     object IntegrityCheck : Screen("integrity_check")
     object SpeedTest : Screen("speed_test")
     object SpeedTestHistory : Screen("speed_test_history")
+    object DocumentScanner : Screen("scanner_graph")
 }
 
 @Composable
@@ -305,6 +308,18 @@ fun WorkmateNavigation(
                 testId = testId,
                 viewModel = speedTestViewModel
             )
+        }
+        
+        // Scanner Graph
+        navigation(
+            startDestination = "scanner/home",
+            route = "scanner_graph"
+        ) {
+            composable("scanner/home") {
+                ScannerHomeScreen(
+                    navController = navController
+                )
+            }
         }
     }
 }

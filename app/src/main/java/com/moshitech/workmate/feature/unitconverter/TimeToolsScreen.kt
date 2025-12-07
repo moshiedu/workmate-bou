@@ -88,31 +88,13 @@ fun TimeToolsScreen(
     val textColor = if (isDark) Color.White else Color(0xFF111827)
     val primaryBlue = Color(0xFF1976D2)
 
-    val initialIndex = when (initialCategory) {
-        "TIME" -> 0
-        "TIME_DATE_CALC" -> 1
-        "TIME_DIFFERENCE" -> 2
-        "TIME_TIMESTAMP" -> 3
-        "TIME_ZONES" -> 4
-        "TIME_BIZ_DAYS" -> 5
-        "TIME_AGE" -> 6
-        else -> 0
-    }
-
-    var selectedTabIndex by remember { mutableStateOf(initialIndex) }
-    val tabs = listOf("Converter", "Date Calc", "Difference", "Timestamp", "Zones", "Biz Days", "Age")
-
-    val isFav by if (selectedTabIndex == 0) {
-        unitViewModel.isCurrentFavorite.collectAsState()
-    } else {
-        viewModel.isFavoriteForTab(selectedTabIndex).collectAsState(initial = false)
-    }
+    val isFav by unitViewModel.isCurrentFavorite.collectAsState()
 
     Scaffold(
         containerColor = backgroundColor,
         topBar = {
             TopAppBar(
-                title = { Text("Time Tools", fontWeight = FontWeight.Bold, color = textColor) },
+                title = { Text("Time Converter", fontWeight = FontWeight.Bold, color = textColor) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = textColor)
@@ -120,10 +102,7 @@ fun TimeToolsScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor),
                 actions = {
-                    IconButton(onClick = {
-                        if (selectedTabIndex == 0) unitViewModel.toggleFavorite()
-                        else viewModel.toggleFavoriteForTab(selectedTabIndex)
-                    }) {
+                    IconButton(onClick = { unitViewModel.toggleFavorite() }) {
                         Icon(
                             imageVector = if (isFav) Icons.Default.Star else Icons.Default.StarBorder,
                             contentDescription = "Favorite",
@@ -207,37 +186,9 @@ fun TimeToolsScreen(
                 }
             }
 
-            ScrollableTabRow(
-                selectedTabIndex = selectedTabIndex,
-                containerColor = backgroundColor,
-                contentColor = primaryBlue,
-                edgePadding = 0.dp,
-                indicator = { tabPositions ->
-                    TabRowDefaults.Indicator(
-                        Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]),
-                        color = primaryBlue
-                    )
-                }
-            ) {
-                tabs.forEachIndexed { index, title ->
-                    Tab(
-                        selected = selectedTabIndex == index,
-                        onClick = { selectedTabIndex = index },
-                        text = { Text(title, maxLines = 1, style = MaterialTheme.typography.bodySmall) }
-                    )
-                }
-            }
-
+            // Show Time Unit Converter directly (no tabs)
             Box(modifier = Modifier.padding(16.dp)) {
-                when (selectedTabIndex) {
-                    0 -> UnitConverterTab(navController, unitViewModel)
-                    1 -> DateCalculatorTab(viewModel, isDark)
-                    2 -> TimeDifferenceTab(viewModel, isDark)
-                    3 -> TimestampTab(viewModel, isDark)
-                    4 -> TimeZoneTab(viewModel, isDark)
-                    5 -> BusinessDayTab(viewModel, isDark)
-                    6 -> AgeCalculatorTab(viewModel, isDark)
-                }
+                UnitConverterTab(navController, unitViewModel)
             }
         }
     }

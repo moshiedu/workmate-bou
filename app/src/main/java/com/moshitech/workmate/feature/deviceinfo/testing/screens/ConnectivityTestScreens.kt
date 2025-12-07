@@ -161,7 +161,10 @@ fun BluetoothTestScreen(
                     }
                     if (adapter != null) {
                         Text("Name: ${try { adapter.name } catch(e: SecurityException) { "Unknown" }}")
-                        Text("Address: ${try { adapter.address } catch(e: SecurityException) { "Unknown" }}")
+                        // Suppress lint for testing screen or handle permission properly
+                        @SuppressLint("MissingPermission", "HardwareIds")
+                        val address = try { adapter.address } catch(e: SecurityException) { "Unknown" }
+                        Text("Address: $address")
                     } else {
                         Text("No Bluetooth Adapter found", color = Color.Red)
                     }

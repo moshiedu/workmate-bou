@@ -1,8 +1,13 @@
 package com.moshitech.workmate.feature.unitconverter
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
+import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
@@ -10,11 +15,15 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /**
  * Category card with help icon for unit converter
@@ -76,7 +85,7 @@ fun CategoryCardWithHelp(
 }
 
 /**
- * Expandable group header for grouped category view
+ * Expandable group header for grouped category view with enhanced visuals
  */
 @Composable
 fun CategoryGroupHeader(
@@ -84,54 +93,157 @@ fun CategoryGroupHeader(
     isExpanded: Boolean,
     onToggle: () -> Unit,
     textColor: Color,
-    secondaryTextColor: Color
+    secondaryTextColor: Color,
+    categoryCount: Int = 0
 ) {
+    val iconRotation by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (isExpanded) 180f else 0f,
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessLow
+        ),
+        label = "icon_rotation"
+    )
+    
     Card(
         onClick = onToggle,
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = group.accentColor.copy(alpha = 0.1f)
+            containerColor = Color.Transparent
         ),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .background(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            group.accentColor.copy(alpha = 0.15f),
+                            group.accentColor.copy(alpha = 0.05f)
+                        )
+                    )
+                )
         ) {
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    // Larger emoji
+                    Text(
+                        text = group.emoji,
+                        style = MaterialTheme.typography.headlineMedium,
+                        modifier = Modifier.padding(end = 16.dp)
+                    )
+                    Column {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = group.title,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = textColor
+                            )
+                            // Category count badge
+                            if (categoryCount > 0) {
+                                Box(
+                                    modifier = Modifier
+                                        .padding(start = 6.dp)
+                                        .size(24.dp)
+                                        .background(
+                                            color = group.accentColor.copy(alpha = 0.25f),
+                                            shape = androidx.compose.foundation.shape.CircleShape
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = categoryCount.toString(),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = group.accentColor,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                        }
+                        Text(
+                            text = group.description,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = secondaryTextColor,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                }
+                // Animated expand icon
+                Icon(
+                    imageVector = Icons.Default.ExpandMore,
+                    contentDescription = if (isExpanded) "Collapse" else "Expand",
+                    tint = group.accentColor,
+                    modifier = Modifier
+                        .size(28.dp)
+                        .rotate(iconRotation)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Compact group header for Grid and List views (non-expandable)
+ */
+@Composable
+fun CompactGroupHeader(
+    group: CategoryGroup,
+    categoryCount: Int,
+    textColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = group.emoji,
+            style = MaterialTheme.typography.titleMedium
+        )
+        Text(
+            text = group.title.uppercase(),
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = textColor
+        )
+        // Category count badge
+        if (categoryCount > 0) {
+            Box(
+                modifier = Modifier
+                    .size(22.dp)
+                    .background(
+                        color = group.accentColor.copy(alpha = 0.25f),
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = group.emoji,
-                    style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.padding(end = 12.dp)
+                    text = categoryCount.toString(),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = group.accentColor,
+                    fontSize = 10.sp
                 )
-                Column {
-                    Text(
-                        text = group.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = textColor
-                    )
-                    Text(
-                        text = group.description,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = secondaryTextColor
-                    )
-                }
             }
-            Icon(
-                imageVector = if (isExpanded) 
-                    Icons.Default.ExpandLess 
-                else 
-                    Icons.Default.ExpandMore,
-                contentDescription = if (isExpanded) "Collapse" else "Expand",
-                tint = group.accentColor
-            )
         }
     }
 }

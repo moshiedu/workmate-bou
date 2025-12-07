@@ -27,6 +27,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Category
@@ -86,6 +87,10 @@ fun UnitConverterScreen(
     val favorites by viewModel.favorites.collectAsState()
     val history by viewModel.history.collectAsState()
     
+    // Grouped view state
+    val groupedCategories by viewModel.groupedCategories.collectAsState()
+    val expandedGroups by viewModel.expandedGroups.collectAsState()
+    
     // Help dialog state
     val selectedHelpCategory by viewModel.selectedHelpCategory.collectAsState()
 
@@ -126,10 +131,13 @@ fun UnitConverterScreen(
                 actions = {
                     IconButton(onClick = { viewModel.toggleViewMode() }) {
                         Icon(
-                            imageVector = if (viewMode == com.moshitech.workmate.repository.UserPreferencesRepository.ViewMode.GRID) {
-                                androidx.compose.material.icons.Icons.Default.ViewList
-                            } else {
-                                androidx.compose.material.icons.Icons.Default.GridView
+                            imageVector = when (viewMode) {
+                                com.moshitech.workmate.repository.UserPreferencesRepository.ViewMode.GRID -> 
+                                    androidx.compose.material.icons.Icons.Default.ViewList
+                                com.moshitech.workmate.repository.UserPreferencesRepository.ViewMode.LIST -> 
+                                    androidx.compose.material.icons.Icons.Default.AccountTree // Group/Folder icon
+                                com.moshitech.workmate.repository.UserPreferencesRepository.ViewMode.GROUPED -> 
+                                    androidx.compose.material.icons.Icons.Default.GridView
                             },
                             contentDescription = "Toggle View",
                             tint = textColor
@@ -428,96 +436,224 @@ fun UnitConverterScreen(
                     }
                 }
 
-                // Grid Items (as Rows of 2) or List Items
-                if (viewMode == com.moshitech.workmate.repository.UserPreferencesRepository.ViewMode.GRID) {
-                    items(categories.chunked(2)) { rowCategories ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            for (category in rowCategories) {
-                                Card(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(48.dp)
-                                        .clickable {
-                                            navController.navigate("unit_conversion_details/${category.name}")
-                                        },
-                                    colors = CardDefaults.cardColors(containerColor = cardColor),
-                                    shape = RoundedCornerShape(8.dp),
-                                    border = androidx.compose.foundation.BorderStroke(
-                                        1.5.dp,
-                                        category.accentColor.copy(alpha = 0.6f)
-                                    ),
-                                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-                                ) {
+                // Grid Items (as Rows of 2), List Items, or Grouped View
+                when (viewMode) {
+                    com.moshitech.workmate.repository.UserPreferencesRepository.ViewMode.GRID -> {
+                        // Grid View with Group Headers
+                        CategoryGroup.values().forEach { group ->
+                            val groupCategories = groupedCategories[group]?.filter { 
+                                categories.contains(it) 
+                            } ?: emptyList()
+                            
+                            if (groupCategories.isNotEmpty()) {
+                                // Group Header with badge
+                                item {
+                                    CompactGroupHeader(
+                                        group = group,
+                                        categoryCount = groupCategories.size,
+                                        textColor = secondaryTextColor
+                                    )
+                                }
+                                
+                                // Categories in 2-column grid
+                                items(groupCategories.chunked(2)) { rowCategories ->
                                     Row(
-                                        modifier = Modifier
-                                            .padding(horizontal = 12.dp, vertical = 8.dp)
-                                            .fillMaxSize(),
-                                        verticalAlignment = Alignment.CenterVertically
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Icon(
-                                            imageVector = category.icon,
-                                            contentDescription = null,
-                                            tint = category.accentColor,
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(10.dp))
-                                        Text(
-                                            text = category.title,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = textColor,
-                                            maxLines = 1
-                                        )
+                                        for (category in rowCategories) {
+                                            Card(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(48.dp)
+                                                    .clickable {
+                                                        navController.navigate("unit_conversion_details/${category.name}")
+                                                    },
+                                                colors = CardDefaults.cardColors(containerColor = cardColor),
+                                                shape = RoundedCornerShape(8.dp),
+                                                border = androidx.compose.foundation.BorderStroke(
+                                                    1.5.dp,
+                                                    category.accentColor.copy(alpha = 0.6f)
+                                                ),
+                                                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                                                        .fillMaxSize(),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Icon(
+                                                        imageVector = category.icon,
+                                                        contentDescription = null,
+                                                        tint = category.accentColor,
+                                                        modifier = Modifier.size(24.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(10.dp))
+                                                    Text(
+                                                        text = category.title,
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        color = textColor,
+                                                        maxLines = 1
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        if (rowCategories.size == 1) {
+                                            Spacer(modifier = Modifier.weight(1f))
+                                        }
                                     }
+                                    Spacer(modifier = Modifier.height(8.dp))
                                 }
                             }
-                            if (rowCategories.size == 1) {
-                                Spacer(modifier = Modifier.weight(1f))
-                            }
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
                     }
-                } else {
-                    // List View - Compact Modern Style
-                    items(categories) { category ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(48.dp)
-                                .clickable {
-                                    navController.navigate("unit_conversion_details/${category.name}")
-                                },
-                            colors = CardDefaults.cardColors(containerColor = cardColor),
-                            shape = RoundedCornerShape(8.dp),
-                            border = androidx.compose.foundation.BorderStroke(
-                                0.5.dp,
-                                borderColor
-                            ),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .padding(horizontal = 12.dp, vertical = 8.dp)
-                                    .fillMaxSize(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = category.icon,
-                                    contentDescription = null,
-                                    tint = category.accentColor,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text(
-                                    text = category.title,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = textColor
-                                )
+                    
+                    com.moshitech.workmate.repository.UserPreferencesRepository.ViewMode.LIST -> {
+                        // List View with Group Headers
+                        CategoryGroup.values().forEach { group ->
+                            val groupCategories = groupedCategories[group]?.filter { 
+                                categories.contains(it) 
+                            } ?: emptyList()
+                            
+                            if (groupCategories.isNotEmpty()) {
+                                // Group Header with badge
+                                item {
+                                    CompactGroupHeader(
+                                        group = group,
+                                        categoryCount = groupCategories.size,
+                                        textColor = secondaryTextColor
+                                    )
+                                }
+                                
+                                // Categories in list
+                                items(groupCategories) { category ->
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(48.dp)
+                                            .clickable {
+                                                navController.navigate("unit_conversion_details/${category.name}")
+                                            },
+                                        colors = CardDefaults.cardColors(containerColor = cardColor),
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = androidx.compose.foundation.BorderStroke(
+                                            0.5.dp,
+                                            borderColor
+                                        ),
+                                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                                                .fillMaxSize(),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = category.icon,
+                                                contentDescription = null,
+                                                tint = category.accentColor,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Text(
+                                                text = category.title,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = textColor
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                }
                             }
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                    
+                    com.moshitech.workmate.repository.UserPreferencesRepository.ViewMode.GROUPED -> {
+                        // Grouped View - Categories organized by groups
+                        CategoryGroup.values().forEach { group ->
+                            val groupCategories = groupedCategories[group]?.filter { 
+                                categories.contains(it) 
+                            } ?: emptyList()
+                            
+                            if (groupCategories.isNotEmpty()) {
+                                // Group Header
+                                item {
+                                    CategoryGroupHeader(
+                                        group = group,
+                                        isExpanded = expandedGroups.contains(group),
+                                        onToggle = { viewModel.toggleGroupExpansion(group) },
+                                        textColor = textColor,
+                                        secondaryTextColor = secondaryTextColor,
+                                        categoryCount = groupCategories.size
+                                    )
+                                }
+                                
+                                // Categories in this group (if expanded)
+                                if (expandedGroups.contains(group)) {
+                                    items(groupCategories.chunked(2)) { rowCategories ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(start = 16.dp, end = 16.dp, top = 8.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            for (category in rowCategories) {
+                                                Card(
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .height(44.dp)
+                                                        .clickable {
+                                                            navController.navigate("unit_conversion_details/${category.name}")
+                                                        },
+                                                    colors = CardDefaults.cardColors(containerColor = cardColor),
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    border = androidx.compose.foundation.BorderStroke(
+                                                        1.dp,
+                                                        category.accentColor.copy(alpha = 0.4f)
+                                                    ),
+                                                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                                                            .fillMaxSize(),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = category.icon,
+                                                            contentDescription = null,
+                                                            tint = category.accentColor,
+                                                            modifier = Modifier.size(20.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(8.dp))
+                                                        Text(
+                                                            text = category.title,
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = textColor,
+                                                            maxLines = 1
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            if (rowCategories.size == 1) {
+                                                Spacer(modifier = Modifier.weight(1f))
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Spacing after group
+                                    item {
+                                        Spacer(modifier = Modifier.height(16.dp))
+                                    }
+                                }
+                                
+                                // Spacing between groups
+                                item {
+                                    Spacer(modifier = Modifier.height(24.dp))
+                                }
+                            }
+                        }
                     }
                 }
             }

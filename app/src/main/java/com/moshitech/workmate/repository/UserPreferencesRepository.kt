@@ -20,7 +20,7 @@ class UserPreferencesRepository(private val context: Context) {
     }
     
     enum class ViewMode {
-        GRID, LIST
+        GRID, LIST, GROUPED
     }
     
     val viewMode: Flow<ViewMode> = context.dataStore.data.map { preferences ->
