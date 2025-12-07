@@ -1,0 +1,1121 @@
+package com.moshitech.workmate.feature.imagestudio.ui
+
+import android.graphics.Bitmap
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Redo
+import androidx.compose.material.icons.filled.Undo
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.outlined.Crop
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.PhotoFilter
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material.icons.filled.FormatAlignLeft
+import androidx.compose.material.icons.filled.FormatAlignCenter
+import androidx.compose.material.icons.filled.FormatAlignRight
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
+import com.canhub.cropper.CropImageContract
+import com.canhub.cropper.CropImageContractOptions
+import com.canhub.cropper.CropImageOptions
+import com.moshitech.workmate.feature.imagestudio.components.AdContainer
+import com.moshitech.workmate.feature.imagestudio.viewmodel.PhotoEditorViewModel
+
+
+enum class EditorTab {
+    CROP, ADJUST, FILTERS, ROTATE, TEXT, DRAW
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PhotoEditorScreen(
+    navController: NavController,
+    imageUri: Uri?,
+    viewModel: PhotoEditorViewModel = viewModel()
+) {
+    val uiState by viewModel.uiState.collectAsState()
+    var currentTab by remember { mutableStateOf(EditorTab.ADJUST) }
+    var showOriginal by remember { mutableStateOf(false) }
+    var showImageSourceDialog by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Load image on start
+    LaunchedEffect(imageUri) {
+        if (imageUri != null) {
+            viewModel.loadImage(imageUri)
+        }
+    }
+    
+    // Camera capture launcher
+    val cameraImageUri = remember { mutableStateOf<Uri?>(null) }
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success && cameraImageUri.value != null) {
+            viewModel.loadImage(cameraImageUri.value!!)
+        }
+    }
+    
+    // Gallery picker launcher
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        uri?.let { viewModel.loadImage(it) }
+    }
+    
+    // Function to create temp URI for camera
+    fun createImageUri(): Uri {
+        val contentValues = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, "temp_${System.currentTimeMillis()}.jpg")
+            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+        }
+        return navController.context.contentResolver.insert(
+            android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            contentValues
+        )!!
+    }
+    
+    // Message Handling
+    LaunchedEffect(uiState.message) {
+        uiState.message?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearMessage()
+        }
+    }
+
+    // Cropper Launcher
+    val cropImageLauncher = rememberLauncherForActivityResult(contract = CropImageContract()) { result ->
+        if (result.isSuccessful) {
+            result.uriContent?.let { 
+                viewModel.loadImage(it) 
+            }
+        }
+    }
+
+    AdContainer(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            containerColor = Color(0xFF121212),
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+            floatingActionButton = {
+                FloatingActionButton(
+                    onClick = { showImageSourceDialog = true },
+                    containerColor = MaterialTheme.colorScheme.primary
+                ) {
+                    Icon(
+                        imageVector = if (uiState.originalBitmap == null) Icons.Default.Add else Icons.Default.Image,
+                        contentDescription = if (uiState.originalBitmap == null) "Add Image" else "Change Image"
+                    )
+                }
+            },
+            topBar = {
+                TopAppBar(
+                    title = { Text("Photo Editor", color = Color.White) },
+                    navigationIcon = {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
+                        }
+                    },
+                    actions = {
+                        // Undo button
+                        IconButton(
+                            onClick = { viewModel.undo() },
+                            enabled = uiState.canUndo
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Undo,
+                                contentDescription = "Undo",
+                                tint = if (uiState.canUndo) Color.White else Color.Gray,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        
+                        // Redo button
+                        IconButton(
+                            onClick = { viewModel.redo() },
+                            enabled = uiState.canRedo
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Redo,
+                                contentDescription = "Redo",
+                                tint = if (uiState.canRedo) Color.White else Color.Gray,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        
+                        // Reset button
+                        IconButton(
+                            onClick = { viewModel.resetToOriginal() },
+                            enabled = uiState.canUndo
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Reset",
+                                tint = if (uiState.canUndo) Color.White else Color.Gray,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        
+                        // Compare button (toggle original/edited)
+                        IconButton(
+                            onClick = { showOriginal = !showOriginal },
+                            enabled = uiState.originalBitmap != null
+                        ) {
+                            Icon(
+                                imageVector = if (showOriginal) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                contentDescription = if (showOriginal) "Showing Original" else "Show Original",
+                                tint = if (showOriginal) Color(0xFF4CAF50) else Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        
+                        // Save button
+                        IconButton(
+                            onClick = { viewModel.showSaveDialog() },
+                            enabled = !uiState.isLoading && !uiState.isSaving
+                        ) {
+                            if (uiState.isSaving) {
+                                CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
+                            } else {
+                                Icon(Icons.Default.Check, "Save", tint = Color.White)
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color(0xFF1E1E1E)
+                    )
+                )
+            },
+            bottomBar = {
+                Column(modifier = Modifier.background(Color(0xFF1E1E1E))) {
+                    // Tool Content Area
+                    Box(modifier = Modifier
+                        .fillMaxWidth()
+                        .height(120.dp) // Fixed height for tools
+                        .padding(16.dp)
+                    ) {
+                        when (currentTab) {
+                            EditorTab.CROP -> {
+                                // Crop is an action, not a persistent tab content usually, 
+                                // but we can put a "Launch Cropper" button here
+                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    androidx.compose.material3.Button(onClick = {
+                                        val uri = imageUri // Ideally current bitmap saved to temp file
+                                        // Creating a temp file from bitmap to crop is complex here without saving first.
+                                        // For simplicity, we re-crop the original URI or need to save current state.
+                                        // Let's assume we crop the original loaded URI for now or prompt user.
+                                        if (imageUri != null) {
+                                            val options = CropImageContractOptions(uri = imageUri, cropImageOptions = CropImageOptions())
+                                            cropImageLauncher.launch(options)
+                                        }
+                                    }) {
+                                        Text("Open Cropper Implementation")
+                                    }
+                                }
+                            }
+                            EditorTab.ADJUST -> AdjustTab(
+                                brightness = uiState.brightness,
+                                contrast = uiState.contrast,
+                                saturation = uiState.saturation,
+                                hue = uiState.hue,
+                                temperature = uiState.temperature,
+                                tint = uiState.tint,
+                                onBrightnessChange = viewModel::updateBrightness,
+                                onContrastChange = viewModel::updateContrast,
+                                onSaturationChange = viewModel::updateSaturation,
+                                onHueChange = viewModel::updateHue,
+                                onTemperatureChange = viewModel::updateTemperature,
+                                onTintChange = viewModel::updateTint
+                            )
+                            EditorTab.FILTERS -> {
+                                com.moshitech.workmate.feature.imagestudio.components.FiltersTab(
+                                    activeFilterId = uiState.activeFilterId,
+                                    onFilterSelected = viewModel::applyFilter,
+                                    onClearFilter = viewModel::clearFilter
+                                )
+                            }
+                            EditorTab.TEXT -> {
+                                // Text tab - show add text button
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    TextButton(onClick = { viewModel.showTextDialog() }) {
+                                        Icon(Icons.Default.Add, "Add Text", modifier = Modifier.padding(end = 8.dp))
+                                        Text("Add Text")
+                                    }
+                                }
+                            }
+                            EditorTab.DRAW -> {
+                                Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.SpaceEvenly) {
+                                    // Tool selector
+                                    Text("Tool:", color = Color.White, style = MaterialTheme.typography.bodySmall)
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                        listOf(
+                                            com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.FREEHAND to "Pen",
+                                            com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.LINE to "Line",
+                                            com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.RECTANGLE to "Rect",
+                                            com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.CIRCLE to "Circle"
+                                        ).forEach { (tool, label) ->
+                                            TextButton(
+                                                onClick = { viewModel.selectDrawTool(tool) },
+                                                colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                                                    containerColor = if (uiState.selectedDrawTool == tool) MaterialTheme.colorScheme.primary else Color.Transparent
+                                                )
+                                            ) {
+                                                Text(label, color = Color.White, fontSize = 12.sp)
+                                            }
+                                        }
+                                    }
+                                    
+                                    Text("Color:", color = Color.White, style = MaterialTheme.typography.bodySmall)
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                        listOf(Color.Red to android.graphics.Color.RED, Color.Blue to android.graphics.Color.BLUE, Color.Green to android.graphics.Color.GREEN, Color.Yellow to android.graphics.Color.YELLOW, Color.Black to android.graphics.Color.BLACK, Color.White to android.graphics.Color.WHITE).forEach { (c, i) ->
+                                            Box(Modifier.size(30.dp).background(c, androidx.compose.foundation.shape.CircleShape).border(if (uiState.currentDrawColor == i) 3.dp else 1.dp, if (uiState.currentDrawColor == i) MaterialTheme.colorScheme.primary else Color.Gray, androidx.compose.foundation.shape.CircleShape).clickable { viewModel.updateDrawColor(i) })
+                                        }
+                                    }
+                                    Text("Size: ${uiState.currentStrokeWidth.toInt()}px", color = Color.White, style = MaterialTheme.typography.bodySmall)
+                                    Slider(uiState.currentStrokeWidth, { viewModel.updateStrokeWidth(it) }, valueRange = 1f..50f, modifier = Modifier.height(20.dp))
+                                }
+                            }
+                            EditorTab.ROTATE -> {
+                                Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.SpaceEvenly) {
+                                    // Quick rotation buttons
+                                    Text("Quick Rotate:", color = Color.White, style = MaterialTheme.typography.bodySmall)
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                        TextButton(onClick = { viewModel.rotate90CCW() }) {
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Text("↺", fontSize = 24.sp)
+                                                Text("90° CCW", fontSize = 10.sp)
+                                            }
+                                        }
+                                        TextButton(onClick = { viewModel.rotate90CW() }) {
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Text("↻", fontSize = 24.sp)
+                                                Text("90° CW", fontSize = 10.sp)
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Flip buttons
+                                    Text("Flip:", color = Color.White, style = MaterialTheme.typography.bodySmall)
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                        TextButton(onClick = { viewModel.flipHorizontal() }) {
+                                            Text("⇄ Horizontal")
+                                        }
+                                        TextButton(onClick = { viewModel.flipVertical() }) {
+                                            Text("⇅ Vertical")
+                                        }
+                                    }
+                                    
+                                    // Free rotation slider
+                                    Text("Angle: ${uiState.rotationAngle.toInt()}°", color = Color.White, style = MaterialTheme.typography.bodySmall)
+                                    Slider(
+                                        value = uiState.rotationAngle,
+                                        onValueChange = { viewModel.setRotationAngle(it) },
+                                        valueRange = 0f..360f,
+                                        modifier = Modifier.height(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Navigation Tabs
+                    NavigationBar(
+                        containerColor = Color(0xFF1E1E1E),
+                        contentColor = Color.White
+                    ) {
+                        NavigationBarItem(
+                            selected = currentTab == EditorTab.CROP,
+                            onClick = { currentTab = EditorTab.CROP },
+                            icon = { Icon(Icons.Outlined.Crop, "Crop") },
+                            label = { Text("Crop") }
+                        )
+                        NavigationBarItem(
+                            selected = currentTab == EditorTab.ADJUST,
+                            onClick = { currentTab = EditorTab.ADJUST },
+                            icon = { Icon(Icons.Outlined.Edit, "Adjust") },
+                            label = { Text("Adjust") }
+                        )
+                        NavigationBarItem(
+                            selected = currentTab == EditorTab.FILTERS,
+                            onClick = { currentTab = EditorTab.FILTERS },
+                            icon = { Icon(Icons.Outlined.PhotoFilter, "Filters") },
+                            label = { Text("Filters") }
+                        )
+                        NavigationBarItem(
+                            selected = currentTab == EditorTab.ROTATE,
+                            onClick = { currentTab = EditorTab.ROTATE },
+                            icon = { Icon(Icons.Outlined.Edit, "Rotate") },
+                            label = { Text("Rotate") }
+                        )
+                        NavigationBarItem(
+                            selected = currentTab == EditorTab.TEXT,
+                            onClick = { currentTab = EditorTab.TEXT },
+                            icon = { Icon(Icons.Outlined.Edit, "Text") },
+                            label = { Text("Text") }
+                        )
+                        NavigationBarItem(
+                            selected = currentTab == EditorTab.DRAW,
+                            onClick = { currentTab = EditorTab.DRAW },
+                            icon = { Icon(Icons.Outlined.Edit, "Draw") },
+                            label = { Text("Draw") }
+                        )
+                    }
+                }
+            }
+        ) { padding ->
+            // Zoom and Pan state
+            var scale by remember { mutableStateOf(1f) }
+            var offset by remember { mutableStateOf(Offset.Zero) }
+            
+            val transformableState = rememberTransformableState { zoomChange, panChange, _ ->
+                scale = (scale * zoomChange).coerceIn(1f, 5f)
+                
+                // Only allow panning when zoomed in
+                if (scale > 1f) {
+                    offset = offset + panChange
+                }
+            }
+            
+            Box(
+                modifier = Modifier
+                    .padding(padding)
+                    .fillMaxSize()
+                    .background(Color(0xFF121212))
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onDoubleTap = {
+                                // Double tap to reset zoom
+                                scale = 1f
+                                offset = Offset.Zero
+                            }
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                if (uiState.isLoading) {
+                    CircularProgressIndicator(color = Color.White)
+                } else {
+                    val bitmapToShow = if (showOriginal) uiState.originalBitmap else uiState.previewBitmap
+                    if (bitmapToShow != null) {
+                        Image(
+                            bitmap = bitmapToShow.asImageBitmap(),
+                            contentDescription = "Preview",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .transformable(state = transformableState)
+                                .graphicsLayer(
+                                    scaleX = scale,
+                                    scaleY = scale,
+                                    translationX = offset.x,
+                                    translationY = offset.y
+                                ),
+                            contentScale = ContentScale.Fit
+                        )
+                    } else {
+                        Text("No Image Loaded", color = Color.Gray)
+                    }
+                }
+                
+                // Compare Label
+                if (showOriginal) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 16.dp)
+                            .background(Color.Black.copy(alpha = 0.6f), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text("Original", color = Color.White)
+                    }
+                }
+                
+                // Zoom indicator
+                if (scale > 1f) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 140.dp)
+                            .background(Color.Black.copy(alpha = 0.6f), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text("${(scale * 100).toInt()}%", color = Color.White)
+                    }
+                }
+                
+                // Text Layers - Draggable text overlays
+                uiState.textLayers.forEach { textLayer ->
+                    var offsetX by remember(textLayer.id) { mutableStateOf(textLayer.x) }
+                    var offsetY by remember(textLayer.id) { mutableStateOf(textLayer.y) }
+                    
+                    Text(
+                        text = textLayer.text,
+                        color = Color(textLayer.color),
+                        fontSize = textLayer.fontSize.sp,
+                        modifier = Modifier
+                            .offset { IntOffset(offsetX.toInt(), offsetY.toInt()) }
+                            .pointerInput(textLayer.id) {
+                                detectDragGestures(
+                                    onDragEnd = { viewModel.moveTextLayer(textLayer.id, offsetX, offsetY) }
+                                ) { change, dragAmount ->
+                                    change.consume()
+                                    offsetX += dragAmount.x
+                                    offsetY += dragAmount.y
+                                }
+                            }
+                            .pointerInput(textLayer.id + "_tap") {
+                                detectTapGestures(onLongPress = { viewModel.showEditTextDialog(textLayer.id) })
+                            }
+                            .background(Color.Black.copy(alpha = 0.3f))
+                            .padding(4.dp)
+                    )
+                }
+                
+                // Drawing Canvas
+                if (currentTab == EditorTab.DRAW) {
+                    var currentPath by remember { mutableStateOf<MutableList<androidx.compose.ui.geometry.Offset>>(mutableListOf()) }
+                    var shapeStart by remember { mutableStateOf<Offset?>(null) }
+                    var shapeCurrent by remember { mutableStateOf<Offset?>(null) }
+                    
+                    Canvas(Modifier.fillMaxSize().pointerInput(uiState.selectedDrawTool) {
+                        detectDragGestures(
+                            onDragStart = { offset -> 
+                                when (uiState.selectedDrawTool) {
+                                    com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.FREEHAND -> currentPath.add(offset)
+                                    else -> { shapeStart = offset; shapeCurrent = offset }
+                                }
+                            },
+                            onDrag = { change, _ -> 
+                                change.consume()
+                                when (uiState.selectedDrawTool) {
+                                    com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.FREEHAND -> currentPath.add(change.position)
+                                    else -> shapeCurrent = change.position
+                                }
+                            },
+                            onDragEnd = {
+                                when (uiState.selectedDrawTool) {
+                                    com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.FREEHAND -> {
+                                        if (currentPath.isNotEmpty()) {
+                                            viewModel.addDrawPath(com.moshitech.workmate.feature.imagestudio.viewmodel.DrawPath(
+                                                points = currentPath.toList(),
+                                                color = uiState.currentDrawColor,
+                                                strokeWidth = uiState.currentStrokeWidth,
+                                                isEraser = uiState.isEraserMode
+                                            ))
+                                            currentPath = mutableListOf()
+                                        }
+                                    }
+                                    com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.LINE -> {
+                                        if (shapeStart != null && shapeCurrent != null) {
+                                            viewModel.addShape(com.moshitech.workmate.feature.imagestudio.viewmodel.Shape.Line(
+                                                start = shapeStart!!,
+                                                end = shapeCurrent!!,
+                                                color = uiState.currentDrawColor,
+                                                strokeWidth = uiState.currentStrokeWidth
+                                            ))
+                                        }
+                                    }
+                                    com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.RECTANGLE -> {
+                                        if (shapeStart != null && shapeCurrent != null) {
+                                            val topLeft = Offset(
+                                                kotlin.math.min(shapeStart!!.x, shapeCurrent!!.x),
+                                                kotlin.math.min(shapeStart!!.y, shapeCurrent!!.y)
+                                            )
+                                            val size = androidx.compose.ui.geometry.Size(
+                                                kotlin.math.abs(shapeCurrent!!.x - shapeStart!!.x),
+                                                kotlin.math.abs(shapeCurrent!!.y - shapeStart!!.y)
+                                            )
+                                            viewModel.addShape(com.moshitech.workmate.feature.imagestudio.viewmodel.Shape.Rectangle(
+                                                topLeft = topLeft,
+                                                size = size,
+                                                color = uiState.currentDrawColor,
+                                                strokeWidth = uiState.currentStrokeWidth
+                                            ))
+                                        }
+                                    }
+                                    com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.CIRCLE -> {
+                                        if (shapeStart != null && shapeCurrent != null) {
+                                            val radius = kotlin.math.sqrt(
+                                                (shapeCurrent!!.x - shapeStart!!.x) * (shapeCurrent!!.x - shapeStart!!.x) +
+                                                (shapeCurrent!!.y - shapeStart!!.y) * (shapeCurrent!!.y - shapeStart!!.y)
+                                            )
+                                            viewModel.addShape(com.moshitech.workmate.feature.imagestudio.viewmodel.Shape.Circle(
+                                                center = shapeStart!!,
+                                                radius = radius,
+                                                color = uiState.currentDrawColor,
+                                                strokeWidth = uiState.currentStrokeWidth
+                                            ))
+                                        }
+                                    }
+                                }
+                                shapeStart = null
+                                shapeCurrent = null
+                            }
+                        )
+                    }) {
+                        // Render existing paths
+                        uiState.drawPaths.forEach { p ->
+                            val path = androidx.compose.ui.graphics.Path()
+                            p.points.forEachIndexed { i, o -> if (i == 0) path.moveTo(o.x, o.y) else path.lineTo(o.x, o.y) }
+                            drawPath(path, Color(p.color), style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                width = p.strokeWidth,
+                                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                                join = androidx.compose.ui.graphics.StrokeJoin.Round
+                            ))
+                        }
+                        
+                        // Render existing shapes
+                        uiState.shapes.forEach { shape ->
+                            when (shape) {
+                                is com.moshitech.workmate.feature.imagestudio.viewmodel.Shape.Line -> {
+                                    drawLine(
+                                        color = Color(shape.color),
+                                        start = shape.start,
+                                        end = shape.end,
+                                        strokeWidth = shape.strokeWidth,
+                                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                    )
+                                }
+                                is com.moshitech.workmate.feature.imagestudio.viewmodel.Shape.Rectangle -> {
+                                    drawRect(
+                                        color = Color(shape.color),
+                                        topLeft = shape.topLeft,
+                                        size = shape.size,
+                                        style = if (shape.filled) androidx.compose.ui.graphics.drawscope.Fill 
+                                               else androidx.compose.ui.graphics.drawscope.Stroke(width = shape.strokeWidth)
+                                    )
+                                }
+                                is com.moshitech.workmate.feature.imagestudio.viewmodel.Shape.Circle -> {
+                                    drawCircle(
+                                        color = Color(shape.color),
+                                        center = shape.center,
+                                        radius = shape.radius,
+                                        style = if (shape.filled) androidx.compose.ui.graphics.drawscope.Fill 
+                                               else androidx.compose.ui.graphics.drawscope.Stroke(width = shape.strokeWidth)
+                                    )
+                                }
+                            }
+                        }
+                        
+                        // Render current path (freehand preview)
+                        if (currentPath.isNotEmpty()) {
+                            val path = androidx.compose.ui.graphics.Path()
+                            currentPath.forEachIndexed { i, o -> if (i == 0) path.moveTo(o.x, o.y) else path.lineTo(o.x, o.y) }
+                            drawPath(path, Color(uiState.currentDrawColor), style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                width = uiState.currentStrokeWidth,
+                                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                                join = androidx.compose.ui.graphics.StrokeJoin.Round
+                            ))
+                        }
+                        
+                        // Render shape preview
+                        if (shapeStart != null && shapeCurrent != null) {
+                            when (uiState.selectedDrawTool) {
+                                com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.LINE -> {
+                                    drawLine(
+                                        color = Color(uiState.currentDrawColor),
+                                        start = shapeStart!!,
+                                        end = shapeCurrent!!,
+                                        strokeWidth = uiState.currentStrokeWidth,
+                                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                    )
+                                }
+                                com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.RECTANGLE -> {
+                                    val topLeft = Offset(
+                                        kotlin.math.min(shapeStart!!.x, shapeCurrent!!.x),
+                                        kotlin.math.min(shapeStart!!.y, shapeCurrent!!.y)
+                                    )
+                                    val size = androidx.compose.ui.geometry.Size(
+                                        kotlin.math.abs(shapeCurrent!!.x - shapeStart!!.x),
+                                        kotlin.math.abs(shapeCurrent!!.y - shapeStart!!.y)
+                                    )
+                                    drawRect(
+                                        color = Color(uiState.currentDrawColor),
+                                        topLeft = topLeft,
+                                        size = size,
+                                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = uiState.currentStrokeWidth)
+                                    )
+                                }
+                                com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.CIRCLE -> {
+                                    val radius = kotlin.math.sqrt(
+                                        (shapeCurrent!!.x - shapeStart!!.x) * (shapeCurrent!!.x - shapeStart!!.x) +
+                                        (shapeCurrent!!.y - shapeStart!!.y) * (shapeCurrent!!.y - shapeStart!!.y)
+                                    )
+                                    drawCircle(
+                                        color = Color(uiState.currentDrawColor),
+                                        center = shapeStart!!,
+                                        radius = radius,
+                                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = uiState.currentStrokeWidth)
+                                    )
+                                }
+                                else -> {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Save Dialog - inside Scaffold where uiState is accessible
+        if (uiState.showSaveDialog) {
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissSaveDialog() },
+                title = { Text("Save Image") },
+                text = {
+                    Column {
+                        Text("Enter filename:", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = uiState.saveFilename,
+                            onValueChange = { viewModel.updateSaveFilename(it) },
+                            label = { Text("Filename") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            ".jpg will be added automatically",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            viewModel.saveImage(uiState.saveFilename) {
+                                navController.popBackStack()
+                            }
+                        },
+                        enabled = uiState.saveFilename.isNotBlank()
+                    ) {
+                        Text("Save")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.dismissSaveDialog() }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+        
+        // Image Source Selection Dialog
+        if (showImageSourceDialog) {
+            AlertDialog(
+                onDismissRequest = { showImageSourceDialog = false },
+                title = { Text("Select Image Source") },
+                text = {
+                    Column {
+                        // Camera option
+                        TextButton(
+                            onClick = {
+                                showImageSourceDialog = false
+                                val uri = createImageUri()
+                                cameraImageUri.value = uri
+                                cameraLauncher.launch(uri)
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.CameraAlt, "Camera", modifier = Modifier.padding(end = 8.dp))
+                            Text("Take Photo")
+                        }
+                        
+                        // Gallery option
+                        TextButton(
+                            onClick = {
+                                showImageSourceDialog = false
+                                galleryLauncher.launch(
+                                    androidx.activity.result.PickVisualMediaRequest(
+                                        androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly
+                                    )
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Image, "Gallery", modifier = Modifier.padding(end = 8.dp))
+                            Text("Choose from Gallery")
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showImageSourceDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+        
+        // Text Input Dialog
+        if (uiState.showTextDialog) {
+            val editingLayer = remember(uiState.editingTextId) { 
+                uiState.textLayers.find { it.id == uiState.editingTextId } 
+            }
+            
+            var textInput by remember { mutableStateOf(editingLayer?.text ?: "") }
+            var selectedColor by remember { mutableStateOf(editingLayer?.color ?: android.graphics.Color.WHITE) }
+            var fontSize by remember { mutableStateOf(editingLayer?.fontSize ?: 24f) }
+            var fontFamily by remember { mutableStateOf(editingLayer?.fontFamily ?: "default") }
+            var isBold by remember { mutableStateOf(editingLayer?.isBold ?: false) }
+            var isItalic by remember { mutableStateOf(editingLayer?.isItalic ?: false) }
+            var alignment by remember { mutableStateOf(editingLayer?.alignment ?: com.moshitech.workmate.feature.imagestudio.viewmodel.TextAlignment.LEFT) }
+            var hasOutline by remember { mutableStateOf(editingLayer?.hasOutline ?: false) }
+            var outlineColor by remember { mutableStateOf(editingLayer?.outlineColor ?: android.graphics.Color.BLACK) }
+            var hasShadow by remember { mutableStateOf(editingLayer?.hasShadow ?: false) }
+            
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissTextDialog() },
+                title = { Text(if (uiState.editingTextId != null) "Edit Text" else "Add Text") },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(400.dp) // Fixed height to allow scrolling inner content
+                            .verticalScroll(androidx.compose.foundation.rememberScrollState())
+                    ) {
+                        OutlinedTextField(
+                            value = textInput,
+                            onValueChange = { textInput = it },
+                            label = { Text("Enter text") },
+                            singleLine = false,
+                            maxLines = 3,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        // Font Family Selection
+                        Text("Font:", style = MaterialTheme.typography.bodyMedium)
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf("default", "serif", "monospace", "cursive").forEach { font ->
+                                androidx.compose.material3.FilterChip(
+                                    selected = fontFamily == font,
+                                    onClick = { fontFamily = font },
+                                    label = { Text(font.capitalize(java.util.Locale.ROOT)) }
+                                )
+                            }
+                        }
+
+                        // Style & Alignment
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            // Style
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                androidx.compose.material3.FilledIconToggleButton(
+                                    checked = isBold,
+                                    onCheckedChange = { isBold = it }
+                                ) {
+                                    Text("B", style = androidx.compose.ui.text.TextStyle(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold))
+                                }
+                                androidx.compose.material3.FilledIconToggleButton(
+                                    checked = isItalic,
+                                    onCheckedChange = { isItalic = it }
+                                ) {
+                                    Text("I", style = androidx.compose.ui.text.TextStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic))
+                                }
+                            }
+                            
+                            // Alignment
+                            Row(
+                                modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant, androidx.compose.foundation.shape.RoundedCornerShape(8.dp)),
+                                horizontalArrangement = Arrangement.spacedBy(0.dp)
+                            ) {
+                                com.moshitech.workmate.feature.imagestudio.viewmodel.TextAlignment.values().forEach { align ->
+                                    androidx.compose.material3.IconButton(
+                                        onClick = { alignment = align },
+                                        colors = androidx.compose.material3.IconButtonDefaults.iconButtonColors(
+                                            containerColor = if (alignment == align) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                            contentColor = if (alignment == align) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    ) {
+                                        when (align) {
+                                            com.moshitech.workmate.feature.imagestudio.viewmodel.TextAlignment.LEFT -> Icon(Icons.Filled.FormatAlignLeft, "Left")
+                                            com.moshitech.workmate.feature.imagestudio.viewmodel.TextAlignment.CENTER -> Icon(Icons.Filled.FormatAlignCenter, "Center")
+                                            com.moshitech.workmate.feature.imagestudio.viewmodel.TextAlignment.RIGHT -> Icon(Icons.Filled.FormatAlignRight, "Right")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        // Text Color
+                        Text("Color:", style = MaterialTheme.typography.bodyMedium)
+                        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(
+                                android.graphics.Color.WHITE, android.graphics.Color.BLACK, android.graphics.Color.RED,
+                                android.graphics.Color.BLUE, android.graphics.Color.GREEN, android.graphics.Color.YELLOW,
+                                android.graphics.Color.CYAN, android.graphics.Color.MAGENTA, android.graphics.Color.LTGRAY
+                            ).forEach { color ->
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .background(Color(color), androidx.compose.foundation.shape.CircleShape)
+                                        .border(
+                                            width = if (selectedColor == color) 3.dp else 1.dp,
+                                            color = if (selectedColor == color) MaterialTheme.colorScheme.primary else Color.Gray,
+                                            shape = androidx.compose.foundation.shape.CircleShape
+                                        )
+                                        .clickable { selectedColor = color }
+                                )
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        // Effects
+                        Text("Effects:", style = MaterialTheme.typography.bodyMedium)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.material3.Checkbox(checked = hasOutline, onCheckedChange = { hasOutline = it })
+                            Text("Outline")
+                            if (hasOutline) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Box(
+                                    modifier = Modifier.size(24.dp).background(Color(outlineColor), androidx.compose.foundation.shape.CircleShape)
+                                        .border(1.dp, Color.Gray, androidx.compose.foundation.shape.CircleShape)
+                                        .clickable { 
+                                            // Toggle basic outline colors for simplicity
+                                            outlineColor = if (outlineColor == android.graphics.Color.BLACK) android.graphics.Color.WHITE else android.graphics.Color.BLACK 
+                                        }
+                                )
+                            }
+                            
+                            Spacer(modifier = Modifier.width(16.dp))
+                            
+                            androidx.compose.material3.Checkbox(checked = hasShadow, onCheckedChange = { hasShadow = it })
+                            Text("Shadow")
+                        }
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text("Size: ${fontSize.toInt()}sp", style = MaterialTheme.typography.bodyMedium)
+                        Slider(
+                            value = fontSize,
+                            onValueChange = { fontSize = it },
+                            valueRange = 12f..80f,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            if (textInput.isNotBlank()) {
+                                if (uiState.editingTextId != null) {
+                                    viewModel.updateTextLayer(
+                                        textId = uiState.editingTextId!!,
+                                        text = textInput,
+                                        color = selectedColor,
+                                        fontSize = fontSize,
+                                        fontFamily = fontFamily,
+                                        isBold = isBold,
+                                        isItalic = isItalic,
+                                        alignment = alignment,
+                                        hasOutline = hasOutline,
+                                        outlineColor = outlineColor,
+                                        hasShadow = hasShadow
+                                    )
+                                } else {
+                                    viewModel.addTextLayer(
+                                        text = textInput,
+                                        color = selectedColor,
+                                        fontSize = fontSize,
+                                        fontFamily = fontFamily,
+                                        isBold = isBold,
+                                        isItalic = isItalic,
+                                        alignment = alignment,
+                                        hasOutline = hasOutline,
+                                        outlineColor = outlineColor,
+                                        hasShadow = hasShadow
+                                    )
+                                }
+                            }
+                        },
+                        enabled = textInput.isNotBlank()
+                    ) {
+                        Text(if (uiState.editingTextId != null) "Update" else "Add")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.dismissTextDialog() }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+    }
+}
+
+
+@Composable
+fun AdjustTab(
+    brightness: Float,
+    contrast: Float,
+    saturation: Float,
+    hue: Float,
+    temperature: Float,
+    tint: Float,
+    onBrightnessChange: (Float) -> Unit,
+    onContrastChange: (Float) -> Unit,
+    onSaturationChange: (Float) -> Unit,
+    onHueChange: (Float) -> Unit,
+    onTemperatureChange: (Float) -> Unit,
+    onTintChange: (Float) -> Unit
+) {
+    Column {
+        // Brightness
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Brightness", color = Color.White, modifier = Modifier.width(80.dp), style = MaterialTheme.typography.bodySmall)
+            Slider(
+                value = brightness,
+                onValueChange = onBrightnessChange,
+                valueRange = -1f..1f,
+                modifier = Modifier.weight(1f),
+                colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
+            )
+        }
+        
+        // Contrast
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Contrast", color = Color.White, modifier = Modifier.width(80.dp), style = MaterialTheme.typography.bodySmall)
+            Slider(
+                value = contrast,
+                onValueChange = onContrastChange,
+                valueRange = 0f..2f,
+                modifier = Modifier.weight(1f),
+                colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
+            )
+        }
+
+        // Saturation
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Saturation", color = Color.White, modifier = Modifier.width(80.dp), style = MaterialTheme.typography.bodySmall)
+            Slider(
+                value = saturation,
+                onValueChange = onSaturationChange,
+                valueRange = 0f..2f,
+                modifier = Modifier.weight(1f),
+                colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        // Hue
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Hue", color = Color.White, modifier = Modifier.width(80.dp), style = MaterialTheme.typography.bodySmall)
+            Slider(
+                value = hue,
+                onValueChange = onHueChange,
+                valueRange = -180f..180f,
+                modifier = Modifier.weight(1f),
+                colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
+            )
+        }
+        
+        // Temperature
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Temperature", color = Color.White, modifier = Modifier.width(80.dp), style = MaterialTheme.typography.bodySmall)
+            Slider(
+                value = temperature,
+                onValueChange = onTemperatureChange,
+                valueRange = -1f..1f,
+                modifier = Modifier.weight(1f),
+                colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
+            )
+        }
+        
+        // Tint
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Tint", color = Color.White, modifier = Modifier.width(80.dp), style = MaterialTheme.typography.bodySmall)
+            Slider(
+                value = tint,
+                onValueChange = onTintChange,
+                valueRange = -1f..1f,
+                modifier = Modifier.weight(1f),
+                colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
+            )
+        }
+    }
+}
+

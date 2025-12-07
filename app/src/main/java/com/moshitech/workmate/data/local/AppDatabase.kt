@@ -20,8 +20,8 @@ import com.moshitech.workmate.feature.unitconverter.data.local.UnitConversionHis
 import com.moshitech.workmate.feature.deviceinfo.data.BenchmarkHistoryEntity
 import com.moshitech.workmate.feature.deviceinfo.data.BenchmarkHistoryDao
 
-import com.moshitech.workmate.feature.photoconversion.data.local.ConversionHistoryEntity
-import com.moshitech.workmate.feature.photoconversion.data.local.ConversionHistoryDao
+import com.moshitech.workmate.feature.imagestudio.data.local.ConversionHistoryEntity
+import com.moshitech.workmate.feature.imagestudio.data.local.ConversionHistoryDao
 
 import com.moshitech.workmate.feature.scanner.data.local.entity.ScannedDocumentEntity
 import com.moshitech.workmate.feature.scanner.data.local.dao.ScannedDocumentDao

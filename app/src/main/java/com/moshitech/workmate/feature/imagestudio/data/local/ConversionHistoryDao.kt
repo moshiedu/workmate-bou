@@ -1,4 +1,4 @@
-package com.moshitech.workmate.feature.photoconversion.data.local
+package com.moshitech.workmate.feature.imagestudio.data.local
 
 import androidx.room.Dao
 import androidx.room.Delete
@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ConversionHistoryDao {
-    @Query("SELECT * FROM conversion_history ORDER BY timestamp DESC")
+    @Query("SELECT * FROM conversion_history_table ORDER BY date DESC")
     fun getAll(): Flow<List<ConversionHistoryEntity>>
 
     @Insert
@@ -16,7 +16,7 @@ interface ConversionHistoryDao {
 
     @Delete
     suspend fun delete(item: ConversionHistoryEntity)
-
-    @Query("DELETE FROM conversion_history")
+    
+    @Query("DELETE FROM conversion_history_table")
     suspend fun deleteAll()
 }

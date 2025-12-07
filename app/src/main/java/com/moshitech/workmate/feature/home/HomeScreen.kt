@@ -87,7 +87,7 @@ fun HomeScreen(
     val borderColor = if (isDark) Color(0xFF334155) else Color.Transparent
 
     val items = listOf(
-        HomeItem("Photo Converter", "Convert image formats", Icons.Default.Image, Screen.PhotoConversion.route, primaryBlue),
+        HomeItem("Image Studio", "Edit & Convert Photos", Icons.Default.Image, Screen.ImageStudio.route, primaryBlue),
         HomeItem("Unit Converter", "Convert various units", Icons.Default.Calculate, Screen.UnitConversion.route, primaryBlue),
         HomeItem("Compass", "Find your direction", Icons.Default.Explore, Screen.Compass.route, primaryBlue),
         HomeItem("Device Info", "System information", Icons.Default.Dashboard, Screen.DeviceInfo.route, primaryBlue),

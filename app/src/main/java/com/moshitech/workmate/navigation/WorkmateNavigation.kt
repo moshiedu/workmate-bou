@@ -15,7 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.moshitech.workmate.feature.home.HomeScreen
-import com.moshitech.workmate.feature.photoconversion.ui.PhotoConversionScreen
+
 import com.moshitech.workmate.feature.rambooster.RamBoosterScreen
 import com.moshitech.workmate.feature.unitconverter.UnitConverterScreen
 import com.moshitech.workmate.feature.settings.SettingsScreen
@@ -27,7 +27,7 @@ import com.moshitech.workmate.feature.scanner.ui.home.ScannerHomeScreen
 sealed class Screen(val route: String) {
     object Splash : Screen("splash")
     object Home : Screen("home")
-    object PhotoConversion : Screen("photo_conversion")
+
     object UnitConversion : Screen("unit_conversion")
     object Compass : Screen("compass")
     object AppLock : Screen("app_lock")
@@ -70,6 +70,9 @@ sealed class Screen(val route: String) {
     object SpeedTest : Screen("speed_test")
     object SpeedTestHistory : Screen("speed_test_history")
     object DocumentScanner : Screen("scanner_graph")
+    object ImageStudio : Screen("image_studio")
+    object PhotoEditor : Screen("photo_editor")
+    object BatchConverter : Screen("batch_converter")
 }
 
 @Composable
@@ -87,9 +90,7 @@ fun WorkmateNavigation(
         composable(Screen.Home.route) {
             HomeScreen(navController = navController)
         }
-        composable(Screen.PhotoConversion.route) {
-             PhotoConversionScreen(navController = navController)
-        }
+
         composable(Screen.UnitConversion.route) {
              UnitConverterScreen(navController = navController)
         }
@@ -320,6 +321,27 @@ fun WorkmateNavigation(
                     navController = navController
                 )
             }
+        }
+        
+        // Image Studio
+        composable(Screen.ImageStudio.route) {
+            com.moshitech.workmate.feature.imagestudio.navigation.ImageStudioNavigator(navController)
+        }
+        composable(Screen.BatchConverter.route) {
+            com.moshitech.workmate.feature.imagestudio.ui.BatchConverterScreen(navController)
+        }
+        composable(
+            route = "${Screen.PhotoEditor.route}?uri={uri}",
+            arguments = listOf(
+                androidx.navigation.navArgument("uri") { 
+                    type = androidx.navigation.NavType.StringType 
+                    nullable = true
+                }
+            )
+        ) { backStackEntry ->
+            val uriString = backStackEntry.arguments?.getString("uri")
+            val uri = uriString?.let { android.net.Uri.parse(it) }
+            com.moshitech.workmate.feature.imagestudio.ui.PhotoEditorScreen(navController, uri)
         }
     }
 }
