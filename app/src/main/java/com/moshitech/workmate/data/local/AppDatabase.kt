@@ -23,6 +23,9 @@ import com.moshitech.workmate.feature.deviceinfo.data.BenchmarkHistoryDao
 import com.moshitech.workmate.feature.photoconversion.data.local.ConversionHistoryEntity
 import com.moshitech.workmate.feature.photoconversion.data.local.ConversionHistoryDao
 
+import com.moshitech.workmate.feature.scanner.data.local.entity.ScannedDocumentEntity
+import com.moshitech.workmate.feature.scanner.data.local.dao.ScannedDocumentDao
+
 @Database(
     entities = [
         SpeedTestResult::class,
@@ -31,9 +34,10 @@ import com.moshitech.workmate.feature.photoconversion.data.local.ConversionHisto
         WaypointEntity::class,
         TripEntity::class,
         BenchmarkHistoryEntity::class,
-        ConversionHistoryEntity::class
+        ConversionHistoryEntity::class,
+        ScannedDocumentEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 @TypeConverters(UnitCategoryConverter::class)
@@ -45,6 +49,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun tripDao(): TripDao
     abstract fun benchmarkHistoryDao(): BenchmarkHistoryDao
     abstract fun conversionHistoryDao(): ConversionHistoryDao
+    abstract fun scannedDocumentDao(): ScannedDocumentDao
 
     companion object {
         @Volatile

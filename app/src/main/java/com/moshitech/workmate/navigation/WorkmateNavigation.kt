@@ -22,6 +22,7 @@ import com.moshitech.workmate.feature.settings.SettingsScreen
 import com.moshitech.workmate.feature.splash.SplashScreen
 import com.moshitech.workmate.MainViewModel
 import com.moshitech.workmate.feature.speedtest.SpeedTestViewModel
+import com.moshitech.workmate.feature.scanner.ui.home.ScannerHomeScreen
 
 sealed class Screen(val route: String) {
     object Splash : Screen("splash")
@@ -307,6 +308,18 @@ fun WorkmateNavigation(
                 testId = testId,
                 viewModel = speedTestViewModel
             )
+        }
+        
+        // Scanner Graph
+        navigation(
+            startDestination = "scanner/home",
+            route = "scanner_graph"
+        ) {
+            composable("scanner/home") {
+                ScannerHomeScreen(
+                    navController = navController
+                )
+            }
         }
     }
 }
