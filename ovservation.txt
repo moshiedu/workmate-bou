@@ -9,3 +9,9 @@ also some result card like Age calculator Result card, and other tabs card shoul
 --------------------
 I think not all these are meaningfull to all users, thats why i think we should give almost all those a guide/help info,
 There are several conversion we have implemented, can we group these as similar group wise?
+
+Photo Studio:
+toolbar should be positioned top of the screen so that it will not move under any other element.
+Still cannot edit text, tapping to edit does not work.
+Copy icon in the toolbar cannot see, if required you can increase the height of the toolbar. 
+Different font can be selected for text.

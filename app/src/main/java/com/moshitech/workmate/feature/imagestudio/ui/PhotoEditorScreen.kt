@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.outlined.Crop
@@ -57,6 +58,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -306,16 +311,7 @@ fun PhotoEditorScreen(
                                 )
                             }
                             EditorTab.TEXT -> {
-                                // Text tab - show add text button
-                                Box(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    TextButton(onClick = { viewModel.showTextDialog() }) {
-                                        Icon(Icons.Default.Add, "Add Text", modifier = Modifier.padding(end = 8.dp))
-                                        Text("Add Text")
-                                    }
-                                }
+                                // Text tab - no overlay message
                             }
                             EditorTab.DRAW -> {
                                 Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.SpaceEvenly) {
@@ -516,33 +512,92 @@ fun PhotoEditorScreen(
                     }
                 }
                 
-                // Text Layers - Draggable text overlays
+                // Text Layers - New text box system
+                // Text Layers
+                // Text Layers
                 uiState.textLayers.forEach { textLayer ->
-                    var offsetX by remember(textLayer.id) { mutableStateOf(textLayer.x) }
-                    var offsetY by remember(textLayer.id) { mutableStateOf(textLayer.y) }
-                    
-                    Text(
-                        text = textLayer.text,
-                        color = Color(textLayer.color),
-                        fontSize = textLayer.fontSize.sp,
+                    com.moshitech.workmate.feature.imagestudio.components.TextBoxComposable(
+                        layer = textLayer,
+                        isSelected = textLayer.id == uiState.selectedTextLayerId,
+                        isEditing = textLayer.id == uiState.editingTextLayerId,
+                        onSelect = { viewModel.selectTextLayer(it) },
+                        onEdit = { viewModel.enterTextEditMode(it) },
+                        onTransform = { id, pan, zoom, rotation -> 
+                            viewModel.updateTextLayerTransform(id, pan, zoom, rotation) 
+                        },
+                        onTextChange = { id, text -> viewModel.updateTextInline(id, text) },
                         modifier = Modifier
-                            .offset { IntOffset(offsetX.toInt(), offsetY.toInt()) }
-                            .pointerInput(textLayer.id) {
-                                detectDragGestures(
-                                    onDragEnd = { viewModel.moveTextLayer(textLayer.id, offsetX, offsetY) }
-                                ) { change, dragAmount ->
-                                    change.consume()
-                                    offsetX += dragAmount.x
-                                    offsetY += dragAmount.y
-                                }
-                            }
-                            .pointerInput(textLayer.id + "_tap") {
-                                detectTapGestures(onLongPress = { viewModel.showEditTextDialog(textLayer.id) })
-                            }
-                            .background(Color.Black.copy(alpha = 0.3f))
-                            .padding(4.dp)
                     )
                 }
+                
+                // Floating Text Toolbar - positioned at left edge, vertically centered
+                if ((uiState.showFloatingToolbar || uiState.editingTextLayerId != null) && uiState.selectedTextLayerId != null) {
+                    val selectedLayer = uiState.textLayers.find { it.id == uiState.selectedTextLayerId }
+                    selectedLayer?.let { layer ->
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterStart)
+                                .padding(start = 8.dp)
+                        ) {
+                            com.moshitech.workmate.feature.imagestudio.components.FloatingTextToolbar(
+                                layer = layer,
+                                visible = true,
+                                onUpdate = { updatedLayer ->
+                                    viewModel.updateTextProperty(layer.id) { updatedLayer }
+                                },
+                                onLockToggle = { locked ->
+                                    viewModel.lockLayer(layer.id, locked)
+                                },
+                                onDuplicate = {
+                                    viewModel.duplicateLayer(layer.id)
+                                },
+                                onDelete = {
+                                    viewModel.deleteTextLayer(layer.id)
+                                },
+                                onEdit = {
+                                    viewModel.enterTextEditMode(layer.id)
+                                },
+                                onBringToFront = {
+                                    viewModel.bringToFront(layer.id)
+                                },
+                                onSendToBack = {
+                                    viewModel.sendToBack(layer.id)
+                                },
+                                onClose = {
+                                    viewModel.deselectTextLayer()
+                                }
+                            )
+                        }
+                    }
+                }
+                
+                
+                // ADD TEXT Button - always visible in TEXT mode
+                if (currentTab == EditorTab.TEXT) {
+                    Button(
+                        onClick = { viewModel.createTextBoxAtCenter() },
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF2196F3)
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            "ADD TEXT",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+                
+
+                
+                
+                
+                
                 
                 // Drawing Canvas
                 if (currentTab == EditorTab.DRAW) {

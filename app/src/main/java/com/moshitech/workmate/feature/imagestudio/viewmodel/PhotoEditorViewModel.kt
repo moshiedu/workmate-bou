@@ -35,17 +35,30 @@ data class TextLayer(
     val text: String,
     val x: Float,
     val y: Float,
+    val width: Float = 200f,
+    val height: Float = 80f,
+    val scale: Float = 1f,
+    val rotation: Float = 0f,
     val color: Int = android.graphics.Color.WHITE,
-    val fontSize: Float = 20f,
-    val fontFamily: String = "default",  // default, serif, monospace, cursive
+    val fontSize: Float = 24f,
+    val fontFamily: String = "default",
     val isBold: Boolean = false,
     val isItalic: Boolean = false,
-    val alignment: TextAlignment = TextAlignment.LEFT,
+    val isUnderline: Boolean = false,
+    val letterSpacing: Float = 0f,
+    val lineHeight: Float = 1.2f,
+    val alignment: TextAlignment = TextAlignment.CENTER,
     val hasOutline: Boolean = false,
     val outlineColor: Int = android.graphics.Color.BLACK,
     val outlineWidth: Float = 2f,
     val hasShadow: Boolean = false,
-    val shadowColor: Int = android.graphics.Color.BLACK
+    val shadowColor: Int = android.graphics.Color.BLACK,
+    val shadowBlur: Float = 10f,
+    val backgroundColor: Int = android.graphics.Color.TRANSPARENT,
+    val backgroundOpacity: Float = 1f,
+    val backgroundPadding: Float = 16f,
+    val showBackground: Boolean = false,
+    val isLocked: Boolean = false
 )
 
 enum class TextAlignment {
@@ -123,7 +136,10 @@ data class PhotoEditorUiState(
     val rotationAngle: Float = 0f,
     val hue: Float = 0f,           // -180 to 180
     val temperature: Float = 0f,   // -1 to 1
-    val tint: Float = 0f           // -1 to 1
+    val tint: Float = 0f,          // -1 to 1
+    val selectedTextLayerId: String? = null,
+    val editingTextLayerId: String? = null,
+    val showFloatingToolbar: Boolean = false
 )
 
 class PhotoEditorViewModel(application: Application) : AndroidViewModel(application) {
@@ -600,41 +616,7 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
         saveToHistory()
     }
     
-    fun updateTextLayer(
-        textId: String,
-        text: String,
-        color: Int,
-        fontSize: Float,
-        fontFamily: String,
-        isBold: Boolean,
-        isItalic: Boolean,
-        alignment: TextAlignment,
-        hasOutline: Boolean,
-        outlineColor: Int,
-        hasShadow: Boolean
-    ) {
-        _uiState.update {
-            it.copy(
-                textLayers = it.textLayers.map { layer ->
-                    if (layer.id == textId) layer.copy(
-                        text = text,
-                        color = color,
-                        fontSize = fontSize,
-                        fontFamily = fontFamily,
-                        isBold = isBold,
-                        isItalic = isItalic,
-                        alignment = alignment,
-                        hasOutline = hasOutline,
-                        outlineColor = outlineColor,
-                        hasShadow = hasShadow
-                    )
-                    else layer
-                },
-                showTextDialog = false
-            )
-        }
-        saveToHistory()
-    }
+
     
     fun moveTextLayer(textId: String, x: Float, y: Float) {
         _uiState.update {
@@ -694,5 +676,220 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
             )
         }
     }
+    
+    // Text Box Management
+    fun createTextBoxAtCenter() {
+        val newLayer = TextLayer(
+            text = "Tap to edit",
+            x = 90f, // Centered horizontally (screen width ~360-400dp, text width 200dp)
+            y = 400f, // Centered vertically in visible area
+            width = 200f,
+            height = 80f
+        )
+        _uiState.update { 
+            it.copy(
+                textLayers = it.textLayers + newLayer,
+                selectedTextLayerId = newLayer.id,
+                editingTextLayerId = null,
+                showFloatingToolbar = true,
+                showTextDialog = false
+            ) 
+        }
+        saveToHistory()
+    }
+    
+    // Kept (and simplified) for backward compatibility or tap-to-create
+    fun createTextBoxAt(x: Float, y: Float) {
+        val newLayer = TextLayer(
+            text = "",
+            x = x,
+            y = y,
+            width = 200f,
+            height = 80f
+        )
+        _uiState.update { 
+            it.copy(
+                textLayers = it.textLayers + newLayer,
+                selectedTextLayerId = newLayer.id,
+                editingTextLayerId = newLayer.id,
+                showFloatingToolbar = false
+            ) 
+        }
+        saveToHistory()
+    }
+
+    fun updateTextLayerTransform(id: String, pan: androidx.compose.ui.geometry.Offset, zoom: Float, rotation: Float) {
+        _uiState.update {
+            it.copy(
+                textLayers = it.textLayers.map { layer ->
+                    if (layer.id == id && !layer.isLocked) {
+                        layer.copy(
+                            x = layer.x + pan.x,
+                            y = layer.y + pan.y,
+                            scale = layer.scale * zoom,
+                            rotation = layer.rotation + rotation
+                        )
+                    } else layer
+                }
+            )
+        }
+    }
+    
+    fun selectTextLayer(id: String) {
+        _uiState.update { 
+            it.copy(
+                selectedTextLayerId = id,
+                editingTextLayerId = null,
+                showFloatingToolbar = true
+            ) 
+        }
+    }
+    
+    fun enterTextEditMode(id: String) {
+        val layer = _uiState.value.textLayers.find { it.id == id }
+        if (layer?.isLocked == true) return
+        
+        _uiState.update { 
+            it.copy(
+                selectedTextLayerId = id,
+                editingTextLayerId = id,
+                showFloatingToolbar = false
+            ) 
+        }
+    }
+    
+    fun exitTextEditMode() {
+        _uiState.update { 
+            it.copy(
+                editingTextLayerId = null,
+                showFloatingToolbar = _uiState.value.selectedTextLayerId != null
+            ) 
+        }
+        saveToHistory()
+    }
+    
+    fun deselectTextLayer() {
+        _uiState.update { 
+            it.copy(
+                selectedTextLayerId = null,
+                editingTextLayerId = null,
+                showFloatingToolbar = false
+            ) 
+        }
+    }
+
+    // Layer Management Functions
+    fun lockLayer(id: String, locked: Boolean) {
+        _uiState.update {
+            it.copy(
+                textLayers = it.textLayers.map { layer ->
+                    if (layer.id == id) layer.copy(isLocked = locked) else layer
+                }
+            )
+        }
+        saveToHistory()
+    }
+
+    fun duplicateLayer(id: String) {
+        val layer = _uiState.value.textLayers.find { it.id == id } ?: return
+        val newLayer = layer.copy(
+            id = java.util.UUID.randomUUID().toString(),
+            x = layer.x + 40f,
+            y = layer.y + 40f
+        )
+        _uiState.update {
+            it.copy(
+                textLayers = it.textLayers + newLayer,
+                selectedTextLayerId = newLayer.id
+            )
+        }
+        saveToHistory()
+    }
+
+    fun bringToFront(id: String) {
+        val layer = _uiState.value.textLayers.find { it.id == id } ?: return
+        _uiState.update {
+            it.copy(
+                textLayers = it.textLayers.filter { it.id != id } + layer
+            )
+        }
+        saveToHistory()
+    }
+
+    fun sendToBack(id: String) {
+        val layer = _uiState.value.textLayers.find { it.id == id } ?: return
+        _uiState.update {
+            it.copy(
+                textLayers = listOf(layer) + it.textLayers.filter { it.id != id }
+            )
+        }
+        saveToHistory()
+    }
+    
+    // Simplified update for properties
+    fun updateTextProperty(id: String, update: (TextLayer) -> TextLayer) {
+        _uiState.update {
+            it.copy(
+                textLayers = it.textLayers.map { layer ->
+                    if (layer.id == id && !layer.isLocked) update(layer) else layer
+                }
+            )
+        }
+        saveToHistory()
+    }
+    
+    // Backward compatibility shim if needed, or rely on updateTextProperty
+    fun updateTextLayer(
+        textId: String,
+        text: String,
+        color: Int,
+        fontSize: Float,
+        fontFamily: String,
+        isBold: Boolean,
+        isItalic: Boolean,
+        alignment: TextAlignment,
+        hasOutline: Boolean,
+        outlineColor: Int,
+        hasShadow: Boolean
+    ) {
+         updateTextProperty(textId) {
+             it.copy(
+                 text = text,
+                 color = color,
+                 fontSize = fontSize,
+                 fontFamily = fontFamily,
+                 isBold = isBold,
+                 isItalic = isItalic,
+                 alignment = alignment,
+                 hasOutline = hasOutline,
+                 outlineColor = outlineColor,
+                 hasShadow = hasShadow
+             )
+         }
+    }
+
+    fun updateTextInline(id: String, newText: String) {
+        _uiState.update {
+            it.copy(
+                textLayers = it.textLayers.map { layer ->
+                    if (layer.id == id && !layer.isLocked) layer.copy(text = newText)
+                    else layer
+                }
+            )
+        }
+    }
+
+    fun updateTextBoxBackground(id: String, show: Boolean) {
+        _uiState.update {
+            it.copy(
+                textLayers = it.textLayers.map { layer ->
+                    if (layer.id == id) layer.copy(showBackground = show)
+                    else layer
+                }
+            )
+        }
+        saveToHistory()
+    }
+
 }
 
