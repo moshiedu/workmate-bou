@@ -311,7 +311,19 @@ fun PhotoEditorScreen(
                                 )
                             }
                             EditorTab.TEXT -> {
-                                // Text tab - no overlay message
+                                // Text Editor Toolbar
+                                if (uiState.selectedTextLayerId != null) {
+                                    val selectedLayer = uiState.textLayers.find { it.id == uiState.selectedTextLayerId }
+                                    selectedLayer?.let { layer ->
+                                        com.moshitech.workmate.feature.imagestudio.components.TextEditorToolbar(
+                                            layer = layer,
+                                            visible = true,
+                                            onUpdate = { updatedLayer ->
+                                                viewModel.updateTextProperty(layer.id) { updatedLayer }
+                                            }
+                                        )
+                                    }
+                                }
                             }
                             EditorTab.DRAW -> {
                                 Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.SpaceEvenly) {
@@ -388,48 +400,28 @@ fun PhotoEditorScreen(
                         }
                     }
 
-                    // Navigation Tabs
-                    NavigationBar(
-                        containerColor = Color(0xFF1E1E1E),
-                        contentColor = Color.White
-                    ) {
-                        NavigationBarItem(
-                            selected = currentTab == EditorTab.CROP,
-                            onClick = { currentTab = EditorTab.CROP },
-                            icon = { Icon(Icons.Outlined.Crop, "Crop") },
-                            label = { Text("Crop") }
-                        )
-                        NavigationBarItem(
-                            selected = currentTab == EditorTab.ADJUST,
-                            onClick = { currentTab = EditorTab.ADJUST },
-                            icon = { Icon(Icons.Outlined.Edit, "Adjust") },
-                            label = { Text("Adjust") }
-                        )
-                        NavigationBarItem(
-                            selected = currentTab == EditorTab.FILTERS,
-                            onClick = { currentTab = EditorTab.FILTERS },
-                            icon = { Icon(Icons.Outlined.PhotoFilter, "Filters") },
-                            label = { Text("Filters") }
-                        )
-                        NavigationBarItem(
-                            selected = currentTab == EditorTab.ROTATE,
-                            onClick = { currentTab = EditorTab.ROTATE },
-                            icon = { Icon(Icons.Outlined.Edit, "Rotate") },
-                            label = { Text("Rotate") }
-                        )
-                        NavigationBarItem(
-                            selected = currentTab == EditorTab.TEXT,
-                            onClick = { currentTab = EditorTab.TEXT },
-                            icon = { Icon(Icons.Outlined.Edit, "Text") },
-                            label = { Text("Text") }
-                        )
-                        NavigationBarItem(
-                            selected = currentTab == EditorTab.DRAW,
-                            onClick = { currentTab = EditorTab.DRAW },
-                            icon = { Icon(Icons.Outlined.Edit, "Draw") },
-                            label = { Text("Draw") }
-                        )
-                    }
+
+                    // Pixel-Perfect Bottom Navigation
+                    com.moshitech.workmate.feature.imagestudio.components.PhotoEditorBottomNav(
+                        selectedTool = when (currentTab) {
+                            EditorTab.CROP -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.CROP
+                            EditorTab.FILTERS -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.FILTERS
+                            EditorTab.ROTATE -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.ROTATE
+                            EditorTab.ADJUST -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.ADJUST
+                            EditorTab.TEXT -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.TEXT
+                            EditorTab.DRAW -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.DRAW
+                        },
+                        onToolSelected = { tool ->
+                            currentTab = when (tool) {
+                                com.moshitech.workmate.feature.imagestudio.components.EditorTool.CROP -> EditorTab.CROP
+                                com.moshitech.workmate.feature.imagestudio.components.EditorTool.FILTERS -> EditorTab.FILTERS
+                                com.moshitech.workmate.feature.imagestudio.components.EditorTool.ROTATE -> EditorTab.ROTATE
+                                com.moshitech.workmate.feature.imagestudio.components.EditorTool.ADJUST -> EditorTab.ADJUST
+                                com.moshitech.workmate.feature.imagestudio.components.EditorTool.TEXT -> EditorTab.TEXT
+                                com.moshitech.workmate.feature.imagestudio.components.EditorTool.DRAW -> EditorTab.DRAW
+                            }
+                        }
+                    )
                 }
             }
         ) { padding ->
@@ -530,41 +522,20 @@ fun PhotoEditorScreen(
                     )
                 }
                 
-                // Floating Text Toolbar - positioned at left edge, vertically centered
-                if ((uiState.showFloatingToolbar || uiState.editingTextLayerId != null) && uiState.selectedTextLayerId != null) {
+                
+                // Bottom Text Editor Toolbar
+                if (currentTab == EditorTab.TEXT && (uiState.showFloatingToolbar || uiState.editingTextLayerId != null) && uiState.selectedTextLayerId != null) {
                     val selectedLayer = uiState.textLayers.find { it.id == uiState.selectedTextLayerId }
                     selectedLayer?.let { layer ->
                         Box(
                             modifier = Modifier
-                                .align(Alignment.CenterStart)
-                                .padding(start = 8.dp)
+                                .align(Alignment.BottomCenter)
                         ) {
-                            com.moshitech.workmate.feature.imagestudio.components.FloatingTextToolbar(
+                            com.moshitech.workmate.feature.imagestudio.components.TextEditorBottomToolbar(
                                 layer = layer,
                                 visible = true,
                                 onUpdate = { updatedLayer ->
                                     viewModel.updateTextProperty(layer.id) { updatedLayer }
-                                },
-                                onLockToggle = { locked ->
-                                    viewModel.lockLayer(layer.id, locked)
-                                },
-                                onDuplicate = {
-                                    viewModel.duplicateLayer(layer.id)
-                                },
-                                onDelete = {
-                                    viewModel.deleteTextLayer(layer.id)
-                                },
-                                onEdit = {
-                                    viewModel.enterTextEditMode(layer.id)
-                                },
-                                onBringToFront = {
-                                    viewModel.bringToFront(layer.id)
-                                },
-                                onSendToBack = {
-                                    viewModel.sendToBack(layer.id)
-                                },
-                                onClose = {
-                                    viewModel.deselectTextLayer()
                                 }
                             )
                         }
@@ -572,7 +543,8 @@ fun PhotoEditorScreen(
                 }
                 
                 
-                // ADD TEXT Button - always visible in TEXT mode
+                
+                // ADD NEW TEXT Button - pixel perfect design
                 if (currentTab == EditorTab.TEXT) {
                     Button(
                         onClick = { viewModel.createTextBoxAtCenter() },
@@ -580,14 +552,21 @@ fun PhotoEditorScreen(
                             .align(Alignment.TopCenter)
                             .padding(top = 16.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF2196F3)
+                            containerColor = Color(0xFF007AFF) // iOS blue
                         ),
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(20.dp)
                     ) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
                         Text(
-                            "ADD TEXT",
+                            "Add New Text",
                             color = Color.White,
-                            fontWeight = FontWeight.Bold,
+                            fontWeight = FontWeight.Medium,
                             fontSize = 14.sp
                         )
                     }
@@ -966,6 +945,7 @@ fun PhotoEditorScreen(
                                             com.moshitech.workmate.feature.imagestudio.viewmodel.TextAlignment.LEFT -> Icon(Icons.Filled.FormatAlignLeft, "Left")
                                             com.moshitech.workmate.feature.imagestudio.viewmodel.TextAlignment.CENTER -> Icon(Icons.Filled.FormatAlignCenter, "Center")
                                             com.moshitech.workmate.feature.imagestudio.viewmodel.TextAlignment.RIGHT -> Icon(Icons.Filled.FormatAlignRight, "Right")
+                                            com.moshitech.workmate.feature.imagestudio.viewmodel.TextAlignment.JUSTIFY -> Icon(Icons.Filled.FormatAlignCenter, "Justify") // Temp icon
                                         }
                                     }
                                 }

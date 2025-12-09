@@ -113,29 +113,45 @@ fun TextBoxComposable(
                     }
                 }
         ) {
+            // Apply text transformations
+            val displayText = when {
+                layer.text.isEmpty() && !isEditing -> "Double tap to edit"
+                layer.isAllCaps -> layer.text.uppercase()
+                layer.isSmallCaps -> layer.text.uppercase() // Simplified small caps
+                else -> layer.text
+            }
+            
             val textStyle = TextStyle(
                 color = Color(layer.color),
                 fontSize = layer.fontSize.sp,
                 fontWeight = if (layer.isBold) FontWeight.Bold else FontWeight.Normal,
                 fontStyle = if (layer.isItalic) FontStyle.Italic else FontStyle.Normal,
-                textDecoration = if (layer.isUnderline) TextDecoration.Underline else TextDecoration.None,
+                textDecoration = when {
+                    layer.isUnderline && layer.isStrikethrough -> TextDecoration.combine(
+                        listOf(TextDecoration.Underline, TextDecoration.LineThrough)
+                    )
+                    layer.isUnderline -> TextDecoration.Underline
+                    layer.isStrikethrough -> TextDecoration.LineThrough
+                    else -> TextDecoration.None
+                },
                 textAlign = when (layer.alignment) {
                     TextAlignment.LEFT -> TextAlign.Left
                     TextAlignment.CENTER -> TextAlign.Center
                     TextAlignment.RIGHT -> TextAlign.Right
+                    TextAlignment.JUSTIFY -> TextAlign.Justify
                 },
                 letterSpacing = layer.letterSpacing.sp,
                 lineHeight = (layer.fontSize * layer.lineHeight).sp,
                 shadow = if (layer.hasShadow) Shadow(
                     color = Color(layer.shadowColor),
-                    offset = Offset(2f, 2f),
+                    offset = Offset(layer.shadowOffsetX, layer.shadowOffsetY),
                     blurRadius = layer.shadowBlur
                 ) else null
             )
 
             if (isEditing) {
                 // Inline editing with visible cursor
-                Box {
+                Box(modifier = Modifier.graphicsLayer { alpha = layer.layerOpacity }) {
                     if (layer.text.isEmpty()) {
                         Text(
                             text = "Type here...",
@@ -152,11 +168,13 @@ fun TextBoxComposable(
                     )
                 }
             } else {
-                // Display text
+                // Display text with layer opacity
                 Text(
-                    text = if (layer.text.isEmpty()) "Double tap to edit" else layer.text,
+                    text = displayText,
                     style = textStyle,
-                    modifier = Modifier.defaultMinSize(minWidth = 50.dp)
+                    modifier = Modifier
+                        .defaultMinSize(minWidth = 50.dp)
+                        .graphicsLayer { alpha = layer.layerOpacity }
                 )
             }
             

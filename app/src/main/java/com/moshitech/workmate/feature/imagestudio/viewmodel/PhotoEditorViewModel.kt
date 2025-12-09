@@ -45,25 +45,43 @@ data class TextLayer(
     val isBold: Boolean = false,
     val isItalic: Boolean = false,
     val isUnderline: Boolean = false,
+    val isStrikethrough: Boolean = false,
+    val isAllCaps: Boolean = false,
+    val isSmallCaps: Boolean = false,
     val letterSpacing: Float = 0f,
     val lineHeight: Float = 1.2f,
     val alignment: TextAlignment = TextAlignment.CENTER,
+    val verticalAlignment: VerticalAlignment = VerticalAlignment.MIDDLE,
+    val textOrientation: TextOrientation = TextOrientation.HORIZONTAL,
     val hasOutline: Boolean = false,
     val outlineColor: Int = android.graphics.Color.BLACK,
     val outlineWidth: Float = 2f,
+    val outlineThickness: Float = 2f,
     val hasShadow: Boolean = false,
     val shadowColor: Int = android.graphics.Color.BLACK,
     val shadowBlur: Float = 10f,
+    val shadowOffsetX: Float = 2f,
+    val shadowOffsetY: Float = 2f,
     val backgroundColor: Int = android.graphics.Color.TRANSPARENT,
     val backgroundOpacity: Float = 1f,
     val backgroundPadding: Float = 16f,
     val showBackground: Boolean = false,
+    val layerOpacity: Float = 1f,
     val isLocked: Boolean = false
 )
 
 enum class TextAlignment {
-    LEFT, CENTER, RIGHT
+    LEFT, CENTER, RIGHT, JUSTIFY
 }
+
+enum class VerticalAlignment {
+    TOP, MIDDLE, BOTTOM
+}
+
+enum class TextOrientation {
+    HORIZONTAL, VERTICAL
+}
+
 
 data class DrawPath(
     val id: String = java.util.UUID.randomUUID().toString(),
@@ -329,6 +347,7 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
                     TextAlignment.LEFT -> android.graphics.Paint.Align.LEFT
                     TextAlignment.CENTER -> android.graphics.Paint.Align.CENTER
                     TextAlignment.RIGHT -> android.graphics.Paint.Align.RIGHT
+                    TextAlignment.JUSTIFY -> android.graphics.Paint.Align.LEFT // Justify not supported in Paint
                 }
             }
             
