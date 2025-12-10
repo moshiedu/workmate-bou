@@ -118,15 +118,26 @@ fun BatchConverterScreen(
         }
     }
 
-    when (uiState.screenState) {
-        com.moshitech.workmate.feature.imagestudio.viewmodel.BatchScreenState.INPUT -> {
-            BatchInputScreen(navController, viewModel, uiState)
+    Box(modifier = Modifier.fillMaxSize()) {
+        when (uiState.screenState) {
+            com.moshitech.workmate.feature.imagestudio.viewmodel.BatchScreenState.INPUT -> {
+                BatchInputScreen(navController, viewModel, uiState)
+            }
+            com.moshitech.workmate.feature.imagestudio.viewmodel.BatchScreenState.SUCCESS -> {
+                BatchSuccessScreen(navController, viewModel, uiState)
+            }
+            com.moshitech.workmate.feature.imagestudio.viewmodel.BatchScreenState.DETAIL -> {
+                BatchDetailScreen(viewModel, uiState)
+            }
         }
-        com.moshitech.workmate.feature.imagestudio.viewmodel.BatchScreenState.SUCCESS -> {
-            BatchSuccessScreen(navController, viewModel, uiState)
-        }
-        com.moshitech.workmate.feature.imagestudio.viewmodel.BatchScreenState.DETAIL -> {
-            BatchDetailScreen(viewModel, uiState)
+        
+        if (uiState.isConverting) {
+            BatchProgressOverlay(
+                progress = uiState.progress,
+                processedCount = uiState.processedCount,
+                totalCount = uiState.totalCount,
+                onCancel = viewModel::cancelConversion
+            )
         }
     }
 }
@@ -365,7 +376,11 @@ private fun BatchInputScreen(
 
             Text("Output Format", color = Color(0xFF94A3B8), fontSize = 12.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CompressFormat.values().forEach { format ->
+                val formats = remember {
+                    if (android.os.Build.VERSION.SDK_INT >= 28) CompressFormat.values().toList()
+                    else CompressFormat.values().filter { it != CompressFormat.HEIF }
+                }
+                formats.forEach { format ->
                     val isSelected = uiState.format == format
                     Box(
                         modifier = Modifier
@@ -932,6 +947,77 @@ private fun BatchDetailScreen(
                         translationY = offset.value.y
                     )
             )
+        }
+    }
+}
+
+@Composable
+fun BatchProgressOverlay(
+    progress: Float,
+    processedCount: Int,
+    totalCount: Int,
+    onCancel: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xE60F172A)) // Dark scrim
+            .clickable(enabled = true, onClick = {}) // Block touches
+            ,
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.size(120.dp),
+                    color = Color(0xFF007AFF),
+                    strokeWidth = 8.dp,
+                    trackColor = Color(0xFF334155),
+                )
+                Text(
+                    text = "${(progress * 100).toInt()}%",
+                    color = Color.White,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(32.dp))
+            
+            Text(
+                text = "Converting your images...",
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Medium
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Text(
+                text = "Converting $processedCount of $totalCount",
+                color = Color(0xFF94A3B8),
+                fontSize = 14.sp
+            )
+            
+            Spacer(modifier = Modifier.height(48.dp))
+            
+            Button(
+                onClick = onCancel,
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF334155),
+                    contentColor = Color.White
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .width(200.dp)
+                    .height(48.dp)
+            ) {
+                Text("Cancel")
+            }
         }
     }
 }

@@ -11,6 +11,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import androidx.core.graphics.scale
+import androidx.heifwriter.HeifWriter
 
 class BatchRepository(private val context: Context) {
 
@@ -58,12 +59,14 @@ class BatchRepository(private val context: Context) {
                 CompressFormat.PNG -> "png"
                 CompressFormat.WEBP -> "webp"
                 CompressFormat.BMP -> "bmp"
+                CompressFormat.HEIF -> "heic"
             }
             val compressFmt = when (settings.format) {
                 CompressFormat.JPEG -> Bitmap.CompressFormat.JPEG
                 CompressFormat.PNG -> Bitmap.CompressFormat.PNG
                 CompressFormat.WEBP -> if (android.os.Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSY else Bitmap.CompressFormat.WEBP
                 CompressFormat.BMP -> Bitmap.CompressFormat.PNG // BMP uses PNG compression internally
+                CompressFormat.HEIF -> null // Special handling
             }
 
             val filename = "BATCH_${System.currentTimeMillis()}_${(0..1000).random()}.$ext"
@@ -71,7 +74,33 @@ class BatchRepository(private val context: Context) {
             var out = FileOutputStream(file)
             
             // Logic for Target Size
-            if (settings.targetSizeKB != null && settings.targetSizeKB > 0) {
+            // Logic for Target Size or Format
+            if (settings.format == CompressFormat.HEIF && android.os.Build.VERSION.SDK_INT >= 28) {
+                // HEIF Saving using HeifWriter
+                // Note: HeifWriter doesn't support target size estimation easily, checking quality loops is expensive. 
+                // We will respect Quality setting.
+                
+                try {
+                    val writer = HeifWriter.Builder(
+                        file.absolutePath, 
+                        finalBitmap.width, 
+                        finalBitmap.height, 
+                        HeifWriter.INPUT_MODE_BITMAP
+                    )
+                    .setQuality(settings.quality)
+                    .build()
+                    
+                    writer.start()
+                    writer.addBitmap(finalBitmap)
+                    writer.stop(0)
+                    writer.close()
+                } catch (e: Exception) {
+                    // Fallback to JPEG if HEIF fails (e.g. device has no encoder)
+                    finalBitmap.compress(Bitmap.CompressFormat.JPEG, settings.quality, out)
+                    out.flush()
+                    out.close()
+                }
+            } else if (settings.targetSizeKB != null && settings.targetSizeKB > 0 && compressFmt != null) {
                 var currentQuality = 100
                 var streamLength: Long
                 val targetBytes = settings.targetSizeKB * 1024L
@@ -103,10 +132,15 @@ class BatchRepository(private val context: Context) {
                     } while (streamLength > targetBytes && currentQuality > 5)
                 }
                 
-            } else {
+            } else if (compressFmt != null) {
                 finalBitmap.compress(compressFmt, settings.quality, out)
                 out.flush()
                 out.close()
+            } else {
+                // Fallback for unexpected null (should not happen for non-HEIF)
+                 finalBitmap.compress(Bitmap.CompressFormat.JPEG, settings.quality, out)
+                 out.flush()
+                 out.close()
             }
 
             Result.success(Uri.fromFile(file))

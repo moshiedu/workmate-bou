@@ -14,6 +14,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.isActive
 
 enum class BatchScreenState {
     INPUT,
@@ -49,10 +52,15 @@ data class BatchConverterUiState(
     val convertedImages: List<ConvertedImage> = emptyList(),
     val selectedDetailImage: ConvertedImage? = null,
     val savedFolderUri: Uri? = null,
-    val lastSavedLocation: Uri? = null
+    val lastSavedLocation: Uri? = null,
+    val progress: Float = 0f,
+    val processedCount: Int = 0,
+    val totalCount: Int = 0
 )
 
 class BatchConverterViewModel(application: Application) : AndroidViewModel(application) {
+    
+    private var conversionJob: kotlinx.coroutines.Job? = null
 
     // Reuse existing repository for now as logic is same
     private val repository: BatchRepository
@@ -149,8 +157,17 @@ class BatchConverterViewModel(application: Application) : AndroidViewModel(appli
              return
         }
 
-        viewModelScope.launch {
-            _uiState.update { it.copy(isConverting = true, conversionMessage = null) }
+        conversionJob?.cancel()
+        conversionJob = viewModelScope.launch {
+            _uiState.update { 
+                it.copy(
+                    isConverting = true, 
+                    conversionMessage = "Starting...",
+                    progress = 0f,
+                    processedCount = 0,
+                    totalCount = state.selectedImages.size
+                ) 
+            }
             
             val inputSize = state.targetSize.toIntOrNull()
             val targetSizeKb = if (inputSize != null) {
@@ -172,13 +189,19 @@ class BatchConverterViewModel(application: Application) : AndroidViewModel(appli
             val totalImages = state.selectedImages.size
             
             state.selectedImages.forEachIndexed { index, uri ->
-                 _uiState.update { it.copy(conversionMessage = "Converting ${index + 1}/$totalImages...") }
+                 ensureActive() // Check cancellation and throw if cancelled
+
+                 _uiState.update { 
+                     it.copy(
+                         conversionMessage = "Converting ${index + 1} of $totalImages",
+                         processedCount = index + 1
+                     ) 
+                 }
                  
                 // Fetch Original Details First
                 val originalDetails = getImageDetails(uri)
                 
                 // Use original name for destination if possible
-                // We'll pass it to repository if we modify repo, but for now we rename after or just use in saveAll
                 val result = repository.convertAndSaveImage(uri, settings)
                 
                 if (result.isSuccess) {
@@ -198,17 +221,36 @@ class BatchConverterViewModel(application: Application) : AndroidViewModel(appli
                         originalType = originalDetails.type
                     ))
                 }
+                
+                // Update progress after each item
+                val currentProgress = (index + 1).toFloat() / totalImages
+                _uiState.update { it.copy(progress = currentProgress) }
             }
-
-            _uiState.update { 
-                it.copy(
-                    isConverting = false, 
-                    conversionMessage = null,
-                    selectedImages = emptyList(),
-                    convertedImages = results,
-                    screenState = BatchScreenState.SUCCESS
-                ) 
+            
+            if (isActive) {
+                 _uiState.update { 
+                    it.copy(
+                        isConverting = false, 
+                        conversionMessage = null,
+                        selectedImages = emptyList(),
+                        convertedImages = results,
+                        screenState = BatchScreenState.SUCCESS,
+                        progress = 1f
+                    ) 
+                }
             }
+        }
+    }
+    
+    fun cancelConversion() {
+        conversionJob?.cancel()
+        _uiState.update { 
+            it.copy(
+                isConverting = false, 
+                conversionMessage = null,
+                progress = 0f,
+                processedCount = 0
+            ) 
         }
     }
     
@@ -235,6 +277,7 @@ class BatchConverterViewModel(application: Application) : AndroidViewModel(appli
                          "image/png" -> "png"
                          "image/webp" -> "webp"
                          "image/bmp" -> "bmp"
+                         "image/heic", "image/heif" -> "heic"
                          else -> "jpg"
                      }
                      

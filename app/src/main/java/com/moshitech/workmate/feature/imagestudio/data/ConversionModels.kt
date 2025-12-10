@@ -1,7 +1,7 @@
 package com.moshitech.workmate.feature.imagestudio.data
 
 enum class CompressFormat {
-    JPEG, PNG, WEBP, BMP
+    JPEG, PNG, WEBP, BMP, HEIF
 }
 
 data class ConversionSettings(

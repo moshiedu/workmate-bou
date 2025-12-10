@@ -79,6 +79,7 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.coil.compose)
     implementation(libs.image.cropper)
+    implementation(libs.androidx.heifwriter)
     
     // Biometric for fingerprint detection
     implementation("androidx.biometric:biometric:1.1.0")
