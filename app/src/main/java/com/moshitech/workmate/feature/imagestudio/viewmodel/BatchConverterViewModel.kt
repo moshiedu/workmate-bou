@@ -146,4 +146,95 @@ class BatchConverterViewModel(application: Application) : AndroidViewModel(appli
     fun clearMessage() {
         _uiState.update { it.copy(message = null, conversionMessage = null) }
     }
+    
+    data class ImageDetails(
+        val name: String,
+        val path: String,
+        val size: String,
+        val resolution: String,
+        val type: String
+    )
+    
+    suspend fun getImageDetails(uri: Uri): ImageDetails {
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            var name = "Unknown"
+            val path = uri.path ?: "Unknown"
+            var sizeBytes: Long = -1
+            var resolution = "Unknown"
+            var type = "Unknown"
+            
+            try {
+                // Try querying MediaStore
+                try {
+                    getApplication<Application>().contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val nameIndex = cursor.getColumnIndex(android.provider.MediaStore.Images.Media.DISPLAY_NAME)
+                            if (nameIndex != -1) name = cursor.getString(nameIndex) ?: "Unknown"
+                            
+                            val sizeIndex = cursor.getColumnIndex(android.provider.MediaStore.Images.Media.SIZE)
+                            if (sizeIndex != -1) {
+                                sizeBytes = cursor.getLong(sizeIndex)
+                            }
+                            
+                            val mimeIndex = cursor.getColumnIndex(android.provider.MediaStore.Images.Media.MIME_TYPE)
+                            if (mimeIndex != -1) type = cursor.getString(mimeIndex) ?: "Unknown"
+                            
+                            val widthIndex = cursor.getColumnIndex(android.provider.MediaStore.Images.Media.WIDTH)
+                            val heightIndex = cursor.getColumnIndex(android.provider.MediaStore.Images.Media.HEIGHT)
+                            if (widthIndex != -1 && heightIndex != -1) {
+                                 val w = cursor.getInt(widthIndex)
+                                 val h = cursor.getInt(heightIndex)
+                                 if (w > 0 && h > 0) resolution = "$w x $h"
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Ignore query failure, proceed to fallbacks
+                }
+
+                // Fallbacks if data missing
+                if (sizeBytes <= 0) {
+                    try {
+                        getApplication<Application>().contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                            sizeBytes = pfd.statSize
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+                
+                // Fallback for resolution if still unknown
+                if (resolution == "Unknown" || resolution.startsWith("0 x")) {
+                     try {
+                         val options = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                         getApplication<Application>().contentResolver.openInputStream(uri)?.use { 
+                             android.graphics.BitmapFactory.decodeStream(it, null, options) 
+                         }
+                         if (options.outWidth > 0 && options.outHeight > 0) {
+                             resolution = "${options.outWidth} x ${options.outHeight}"
+                             if (type == "Unknown" && options.outMimeType != null) type = options.outMimeType
+                         }
+                     } catch (e: Exception) {}
+                }
+                
+                // Name fallback (filename from path)
+                if (name == "Unknown") {
+                    name = uri.lastPathSegment ?: "Image"
+                }
+
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            
+            val sizeString = if (sizeBytes > 0) formatFileSize(sizeBytes) else "Unknown"
+            ImageDetails(name, path, sizeString, resolution, type)
+        }
+    }
+    
+    private fun formatFileSize(size: Long): String {
+        val mb = size / (1024.0 * 1024.0)
+        if (mb >= 1.0) return String.format("%.2f MB", mb)
+        val kb = size / 1024.0
+        return String.format("%.2f KB", kb)
+    }
 }

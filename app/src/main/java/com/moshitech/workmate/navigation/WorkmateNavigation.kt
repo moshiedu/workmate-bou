@@ -327,8 +327,17 @@ fun WorkmateNavigation(
         composable(Screen.ImageStudio.route) {
             com.moshitech.workmate.feature.imagestudio.navigation.ImageStudioNavigator(navController)
         }
-        composable(Screen.BatchConverter.route) {
-            com.moshitech.workmate.feature.imagestudio.ui.BatchConverterScreen(navController)
+        composable(
+            route = "${Screen.BatchConverter.route}?uris={uris}",
+            arguments = listOf(
+                androidx.navigation.navArgument("uris") {
+                    type = androidx.navigation.NavType.StringType
+                    nullable = true
+                }
+            )
+        ) { backStackEntry ->
+             val urisString = backStackEntry.arguments?.getString("uris")
+             com.moshitech.workmate.feature.imagestudio.ui.BatchConverterScreen(navController, urisString)
         }
         composable(
             route = "${Screen.PhotoEditor.route}?uri={uri}",
