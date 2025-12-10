@@ -8,11 +8,30 @@ import com.moshitech.workmate.feature.imagestudio.data.CompressFormat
 import com.moshitech.workmate.feature.imagestudio.data.ConversionSettings
 import com.moshitech.workmate.feature.imagestudio.repository.BatchRepository
 import com.moshitech.workmate.feature.imagestudio.util.MonetizationManager
+import com.moshitech.workmate.data.repository.UserPreferencesRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+enum class BatchScreenState {
+    INPUT,
+    SUCCESS,
+    DETAIL
+}
+
+data class ConvertedImage(
+    val uri: Uri,
+    val originalUri: Uri,
+    val name: String,
+    val size: String,
+    val resolution: String,
+    val type: String,
+    val originalSize: String,
+    val originalResolution: String,
+    val originalType: String
+)
 
 data class BatchConverterUiState(
     val selectedImages: List<Uri> = emptyList(),
@@ -25,16 +44,36 @@ data class BatchConverterUiState(
     val isTargetSizeInMb: Boolean = false,
     val isConverting: Boolean = false,
     val conversionMessage: String? = null,
-    val message: String? = null
+    val message: String? = null,
+    val screenState: BatchScreenState = BatchScreenState.INPUT,
+    val convertedImages: List<ConvertedImage> = emptyList(),
+    val selectedDetailImage: ConvertedImage? = null,
+    val savedFolderUri: Uri? = null,
+    val lastSavedLocation: Uri? = null
 )
 
 class BatchConverterViewModel(application: Application) : AndroidViewModel(application) {
 
     // Reuse existing repository for now as logic is same
     private val repository: BatchRepository
+    private val preferencesRepository: UserPreferencesRepository
 
     init {
         repository = BatchRepository(application)
+        preferencesRepository = UserPreferencesRepository(application)
+        
+        viewModelScope.launch {
+            preferencesRepository.batchOutputFolder.collect { uriString ->
+                 if (!uriString.isNullOrBlank()) {
+                     try {
+                         val uri = Uri.parse(uriString)
+                         _uiState.update { it.copy(savedFolderUri = uri) }
+                     } catch (e: Exception) {
+                         // Ignore invalid URI
+                     }
+                 }
+            }
+        }
     }
 
     private val _uiState = MutableStateFlow(BatchConverterUiState())
@@ -127,24 +166,171 @@ class BatchConverterViewModel(application: Application) : AndroidViewModel(appli
                 targetSizeKB = targetSizeKb
             )
 
+            val results = mutableListOf<ConvertedImage>()
             var successCount = 0
-            state.selectedImages.forEach { uri ->
+            
+            val totalImages = state.selectedImages.size
+            
+            state.selectedImages.forEachIndexed { index, uri ->
+                 _uiState.update { it.copy(conversionMessage = "Converting ${index + 1}/$totalImages...") }
+                 
+                // Fetch Original Details First
+                val originalDetails = getImageDetails(uri)
+                
+                // Use original name for destination if possible
+                // We'll pass it to repository if we modify repo, but for now we rename after or just use in saveAll
                 val result = repository.convertAndSaveImage(uri, settings)
-                if (result.isSuccess) successCount++
+                
+                if (result.isSuccess) {
+                    successCount++
+                    val convertedUri = result.getOrThrow()
+                    // Get details of converted image
+                    val details = getImageDetails(convertedUri)
+                    results.add(ConvertedImage(
+                        uri = convertedUri,
+                        originalUri = uri,
+                        name = "CONVERTED_${originalDetails.name}", // Placeholder, will fix in save
+                        size = details.size,
+                        resolution = details.resolution,
+                        type = details.type,
+                        originalSize = originalDetails.size,
+                        originalResolution = originalDetails.resolution,
+                        originalType = originalDetails.type
+                    ))
+                }
             }
 
             _uiState.update { 
                 it.copy(
                     isConverting = false, 
-                    conversionMessage = "Converted $successCount of ${state.selectedImages.size} images",
-                    selectedImages = emptyList() 
+                    conversionMessage = null,
+                    selectedImages = emptyList(),
+                    convertedImages = results,
+                    screenState = BatchScreenState.SUCCESS
                 ) 
             }
         }
     }
     
+    fun saveAllToDevice(context: android.content.Context, treeUri: Uri?) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val state = _uiState.value
+            var savedCount = 0
+            
+            // Just use the timestamp once for batch consistency if needed, or per file
+            // User requested: "how the new name is being defining". We should use OriginalName_Converted.ext
+            
+            state.convertedImages.forEach { image ->
+                 try {
+                     // Name generation logic: OriginalName_Converted.ext
+                     val originalName = image.name.removePrefix("CONVERTED_") // It was placeholder
+                     // Better: use originalUri filename logic again or store clean name
+                     // Let's rely on original filename from a fresh query or cached if we had it.
+                     // We actually stored "CONVERTED_${originalDetails.name}" in image.name in the loop above.
+                     // Let's refine that: image.name currently has the extension of the *original* usually.
+                     // We need the extension of the *new* format.
+                     
+                     val ext = when (image.type) {
+                         "image/jpeg" -> "jpg"
+                         "image/png" -> "png"
+                         "image/webp" -> "webp"
+                         "image/bmp" -> "bmp"
+                         else -> "jpg"
+                     }
+                     
+                     val baseName = image.name.substringBeforeLast(".") // Remove old extension
+                     val finalName = "${baseName}_Edited.$ext"
+
+                     if (treeUri != null) {
+                         // Save to User Selected Folder
+                         val docFile = androidx.documentfile.provider.DocumentFile.fromTreeUri(context, treeUri)
+                         val newFile = docFile?.createFile(image.type, finalName)
+                         if (newFile != null) {
+                             context.contentResolver.openOutputStream(newFile.uri)?.use { out ->
+                                 context.contentResolver.openInputStream(image.uri)?.use { input ->
+                                     input.copyTo(out)
+                                 }
+                             }
+                             savedCount++
+                         }
+
+                         // Persist location & Take Permission if needed
+                         try {
+                             val takeFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                     android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                             context.contentResolver.takePersistableUriPermission(treeUri, takeFlags)
+                         } catch (e: Exception) {
+                             // Ignore if already taken or not supported
+                         }
+
+                         viewModelScope.launch {
+                             preferencesRepository.setBatchOutputFolder(treeUri.toString())
+                         }
+                     } else {
+                         // Save to Default MediaStore (Pictures/Workmate/Converted)
+                         val values = android.content.ContentValues().apply {
+                             put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, finalName)
+                             put(android.provider.MediaStore.Images.Media.MIME_TYPE, image.type)
+                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                                 put(android.provider.MediaStore.Images.Media.IS_PENDING, 1)
+                                 put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Workmate/Converted")
+                             }
+                         }
+                         
+                         val resolver = context.contentResolver
+                         val collection = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                             android.provider.MediaStore.Images.Media.getContentUri(android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                         } else {
+                             android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                         }
+                         
+                         val itemUri = resolver.insert(collection, values)
+                         if (itemUri != null) {
+                             resolver.openOutputStream(itemUri)?.use { out ->
+                                 resolver.openInputStream(image.uri)?.use { input ->
+                                     input.copyTo(out)
+                                 }
+                             }
+                             
+                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                                 values.clear()
+                                 values.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0)
+                                 resolver.update(itemUri, values, null, null)
+                             }
+                             savedCount++
+                         }
+                     }
+                 } catch (e: Exception) {
+                     e.printStackTrace()
+                 }
+            }
+            
+            _uiState.update { it.copy(message = "Saved $savedCount images", lastSavedLocation = treeUri) }
+        }
+    }
+    
+    fun resetState() {
+        _uiState.update { 
+            it.copy(
+                screenState = BatchScreenState.INPUT,
+                convertedImages = emptyList(),
+                selectedImages = emptyList(),
+                selectedDetailImage = null,
+                lastSavedLocation = null
+            )
+        }
+    }
+    
+    fun selectDetailImage(image: ConvertedImage) {
+        _uiState.update { it.copy(screenState = BatchScreenState.DETAIL, selectedDetailImage = image) }
+    }
+    
+    fun closeDetail() {
+        _uiState.update { it.copy(screenState = BatchScreenState.SUCCESS, selectedDetailImage = null) }
+    }
+    
     fun clearMessage() {
-        _uiState.update { it.copy(message = null, conversionMessage = null) }
+        _uiState.update { it.copy(message = null, conversionMessage = null, lastSavedLocation = null) }
     }
     
     data class ImageDetails(
@@ -201,6 +387,11 @@ class BatchConverterViewModel(application: Application) : AndroidViewModel(appli
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
+                }
+                 // Try file length if local
+                if (sizeBytes <= 0 && uri.scheme == "file") {
+                     val f = java.io.File(uri.path!!)
+                     if (f.exists()) sizeBytes = f.length()
                 }
                 
                 // Fallback for resolution if still unknown

@@ -103,4 +103,15 @@ class UserPreferencesRepository(private val context: Context) {
         val savedAnswer = securityAnswer.firstOrNull()
         return savedAnswer != null && savedAnswer == answer.lowercase().trim()
     }
+    
+    // Batch Converter
+    private val BATCH_OUTPUT_FOLDER_KEY = stringPreferencesKey("batch_output_folder")
+    val batchOutputFolder: Flow<String?> = context.dataStore.data
+        .map { preferences -> preferences[BATCH_OUTPUT_FOLDER_KEY] }
+        
+    suspend fun setBatchOutputFolder(uri: String) {
+        context.dataStore.edit { preferences ->
+            preferences[BATCH_OUTPUT_FOLDER_KEY] = uri
+        }
+    }
 }

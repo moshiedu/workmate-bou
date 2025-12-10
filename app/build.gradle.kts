@@ -101,4 +101,7 @@ dependencies {
     
     // ML Kit Document Scanner
     implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0-beta1")
+    
+    // DocumentFile for SAF
+    implementation("androidx.documentfile:documentfile:1.0.1")
 }
