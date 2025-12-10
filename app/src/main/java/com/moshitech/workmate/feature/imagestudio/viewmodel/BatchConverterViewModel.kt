@@ -9,6 +9,7 @@ import com.moshitech.workmate.feature.imagestudio.data.ConversionSettings
 import com.moshitech.workmate.feature.imagestudio.repository.BatchRepository
 import com.moshitech.workmate.feature.imagestudio.util.MonetizationManager
 import com.moshitech.workmate.data.repository.UserPreferencesRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,7 +34,11 @@ data class ConvertedImage(
     val type: String,
     val originalSize: String,
     val originalResolution: String,
-    val originalType: String
+
+    val originalType: String,
+    val sizeBytes: Long = 0,
+    val width: Int = 0,
+    val height: Int = 0
 )
 
 data class BatchConverterUiState(
@@ -55,7 +60,10 @@ data class BatchConverterUiState(
     val lastSavedLocation: Uri? = null,
     val progress: Float = 0f,
     val processedCount: Int = 0,
-    val totalCount: Int = 0
+    val totalCount: Int = 0,
+    val maxInputWidth: Int = 0,
+    val maxInputHeight: Int = 0,
+    val showGuide: Boolean = false
 )
 
 class BatchConverterViewModel(application: Application) : AndroidViewModel(application) {
@@ -97,12 +105,28 @@ class BatchConverterViewModel(application: Application) : AndroidViewModel(appli
             return
         }
         
-        _uiState.update { it.copy(selectedImages = it.selectedImages + uris) }
-    }
+    
+    _uiState.update { it.copy(selectedImages = it.selectedImages + uris) }
+    recalculateMaxDimensions()
+}
 
-    fun removeImage(uri: Uri) {
-        _uiState.update { it.copy(selectedImages = it.selectedImages - uri) }
+fun removeImage(uri: Uri) {
+    _uiState.update { it.copy(selectedImages = it.selectedImages - uri) }
+    recalculateMaxDimensions()
+}
+
+private fun recalculateMaxDimensions() {
+    viewModelScope.launch(Dispatchers.IO) {
+        var maxW = 0
+        var maxH = 0
+        _uiState.value.selectedImages.forEach { uri ->
+           val details = getImageDetails(uri)
+           if (details.width > maxW) maxW = details.width
+           if (details.height > maxH) maxH = details.height
+        }
+        _uiState.update { it.copy(maxInputWidth = maxW, maxInputHeight = maxH) }
     }
+}    
 
     fun updateFormat(format: CompressFormat) {
         _uiState.update { it.copy(format = format) }
@@ -218,7 +242,10 @@ class BatchConverterViewModel(application: Application) : AndroidViewModel(appli
                         type = details.type,
                         originalSize = originalDetails.size,
                         originalResolution = originalDetails.resolution,
-                        originalType = originalDetails.type
+                        originalType = originalDetails.type,
+                        sizeBytes = details.sizeBytes,
+                        width = details.width,
+                        height = details.height
                     ))
                 }
                 
@@ -381,9 +408,16 @@ class BatchConverterViewModel(application: Application) : AndroidViewModel(appli
         val path: String,
         val size: String,
         val resolution: String,
-        val type: String
+        val type: String,
+        val sizeBytes: Long = 0,
+        val width: Int = 0,
+        val height: Int = 0
     )
     
+    fun toggleGuide() {
+        _uiState.update { it.copy(showGuide = !it.showGuide) }
+    }
+
     suspend fun getImageDetails(uri: Uri): ImageDetails {
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             var name = "Unknown"
@@ -391,6 +425,8 @@ class BatchConverterViewModel(application: Application) : AndroidViewModel(appli
             var sizeBytes: Long = -1
             var resolution = "Unknown"
             var type = "Unknown"
+            var wRef = 0
+            var hRef = 0
             
             try {
                 // Try querying MediaStore
@@ -413,8 +449,12 @@ class BatchConverterViewModel(application: Application) : AndroidViewModel(appli
                             if (widthIndex != -1 && heightIndex != -1) {
                                  val w = cursor.getInt(widthIndex)
                                  val h = cursor.getInt(heightIndex)
-                                 if (w > 0 && h > 0) resolution = "$w x $h"
-                            }
+                                 if (w > 0 && h > 0) {
+                                     resolution = "$w x $h"
+                                     wRef = w
+                                     hRef = h
+                                 }
+                             }
                         }
                     }
                 } catch (e: Exception) {
@@ -446,6 +486,8 @@ class BatchConverterViewModel(application: Application) : AndroidViewModel(appli
                          }
                          if (options.outWidth > 0 && options.outHeight > 0) {
                              resolution = "${options.outWidth} x ${options.outHeight}"
+                             wRef = options.outWidth
+                             hRef = options.outHeight
                              if (type == "Unknown" && options.outMimeType != null) type = options.outMimeType
                          }
                      } catch (e: Exception) {}
@@ -461,11 +503,11 @@ class BatchConverterViewModel(application: Application) : AndroidViewModel(appli
             }
             
             val sizeString = if (sizeBytes > 0) formatFileSize(sizeBytes) else "Unknown"
-            ImageDetails(name, path, sizeString, resolution, type)
+            ImageDetails(name, path, sizeString, resolution, type, sizeBytes, wRef, hRef)
         }
     }
     
-    private fun formatFileSize(size: Long): String {
+    fun formatFileSize(size: Long): String {
         val mb = size / (1024.0 * 1024.0)
         if (mb >= 1.0) return String.format("%.2f MB", mb)
         val kb = size / 1024.0

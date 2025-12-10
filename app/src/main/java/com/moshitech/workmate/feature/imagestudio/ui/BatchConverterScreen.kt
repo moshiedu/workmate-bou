@@ -85,6 +85,7 @@ import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.ui.graphics.graphicsLayer
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -371,14 +372,30 @@ private fun BatchInputScreen(
                         color = Color.White,
                         fontSize = 11.sp
                     )
+                    
+                    IconButton(
+                        onClick = { viewModel.toggleGuide() },
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Info,
+                            contentDescription = "Guide",
+                            tint = Color(0xFF94A3B8),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
             }
 
-            Text("Output Format", color = Color(0xFF94A3B8), fontSize = 12.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val formats = remember {
-                    if (android.os.Build.VERSION.SDK_INT >= 28) CompressFormat.values().toList()
-                    else CompressFormat.values().filter { it != CompressFormat.HEIF }
+                    val all = if (android.os.Build.VERSION.SDK_INT >= 28) CompressFormat.values().toList()
+                              else CompressFormat.values().filter { it != CompressFormat.HEIF }
+                    // Move ORIGINAL to front
+                    val (originals, others) = all.partition { it == CompressFormat.ORIGINAL }
+                    originals + others
                 }
                 formats.forEach { format ->
                     val isSelected = uiState.format == format
@@ -391,9 +408,18 @@ private fun BatchInputScreen(
                             .clickable { viewModel.updateFormat(format) },
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(format.name, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                        val label = if (format == CompressFormat.ORIGINAL) "Auto" else format.name
+                        Text(label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
                     }
                 }
+            }
+            if (uiState.format == CompressFormat.ORIGINAL) {
+                Text(
+                    "Maintains original file type (e.g. PNG stays PNG) while reducing size.",
+                    color = Color(0xFF64748B),
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
             }
             
 
@@ -449,8 +475,29 @@ private fun BatchInputScreen(
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
+
                     Text("px", color = Color(0xFF64748B), fontSize = 11.sp, modifier = Modifier.align(Alignment.BottomEnd))
                 }
+                
+                // Upscaling Warning
+                val widthInt = uiState.width.toIntOrNull() ?: 0
+                val heightInt = uiState.height.toIntOrNull() ?: 0
+                if ((widthInt > uiState.maxInputWidth && uiState.maxInputWidth > 0) || 
+                    (heightInt > uiState.maxInputHeight && uiState.maxInputHeight > 0)) {
+                    Row(
+                        modifier = Modifier.padding(top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFEAB308), modifier = Modifier.size(12.dp))
+                        Text(
+                            "Upscaling larger than original causes blurriness.",
+                            color = Color(0xFFEAB308),
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
 
                 // Link/Constraint Toggle
                 Box(
@@ -496,6 +543,25 @@ private fun BatchInputScreen(
                     },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
+
+                // Clear Button
+                if (uiState.targetSize.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .padding(end = 4.dp)
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .clickable { viewModel.updateTargetSize("") },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Clear",
+                            tint = Color(0xFF64748B),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
                 
                 // Unit Toggle
                 Row(
@@ -523,6 +589,14 @@ private fun BatchInputScreen(
             }
             
             Text("Overrides Quality slider below.", color = Color(0xFF64748B), fontSize = 11.sp)
+            if (uiState.targetSize.isNotBlank()) {
+                Text(
+                    "Note: Resolution will be reduced if necessary to meet target.",
+                    color = Color(0xFFEAB308),
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
 
             Spacer(modifier = Modifier.height(4.dp))
 
@@ -607,6 +681,12 @@ private fun BatchInputScreen(
         }
     }
     
+    if (uiState.showGuide) {
+        com.moshitech.workmate.feature.imagestudio.ui.BatchGuideDialog(
+            onDismiss = { viewModel.toggleGuide() }
+        )
+    }
+
     if (showInfoModal && imageDetails != null) {
         AlertDialog(
             onDismissRequest = { showInfoModal = false },
@@ -766,8 +846,11 @@ private fun BatchSuccessScreen(
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Average File Size", color = Color(0xFF94A3B8))
                          // Simple avg calc
+                        // Avg Size calc
                         val avgSize = if (uiState.convertedImages.isNotEmpty()) {
-                             uiState.convertedImages.first().size 
+                            val totalBytes = uiState.convertedImages.sumOf { it.sizeBytes }
+                            val avgBytes = totalBytes / uiState.convertedImages.size
+                            viewModel.formatFileSize(avgBytes)
                         } else "0 KB"
                         Text(avgSize, color = Color.White, fontWeight = FontWeight.Bold)
                     }

@@ -53,16 +53,35 @@ class BatchRepository(private val context: Context) {
                  finalBitmap = originalBitmap.scale(width, settings.height)
             }
 
+            // Determine Target Format
+            var targetFormat = settings.format
+            
+            if (targetFormat == CompressFormat.ORIGINAL) {
+                 val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                 context.contentResolver.openInputStream(uri)?.use { 
+                     BitmapFactory.decodeStream(it, null, options) 
+                 }
+                 val mime = options.outMimeType ?: "image/jpeg"
+                 
+                 targetFormat = when {
+                     mime.contains("png") -> CompressFormat.PNG
+                     mime.contains("webp") -> CompressFormat.WEBP
+                     mime.contains("bmp") -> CompressFormat.BMP
+                     mime.contains("heic") || mime.contains("heif") -> CompressFormat.HEIF
+                     else -> CompressFormat.JPEG // Default fallback
+                 }
+            }
+
             // Save Logic
-            val ext = when (settings.format) {
-                CompressFormat.JPEG -> "jpg"
+            val ext = when (targetFormat) {
+                CompressFormat.JPEG, CompressFormat.ORIGINAL -> "jpg" // Original should have been resolved above
                 CompressFormat.PNG -> "png"
                 CompressFormat.WEBP -> "webp"
                 CompressFormat.BMP -> "bmp"
                 CompressFormat.HEIF -> "heic"
             }
-            val compressFmt = when (settings.format) {
-                CompressFormat.JPEG -> Bitmap.CompressFormat.JPEG
+            val compressFmt = when (targetFormat) {
+                CompressFormat.JPEG, CompressFormat.ORIGINAL -> Bitmap.CompressFormat.JPEG
                 CompressFormat.PNG -> Bitmap.CompressFormat.PNG
                 CompressFormat.WEBP -> if (android.os.Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSY else Bitmap.CompressFormat.WEBP
                 CompressFormat.BMP -> Bitmap.CompressFormat.PNG // BMP uses PNG compression internally
@@ -75,7 +94,7 @@ class BatchRepository(private val context: Context) {
             
             // Logic for Target Size
             // Logic for Target Size or Format
-            if (settings.format == CompressFormat.HEIF && android.os.Build.VERSION.SDK_INT >= 28) {
+            if (targetFormat == CompressFormat.HEIF && android.os.Build.VERSION.SDK_INT >= 28) {
                 // HEIF Saving using HeifWriter
                 // Note: HeifWriter doesn't support target size estimation easily, checking quality loops is expensive. 
                 // We will respect Quality setting.
@@ -117,19 +136,47 @@ class BatchRepository(private val context: Context) {
                     // No need to compress further
                 } else {
                     // Iterative compression to reach target size
-                    do {
-                        file.delete()
-                        out = FileOutputStream(file)
-                        finalBitmap.compress(compressFmt, currentQuality, out)
-                        out.flush()
-                        out.close()
-                        
-                        streamLength = file.length()
-                        if (streamLength > targetBytes) {
-                            currentQuality -= 10 // Reduce quality by 10% step
-                            if (currentQuality < 10) currentQuality = 5 // Minimum quality floor
+                // Iterative compression to reach target size
+                var resizeAttempts = 0
+                var workBitmap = finalBitmap // Work on a copy/reference if we need to resize
+                
+                do {
+                    file.delete()
+                    out = FileOutputStream(file)
+                    workBitmap.compress(compressFmt, currentQuality, out)
+                    out.flush()
+                    out.close()
+                    
+                    streamLength = file.length()
+                    
+                    
+                    // Check if format ignores quality (PNG is lossless)
+                    val isLossless = compressFmt == Bitmap.CompressFormat.PNG || 
+                                    (android.os.Build.VERSION.SDK_INT >= 30 && compressFmt == Bitmap.CompressFormat.WEBP_LOSSLESS)
+
+                    if (streamLength > targetBytes) {
+                        // Reduce Quality first (ONLY if not lossless)
+                        if (!isLossless && currentQuality > 10) {
+                            currentQuality -= 10
+                        } else {
+                            // Resize Phase
+                            // Adaptive scaling: If way off (>2x), scale aggressively (0.7), else gentle (0.9)
+                            val scaleFactor = if (streamLength > targetBytes * 2) 0.7 else 0.9
+                            
+                            val newWidth = (workBitmap.width * scaleFactor).toInt()
+                            val newHeight = (workBitmap.height * scaleFactor).toInt()
+                            
+                            // Safety Check: Don't go too small
+                            if (newWidth > 50 && newHeight > 50 && resizeAttempts < 20) {
+                                workBitmap = workBitmap.scale(newWidth, newHeight)
+                                resizeAttempts++
+                            } else {
+                                // Can't reduce further safely - break loop
+                                break
+                            }
                         }
-                    } while (streamLength > targetBytes && currentQuality > 5)
+                    }
+                } while (streamLength > targetBytes)
                 }
                 
             } else if (compressFmt != null) {
