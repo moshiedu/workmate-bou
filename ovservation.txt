@@ -31,3 +31,6 @@ Example: You could make two presets:
 "Website": WebP format, 800px width, 100 KB limit.
 "Print": JPEG format, Original size, Max quality.
 Then you just tap the chip (e.g., "Website"), and all those settings render instantly! 🚀
+
+=====================
+Yes we will focus on fixing and redesigning the Photo Studio module for the standard and modern UI designing, not too much space, no large or fatty icon and overall minimizing the redundant click of the user also performace too
