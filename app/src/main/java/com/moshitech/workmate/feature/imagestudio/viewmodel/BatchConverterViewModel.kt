@@ -43,6 +43,11 @@ data class ConvertedImage(
     val height: Int = 0
 )
 
+data class FailedImage(
+    val uri: Uri,
+    val reason: String
+)
+
 data class BatchConverterUiState(
     val selectedImages: List<Uri> = emptyList(),
     val format: CompressFormat = CompressFormat.JPEG,
@@ -57,6 +62,7 @@ data class BatchConverterUiState(
     val message: String? = null,
     val screenState: BatchScreenState = BatchScreenState.INPUT,
     val convertedImages: List<ConvertedImage> = emptyList(),
+    val failedImages: List<FailedImage> = emptyList(),
     val selectedDetailImage: ConvertedImage? = null,
     val savedFolderUri: Uri? = null,
     val lastSavedLocation: Uri? = null,
@@ -315,6 +321,7 @@ private fun recalculateMaxDimensions() {
 
 
             val results = mutableListOf<ConvertedImage>()
+            val failures = mutableListOf<FailedImage>()
             
             // PDF Logic
             if (state.format == CompressFormat.PDF) {
@@ -349,8 +356,11 @@ private fun recalculateMaxDimensions() {
                          originalType = "Multiple",
                          sizeBytes = sizeBytes
                      ))
+                     
+                     // History removed from here. Added in saveAllToDevice
+
                  }.onFailure { e ->
-                     // Handle failure
+                     failures.add(FailedImage(Uri.EMPTY, "PDF Merge Failed: ${e.message}"))
                  }
                  
                  _uiState.update { 
@@ -359,6 +369,7 @@ private fun recalculateMaxDimensions() {
                         conversionMessage = "Done!", 
                         progress = 1f, 
                         convertedImages = results,
+                        failedImages = failures,
                         screenState = BatchScreenState.SUCCESS,
                         processedCount = if(result.isSuccess) state.selectedImages.size else 0
                     ) 
@@ -399,15 +410,8 @@ private fun recalculateMaxDimensions() {
                     // Get details of converted image
                     val details = getImageDetails(convertedUri)
                     
-                    // Add to History
-                    repository.addToHistory(
-                        originalUri = uri,
-                        outputUri = convertedUri,
-                        format = state.format,
-                        sizeBytes = details.sizeBytes,
-                        width = details.width,
-                        height = details.height
-                    )
+                    // History removed from here. Added in saveAllToDevice
+
 
                     results.add(ConvertedImage(
                         uri = convertedUri,
@@ -423,6 +427,8 @@ private fun recalculateMaxDimensions() {
                         width = details.width,
                         height = details.height
                     ))
+                } else {
+                    failures.add(FailedImage(uri, result.exceptionOrNull()?.message ?: "Unknown Error"))
                 }
                 
                 // Update progress after each item
@@ -437,6 +443,7 @@ private fun recalculateMaxDimensions() {
                         conversionMessage = null,
                         selectedImages = emptyList(),
                         convertedImages = results,
+                        failedImages = failures,
                         screenState = BatchScreenState.SUCCESS,
                         progress = 1f
                     ) 
@@ -504,7 +511,19 @@ private fun recalculateMaxDimensions() {
                                  }
                              }
                              savedCount++
-                         }
+                             
+                             // Add to History
+                             try {
+                                 repository.addToHistory(
+                                     originalUri = image.originalUri,
+                                     outputUri = newFile.uri,
+                                     format = if (image.type == "application/pdf") CompressFormat.PDF else CompressFormat.valueOf(image.type.substringAfter("/").uppercase().let { if(it=="JPEG") "JPEG" else if(it=="PNG") "PNG" else if(it=="WEBP") "WEBP" else "JPEG" }),
+                                     sizeBytes = image.sizeBytes, // Best effort from conversion time
+                                     width = image.width,
+                                     height = image.height
+                                 )
+                             } catch (e: Exception) { e.printStackTrace() }
+                          }
 
                          // Persist location & Take Permission if needed
                          try {
@@ -550,6 +569,19 @@ private fun recalculateMaxDimensions() {
                                  resolver.update(itemUri, values, null, null)
                              }
                              savedCount++
+
+                             // Add to History
+                             try {
+                                 repository.addToHistory(
+                                     originalUri = image.originalUri,
+                                     outputUri = itemUri,
+                                     format = if (image.type == "application/pdf") CompressFormat.PDF else CompressFormat.valueOf(image.type.substringAfter("/").uppercase().let { if(it=="JPEG") "JPEG" else if(it=="PNG") "PNG" else if(it=="WEBP") "WEBP" else "JPEG" }),
+                                     sizeBytes = image.sizeBytes,
+                                     width = image.width,
+                                     height = image.height
+                                 )
+                             } catch (e: Exception) { e.printStackTrace() }
+
                          }
                      }
                  } catch (e: Exception) {
@@ -568,7 +600,8 @@ private fun recalculateMaxDimensions() {
                 convertedImages = emptyList(),
                 selectedImages = emptyList(),
                 selectedDetailImage = null,
-                lastSavedLocation = null
+                lastSavedLocation = null,
+                failedImages = emptyList()
             )
         }
     }

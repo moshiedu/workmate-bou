@@ -1,6 +1,9 @@
 package com.moshitech.workmate.feature.imagestudio.ui
 
+import android.text.format.DateUtils
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -28,8 +31,10 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Info
 
-@OptIn(ExperimentalMaterial3Api::class)
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun BatchHistoryScreen(
     viewModel: BatchConverterViewModel,
@@ -37,11 +42,37 @@ fun BatchHistoryScreen(
     onBack: () -> Unit,
     isDark: Boolean
 ) {
-    // Delete State
+    // State
     var itemToDelete by remember { mutableStateOf<ConversionHistoryEntity?>(null) }
+    var itemForDetail by remember { mutableStateOf<ConversionHistoryEntity?>(null) }
     var showClearAllDialog by remember { mutableStateOf(false) }
 
-    // Dialogs
+    // Grouping
+    val groupedHistory = remember(history) {
+        history.groupBy { 
+            val date = java.util.Date(it.date)
+            when {
+                DateUtils.isToday(it.date) -> "Today"
+                DateUtils.isToday(it.date + DateUtils.DAY_IN_MILLIS) -> "Yesterday"
+                else -> android.text.format.DateFormat.format("MMMM dd, yyyy", date).toString()
+            }
+        }
+    }
+
+    // Detail Dialog
+    if (itemForDetail != null) {
+        val isAvailable = viewModel.isFileAvailable(itemForDetail!!.outputUri)
+        ImageDetailDialog(
+            item = itemForDetail!!,
+            isFileExists = isAvailable,
+            onDismiss = { itemForDetail = null },
+            onDelete = { itemToDelete = itemForDetail; itemForDetail = null },
+            onOpenFolder = { openFileFolder(viewModel.getApplication(), itemForDetail!!.outputUri) },
+            isDark = isDark
+        )
+    }
+
+    // Delete Dialog
     if (itemToDelete != null) {
         AlertDialog(
             onDismissRequest = { itemToDelete = null },
@@ -65,6 +96,7 @@ fun BatchHistoryScreen(
         )
     }
 
+    // Clear All Dialog
     if (showClearAllDialog) {
         AlertDialog(
             onDismissRequest = { showClearAllDialog = false },
@@ -107,14 +139,14 @@ fun BatchHistoryScreen(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
             )
         },
-        containerColor = Color.Transparent // Handled by parent
+        containerColor = Color.Transparent
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Sticky Dashboard
+            // Dashboard
             HistoryDashboard(history = history, isDark = isDark, viewModel = viewModel)
 
             if (history.isEmpty()) {
@@ -124,16 +156,36 @@ fun BatchHistoryScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth().weight(1f),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    contentPadding = PaddingValues(bottom = 16.dp)
                 ) {
-                    items(history, key = { it.id }) { item ->
-                        HistoryItem(
-                            item = item,
-                            viewModel = viewModel,
-                            isDark = isDark,
-                            onDelete = { itemToDelete = item }
-                        )
+                    groupedHistory.forEach { (dateHeader, items) ->
+                        stickyHeader {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(BatchColors.surface(isDark)) // Opaque background for sticky header
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                Text(
+                                    text = dateHeader,
+                                    color = BatchColors.primary(isDark),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
+                        
+                        items(items, key = { it.id }) { item ->
+                            HistoryItem(
+                                item = item,
+                                viewModel = viewModel,
+                                isDark = isDark,
+                                onDelete = { itemToDelete = item },
+                                onLongPress = { itemForDetail = item }
+                            )
+                        }
+                        
+                        item { Spacer(Modifier.height(8.dp)) }
                     }
                 }
             }
@@ -164,79 +216,61 @@ fun HistoryDashboard(
                 .padding(16.dp),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            DashboardItem(
-                label = "Converted",
-                value = totalConversions.toString(),
-                isDark = isDark
-            )
-            Divider(
-                modifier = Modifier
-                    .height(40.dp)
-                    .width(1.dp),
-                color = BatchColors.outline(isDark)
-            )
-            DashboardItem(
-                label = "Total Size",
-                value = viewModel.formatFileSize(totalSize),
-                isDark = isDark
-            )
-            Divider(
-                modifier = Modifier
-                    .height(40.dp)
-                    .width(1.dp),
-                color = BatchColors.outline(isDark)
-            )
-             DashboardItem(
-                label = "Formats",
-                value = uniqueFormats.toString(),
-                isDark = isDark
-            )
+            DashboardItem(label = "Converted", value = totalConversions.toString(), isDark = isDark)
+            VerticalDivider(isDark)
+            DashboardItem(label = "Total Size", value = viewModel.formatFileSize(totalSize), isDark = isDark)
+            VerticalDivider(isDark)
+            DashboardItem(label = "Formats", value = uniqueFormats.toString(), isDark = isDark)
         }
     }
 }
 
 @Composable
-fun DashboardItem(
-    label: String,
-    value: String,
-    isDark: Boolean
-) {
+fun VerticalDivider(isDark: Boolean) {
+    Divider(
+        modifier = Modifier.height(40.dp).width(1.dp),
+        color = BatchColors.outline(isDark)
+    )
+}
+
+@Composable
+fun DashboardItem(label: String, value: String, isDark: Boolean) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text = value,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold,
-            color = BatchColors.primary(isDark)
-        )
-        Text(
-            text = label,
-            fontSize = 12.sp,
-            color = BatchColors.textSecondary(isDark)
-        )
+        Text(text = value, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = BatchColors.primary(isDark))
+        Text(text = label, fontSize = 12.sp, color = BatchColors.textSecondary(isDark))
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HistoryItem(
     item: ConversionHistoryEntity,
     viewModel: BatchConverterViewModel,
     isDark: Boolean,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onLongPress: () -> Unit
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     var isAvailable by remember { mutableStateOf(true) }
     
-    // Use LaunchedEffect with unique key or plain side effect
     LaunchedEffect(item.outputUri) {
-        // Run in IO context ideally, but VM handles most
         isAvailable = viewModel.isFileAvailable(item.outputUri)
     }
+
+    val alpha = if (isAvailable) 1f else 0.6f
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(BatchColors.surface(isDark), RoundedCornerShape(12.dp))
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .combinedClickable(
+                onClick = { 
+                    if (isAvailable) viewModel.openFile(item.outputUri, context) 
+                    else onLongPress() // Show detail if missing
+                },
+                onLongClick = onLongPress
+            )
+            .background(BatchColors.surface(isDark).copy(alpha = alpha), RoundedCornerShape(12.dp))
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -245,7 +279,7 @@ fun HistoryItem(
             modifier = Modifier
                 .size(56.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(BatchColors.surface(isDark))
+                .background(BatchColors.surfaceContainer(isDark))
         ) {
             if (isAvailable) {
                 AsyncImage(
@@ -256,9 +290,9 @@ fun HistoryItem(
                 )
             } else {
                 Icon(
-                    Icons.Default.Image,
+                    Icons.Default.Warning, // Changed to Warning for missing
                     null,
-                    tint = BatchColors.textSecondary(isDark),
+                    tint = MaterialTheme.colorScheme.error,
                     modifier = Modifier.align(Alignment.Center).size(24.dp)
                 )
             }
@@ -270,7 +304,7 @@ fun HistoryItem(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = java.io.File(android.net.Uri.parse(item.outputUri).path ?: "Unknown").name.takeIf { it.isNotEmpty() } ?: "Image",
-                color = if (isAvailable) BatchColors.textPrimary(isDark) else BatchColors.textSecondary(isDark),
+                color = if (isAvailable) BatchColors.textPrimary(isDark) else MaterialTheme.colorScheme.error,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
@@ -283,28 +317,21 @@ fun HistoryItem(
                     color = BatchColors.textSecondary(isDark),
                     fontSize = 12.sp
                 )
-                if (item.width > 0 && item.height > 0) {
-                     Text(
-                        text = " • ${item.width}x${item.height}",
-                        color = BatchColors.textSecondary(isDark),
-                        fontSize = 12.sp
-                    )
-                }
             }
             if (!isAvailable) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-                     Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(12.dp))
-                     Spacer(Modifier.width(4.dp))
-                     Text("File not found", color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
-                }
+                Text("File Missing", color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
             }
         }
 
         // Actions
+        // Actions
         Row {
              if (isAvailable) {
-                 IconButton(onClick = { viewModel.openFile(item.outputUri, context) }) {
-                     Icon(Icons.Default.FolderOpen, "Open", tint = BatchColors.primary(isDark))
+                 IconButton(onClick = { onLongPress() }) {
+                     Icon(Icons.Default.Info, "Details", tint = BatchColors.primary(isDark))
+                 }
+                 IconButton(onClick = { openFileFolder(context, item.outputUri) }) {
+                     Icon(Icons.Default.FolderOpen, "Open Folder", tint = BatchColors.primary(isDark))
                  }
              }
              IconButton(onClick = onDelete) {
@@ -313,3 +340,4 @@ fun HistoryItem(
         }
     }
 }
+

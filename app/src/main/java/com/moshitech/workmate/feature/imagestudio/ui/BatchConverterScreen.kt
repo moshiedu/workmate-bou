@@ -22,11 +22,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.animation.animateContentSize
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LinkOff
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Visibility
@@ -819,10 +821,14 @@ private fun BatchSuccessScreen(
         if (uri != null) viewModel.saveAllToDevice(context, uri)
     }
     
+    val hasFailures = uiState.failedImages.isNotEmpty()
+    val hasSuccesses = uiState.convertedImages.isNotEmpty()
+    val title = if (hasFailures && hasSuccesses) "Completed with Errors" else if (hasFailures) "Batch Failed" else "Batch Conversion Complete"
+    
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Batch Conversion Complete", fontWeight = FontWeight.SemiBold, fontSize = 18.sp) },
+                title = { Text(title, fontWeight = FontWeight.SemiBold, fontSize = 18.sp, color = if(hasFailures) MaterialTheme.colorScheme.error else BatchColors.textPrimary(isDark)) },
                 actions = { TextButton(onClick = { viewModel.resetState() }) { Text("Done", color = BatchColors.primary(isDark), fontWeight = FontWeight.Bold) } },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, titleContentColor = BatchColors.textPrimary(isDark))
             )
@@ -830,86 +836,128 @@ private fun BatchSuccessScreen(
         containerColor = Color.Transparent
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            // Result List
-             LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                 items(uiState.convertedImages.size) { index ->
-                     val image = uiState.convertedImages[index]
-                     Box(modifier = Modifier.size(120.dp, 160.dp).clip(RoundedCornerShape(12.dp)).background(BatchColors.surface(isDark)).clickable { viewModel.selectDetailImage(image) }, contentAlignment = Alignment.Center) {
-                         if (image.type.contains("pdf", ignoreCase = true)) {
-                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                 Icon(Icons.Default.Share, null, tint = BatchColors.primary(isDark), modifier = Modifier.size(32.dp)) // PDF Icon Placeholder
-                                 Text("PDF", color = BatchColors.textPrimary(isDark), fontWeight = FontWeight.Bold)
+            
+            // FAILED Items Section
+            if (hasFailures) {
+                Card(
+                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                     shape = RoundedCornerShape(12.dp),
+                     modifier = Modifier.fillMaxWidth().animateContentSize()
+                 ) {
+                     Column(modifier = Modifier.padding(12.dp)) {
+                         Text("${uiState.failedImages.size} Failed Items", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onErrorContainer)
+                         Spacer(Modifier.height(8.dp))
+                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                             items(uiState.failedImages.size) { index ->
+                                 val item = uiState.failedImages[index]
+                                 Column(modifier = Modifier.width(100.dp)) {
+                                     Box(
+                                         modifier = Modifier.size(60.dp).background(MaterialTheme.colorScheme.error.copy(alpha=0.2f), RoundedCornerShape(8.dp)), 
+                                         contentAlignment = Alignment.Center
+                                     ) {
+                                         Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error)
+                                     }
+                                     Text(
+                                         item.reason, 
+                                         color = MaterialTheme.colorScheme.onErrorContainer, 
+                                         style = MaterialTheme.typography.labelSmall, 
+                                         maxLines = 2, 
+                                         overflow = TextOverflow.Ellipsis
+                                     )
+                                 }
                              }
-                         } else {
-                             AsyncImage(model = ImageRequest.Builder(LocalContext.current).data(image.uri).build(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                          }
                      }
                  }
-             }
-             
-             // Summary
-             val totalSize = uiState.convertedImages.sumOf { it.sizeBytes }
-             val avgSize = if (uiState.convertedImages.isNotEmpty()) totalSize / uiState.convertedImages.size else 0L
-             
-             Card(
-                 colors = CardDefaults.cardColors(containerColor = BatchColors.surface(isDark)),
-                 shape = RoundedCornerShape(12.dp),
-                 modifier = Modifier.fillMaxWidth()
-             ) {
-                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                     Text("Conversion Summary", fontWeight = FontWeight.Bold, color = BatchColors.textPrimary(isDark), fontSize = 16.sp)
-                     
-                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                             Text("Total Size", fontSize = 11.sp, color = BatchColors.textSecondary(isDark))
-                             Text(viewModel.formatFileSize(totalSize), fontWeight = FontWeight.Bold, color = BatchColors.textPrimary(isDark))
-                         }
-                         Box(modifier = Modifier.width(1.dp).height(24.dp).background(BatchColors.outline(isDark)))
-                         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                             Text("Avg Size", fontSize = 11.sp, color = BatchColors.textSecondary(isDark))
-                             Text(viewModel.formatFileSize(avgSize), fontWeight = FontWeight.Bold, color = BatchColors.textPrimary(isDark))
-                         }
-                         Box(modifier = Modifier.width(1.dp).height(24.dp).background(BatchColors.outline(isDark)))
-                         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                             Text("Format", fontSize = 11.sp, color = BatchColors.textSecondary(isDark))
-                             Text(uiState.format.name, fontWeight = FontWeight.Bold, color = BatchColors.textPrimary(isDark))
+            }
+
+            // SUCCESS Items Section
+            if (hasSuccesses) {
+                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                     items(uiState.convertedImages.size) { index ->
+                         val image = uiState.convertedImages[index]
+                         Box(modifier = Modifier.size(120.dp, 160.dp).clip(RoundedCornerShape(12.dp)).background(BatchColors.surface(isDark)).clickable { viewModel.selectDetailImage(image) }, contentAlignment = Alignment.Center) {
+                             if (image.type.contains("pdf", ignoreCase = true)) {
+                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                     Icon(Icons.Default.Share, null, tint = BatchColors.primary(isDark), modifier = Modifier.size(32.dp)) // PDF Icon Placeholder
+                                     Text("PDF", color = BatchColors.textPrimary(isDark), fontWeight = FontWeight.Bold)
+                                 }
+                             } else {
+                                 AsyncImage(model = ImageRequest.Builder(LocalContext.current).data(image.uri).build(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                             }
                          }
                      }
                  }
-             }
+                 
+                 // Summary
+                 val totalSize = uiState.convertedImages.sumOf { it.sizeBytes }
+                 val avgSize = if (uiState.convertedImages.isNotEmpty()) totalSize / uiState.convertedImages.size else 0L
+                 
+                 Card(
+                     colors = CardDefaults.cardColors(containerColor = BatchColors.surface(isDark)),
+                     shape = RoundedCornerShape(12.dp),
+                     modifier = Modifier.fillMaxWidth()
+                 ) {
+                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                         Text("Conversion Summary", fontWeight = FontWeight.Bold, color = BatchColors.textPrimary(isDark), fontSize = 16.sp)
+                         
+                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                                 Text("Total Size", fontSize = 11.sp, color = BatchColors.textSecondary(isDark))
+                                 Text(viewModel.formatFileSize(totalSize), fontWeight = FontWeight.Bold, color = BatchColors.textPrimary(isDark))
+                             }
+                             Box(modifier = Modifier.width(1.dp).height(24.dp).background(BatchColors.outline(isDark)))
+                             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                                 Text("Avg Size", fontSize = 11.sp, color = BatchColors.textSecondary(isDark))
+                                 Text(viewModel.formatFileSize(avgSize), fontWeight = FontWeight.Bold, color = BatchColors.textPrimary(isDark))
+                             }
+                             Box(modifier = Modifier.width(1.dp).height(24.dp).background(BatchColors.outline(isDark)))
+                             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                                 Text("Format", fontSize = 11.sp, color = BatchColors.textSecondary(isDark))
+                                 Text(uiState.format.name, fontWeight = FontWeight.Bold, color = BatchColors.textPrimary(isDark))
+                             }
+                         }
+                     }
+                 }
+            } else if (!hasFailures) {
+                 // Empty state (shouldn't happen really unless bug)
+                 Text("No images processed.", color = BatchColors.textSecondary(isDark))
+            }
              
              Spacer(modifier = Modifier.weight(1f))
              
-             // Buttons
-             Button(onClick = { if (uiState.convertedImages.isNotEmpty()) viewModel.selectDetailImage(uiState.convertedImages.first()) }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = BatchColors.surface(isDark))) {
-                 Icon(Icons.Filled.Visibility, null, tint = BatchColors.textSecondary(isDark)); Spacer(Modifier.width(8.dp)); Text("View Changes", color = BatchColors.textSecondary(isDark))
-             }
-             Button(onClick = { saveLauncher.launch(uiState.savedFolderUri) }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = BatchColors.surface(isDark))) {
-                 Icon(Icons.Filled.Save, null, tint = BatchColors.primary(isDark)); Spacer(Modifier.width(8.dp)); Text("Save All", color = BatchColors.primary(isDark))
-             }
-             Button(onClick = {
-                 if (uiState.convertedImages.isNotEmpty()) {
-                     try {
-                         val uris = ArrayList(uiState.convertedImages.map { it.uri })
-                         val intent = android.content.Intent().apply {
-                             if (uris.size == 1) {
-                                 action = android.content.Intent.ACTION_SEND
-                                 putExtra(android.content.Intent.EXTRA_STREAM, uris.first())
-                             } else {
-                                 action = android.content.Intent.ACTION_SEND_MULTIPLE
-                                 putParcelableArrayListExtra(android.content.Intent.EXTRA_STREAM, uris)
-                             }
-                             val mimeType = if (uiState.format == CompressFormat.PDF) "application/pdf" else "image/*"
-                             type = mimeType
-                             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                         }
-                         context.startActivity(android.content.Intent.createChooser(intent, "Share output"))
-                     } catch (e: Exception) {
-                         // Fallback or toast
-                     }
+             // Buttons (only if success)
+             if (hasSuccesses) {
+                 Button(onClick = { if (uiState.convertedImages.isNotEmpty()) viewModel.selectDetailImage(uiState.convertedImages.first()) }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = BatchColors.surface(isDark))) {
+                     Icon(Icons.Filled.Visibility, null, tint = BatchColors.textSecondary(isDark)); Spacer(Modifier.width(8.dp)); Text("View Changes", color = BatchColors.textSecondary(isDark))
                  }
-             }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = BatchColors.primary(isDark))) {
-                 Icon(Icons.Filled.Share, null, tint = Color.White); Spacer(Modifier.width(8.dp)); Text("Share All", color = Color.White)
+                 Button(onClick = { saveLauncher.launch(uiState.savedFolderUri) }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = BatchColors.surface(isDark))) {
+                     Icon(Icons.Filled.Save, null, tint = BatchColors.primary(isDark)); Spacer(Modifier.width(8.dp)); Text("Save All", color = BatchColors.primary(isDark))
+                 }
+                 Button(onClick = {
+                     if (uiState.convertedImages.isNotEmpty()) {
+                         try {
+                             val uris = ArrayList(uiState.convertedImages.map { it.uri })
+                             val intent = android.content.Intent().apply {
+                                 if (uris.size == 1) {
+                                     action = android.content.Intent.ACTION_SEND
+                                     putExtra(android.content.Intent.EXTRA_STREAM, uris.first())
+                                 } else {
+                                     action = android.content.Intent.ACTION_SEND_MULTIPLE
+                                     putParcelableArrayListExtra(android.content.Intent.EXTRA_STREAM, uris)
+                                 }
+                                 val mimeType = if (uiState.format == CompressFormat.PDF) "application/pdf" else "image/*"
+                                 type = mimeType
+                                 addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                             }
+                             context.startActivity(android.content.Intent.createChooser(intent, "Share output"))
+                         } catch (e: Exception) {
+                             // Fallback or toast
+                         }
+                     }
+                 }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = BatchColors.primary(isDark))) {
+                     Icon(Icons.Filled.Share, null, tint = Color.White); Spacer(Modifier.width(8.dp)); Text("Share All", color = Color.White)
+                 }
              }
         }
     }
@@ -919,11 +967,46 @@ private fun BatchSuccessScreen(
 @Composable
 private fun BatchDetailScreen(viewModel: BatchConverterViewModel, uiState: BatchConverterUiState, isDark: Boolean) {
     val image = uiState.selectedDetailImage ?: return
+    var showInfoDialog by remember { mutableStateOf(false) }
+
+    if (showInfoDialog) {
+        val detailEntity = com.moshitech.workmate.feature.imagestudio.data.local.ConversionHistoryEntity(
+            originalUri = image.originalUri.toString(),
+            outputUri = image.uri.toString(),
+            date = System.currentTimeMillis(), // We don't track exact conversion time in ConvertedImage, use current or approx
+            format = image.type,
+            sizeBytes = image.sizeBytes,
+            width = image.resolution.substringBefore("x").trim().toIntOrNull() ?: 0,
+            height = image.resolution.substringAfter("x").trim().toIntOrNull() ?: 0
+        )
+        
+        // Check if file exists (For preview, it exists in cache)
+        val isAvailable = true 
+
+        ImageDetailDialog(
+            item = detailEntity,
+            isFileExists = isAvailable,
+            onDismiss = { showInfoDialog = false },
+            onDelete = { 
+                showInfoDialog = false
+            }, 
+            onOpenFolder = null, // Disable open folder for preview (cache)
+            isDark = isDark,
+            customPath = "Temporary Storage (Unsaved)",
+            customStatus = "Ready to Save"
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(image.name, color = Color.White, fontSize = 14.sp) }, // White text on dark bg
                 navigationIcon = { IconButton(onClick = { viewModel.closeDetail() }) { Icon(Icons.Default.ArrowBack, null, tint = Color.White) } },
+                actions = {
+                    IconButton(onClick = { showInfoDialog = true }) {
+                        Icon(Icons.Default.Info, null, tint = Color.White)
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black.copy(alpha=0.5f))
             )
         },
