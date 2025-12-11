@@ -15,3 +15,19 @@ toolbar should be positioned top of the screen so that it will not move under an
 Still cannot edit text, tapping to edit does not work.
 Copy icon in the toolbar cannot see, if required you can increase the height of the toolbar. 
 Different font can be selected for text.
+==========================================
+Presets act as shortcuts for your favorite conversion settings! ⚡
+
+Instead of manually selecting "JPEG", typing in "1080px width", and setting a "500 KB limit" every single time, you can save that exact combination as a Preset.
+
+It saves:
+
+Format (e.g., JPEG, PNG, PDF)
+Dimensions (Width & Height)
+Target File Size
+Quality Level
+Example: You could make two presets:
+
+"Website": WebP format, 800px width, 100 KB limit.
+"Print": JPEG format, Original size, Max quality.
+Then you just tap the chip (e.g., "Website"), and all those settings render instantly! 🚀
