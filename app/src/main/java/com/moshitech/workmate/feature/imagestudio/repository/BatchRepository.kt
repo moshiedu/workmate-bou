@@ -38,32 +38,47 @@ class BatchRepository(private val context: Context) {
 
             // Resize Logic
             var finalBitmap = originalBitmap
-            if (settings.width != null && settings.height != null) {
-                if (settings.maintainAspectRatio) {
-                    // Fit within bounds logic
-                    val originalRatio = originalBitmap.width.toFloat() / originalBitmap.height.toFloat()
-                    val targetRatio = settings.width.toFloat() / settings.height.toFloat()
-                    
-                    val (newWidth, newHeight) = if (originalRatio > targetRatio) {
-                        // Fit to width
-                        settings.width to (settings.width / originalRatio).toInt()
+            val MAX_DIMENSION = 8192 // 8K Limit to prevent OOM
+            
+            if (settings.width != null || settings.height != null) {
+                var targetW = settings.width ?: (originalBitmap.width * (settings.height!!.toFloat() / originalBitmap.height)).toInt()
+                var targetH = settings.height ?: (originalBitmap.height * (settings.width!!.toFloat() / originalBitmap.width)).toInt()
+
+                // Calculate ratios if only one was provided to maintain aspect ratio logic properly
+                if (settings.width != null && settings.height != null) {
+                    if (settings.maintainAspectRatio) {
+                        val originalRatio = originalBitmap.width.toFloat() / originalBitmap.height.toFloat()
+                        val targetRatio = settings.width.toFloat() / settings.height.toFloat()
+                        if (originalRatio > targetRatio) {
+                            targetW = settings.width
+                            targetH = (settings.width / originalRatio).toInt()
+                        } else {
+                            targetW = (settings.height * originalRatio).toInt()
+                            targetH = settings.height
+                        }
                     } else {
-                        // Fit to height
-                        (settings.height * originalRatio).toInt() to settings.height
+                        targetW = settings.width
+                        targetH = settings.height
                     }
-                    finalBitmap = originalBitmap.scale(newWidth, newHeight)
-                } else {
-                    // Stretch logic
-                    finalBitmap = originalBitmap.scale(settings.width, settings.height)
                 }
-            } else if (settings.width != null) {
-                 val ratio = originalBitmap.height.toFloat() / originalBitmap.width.toFloat()
-                 val height = (settings.width * ratio).toInt()
-                 finalBitmap = originalBitmap.scale(settings.width, height)
-            } else if (settings.height != null) {
-                 val ratio = originalBitmap.width.toFloat() / originalBitmap.height.toFloat()
-                 val width = (settings.height * ratio).toInt()
-                 finalBitmap = originalBitmap.scale(width, settings.height)
+
+                // Safety Clamp
+                if (targetW > MAX_DIMENSION) {
+                    val ratio = MAX_DIMENSION.toFloat() / targetW
+                    targetW = MAX_DIMENSION
+                    targetH = (targetH * ratio).toInt()
+                }
+                if (targetH > MAX_DIMENSION) {
+                     val ratio = MAX_DIMENSION.toFloat() / targetH
+                     targetH = MAX_DIMENSION
+                     targetW = (targetW * ratio).toInt()
+                }
+                
+                // Ensure > 0
+                targetW = maxOf(1, targetW)
+                targetH = maxOf(1, targetH)
+
+                finalBitmap = originalBitmap.scale(targetW, targetH)
             }
 
             onProgress(0.5f) // Resized (if applicable)
@@ -344,6 +359,44 @@ class BatchRepository(private val context: Context) {
         } catch (e: Exception) {
             pdfDocument.close()
             Result.failure(e)
+        }
+    }
+    // History
+    fun getHistory(): kotlinx.coroutines.flow.Flow<List<com.moshitech.workmate.feature.imagestudio.data.local.ConversionHistoryEntity>> {
+        return com.moshitech.workmate.data.local.AppDatabase.getDatabase(context).conversionHistoryDao().getAll()
+    }
+
+    suspend fun addToHistory(
+        originalUri: Uri,
+        outputUri: Uri,
+        format: CompressFormat,
+        sizeBytes: Long,
+        width: Int,
+        height: Int
+    ) {
+        val entity = com.moshitech.workmate.feature.imagestudio.data.local.ConversionHistoryEntity(
+            date = System.currentTimeMillis(),
+            originalUri = originalUri.toString(),
+            outputUri = outputUri.toString(),
+            format = format.name,
+            sizeBytes = sizeBytes,
+            width = width,
+            height = height
+        )
+        withContext(Dispatchers.IO) {
+            com.moshitech.workmate.data.local.AppDatabase.getDatabase(context).conversionHistoryDao().insert(entity)
+        }
+    }
+
+    suspend fun deleteHistoryItem(item: com.moshitech.workmate.feature.imagestudio.data.local.ConversionHistoryEntity) {
+        withContext(Dispatchers.IO) {
+            com.moshitech.workmate.data.local.AppDatabase.getDatabase(context).conversionHistoryDao().delete(item)
+        }
+    }
+    
+    suspend fun clearHistory() {
+        withContext(Dispatchers.IO) {
+            com.moshitech.workmate.data.local.AppDatabase.getDatabase(context).conversionHistoryDao().deleteAll()
         }
     }
 }

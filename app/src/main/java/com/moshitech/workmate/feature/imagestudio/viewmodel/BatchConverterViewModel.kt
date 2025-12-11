@@ -23,7 +23,8 @@ import kotlinx.coroutines.isActive
 enum class BatchScreenState {
     INPUT,
     SUCCESS,
-    DETAIL
+    DETAIL,
+    HISTORY
 }
 
 data class ConvertedImage(
@@ -67,11 +68,15 @@ data class BatchConverterUiState(
     val showGuide: Boolean = false,
     val currentFileProgress: Float = 0f,
     val keepMetadata: Boolean = false,
-    val presets: List<ConversionPreset> = emptyList()
+    val presets: List<ConversionPreset> = emptyList(),
+    val history: List<com.moshitech.workmate.feature.imagestudio.data.local.ConversionHistoryEntity> = emptyList()
 )
 
 class BatchConverterViewModel(application: Application) : AndroidViewModel(application) {
     
+    private val _uiState = MutableStateFlow(BatchConverterUiState())
+    val uiState: StateFlow<BatchConverterUiState> = _uiState.asStateFlow()
+
     private var conversionJob: kotlinx.coroutines.Job? = null
 
     // Reuse existing repository for now as logic is same
@@ -94,10 +99,56 @@ class BatchConverterViewModel(application: Application) : AndroidViewModel(appli
                  }
             }
         }
+        
+        viewModelScope.launch {
+            preferencesRepository.customPresets.collect { presets ->
+                _uiState.update { it.copy(presets = presets) }
+            }
+        }
+        
+        // History Collection
+        viewModelScope.launch {
+            repository.getHistory().collect { historyList ->
+                 _uiState.update { it.copy(history = historyList) }
+            }
+        }
+    }
+    
+    // Check if file exists
+    fun isFileAvailable(uriString: String): Boolean {
+        return try {
+            val uri = Uri.parse(uriString)
+            androidx.documentfile.provider.DocumentFile.fromSingleUri(getApplication(), uri)?.exists() == true ||
+            java.io.File(uri.path ?: "").exists()
+        } catch (e: Exception) {
+            false
+        }
     }
 
-    private val _uiState = MutableStateFlow(BatchConverterUiState())
-    val uiState: StateFlow<BatchConverterUiState> = _uiState.asStateFlow()
+    fun openFile(uriString: String, context: android.content.Context) {
+        try {
+            val uri = Uri.parse(uriString)
+            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "image/*")
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            _uiState.update { it.copy(message = "Could not open file") }
+        }
+    }
+    
+    fun deleteHistoryItem(item: com.moshitech.workmate.feature.imagestudio.data.local.ConversionHistoryEntity) {
+        viewModelScope.launch {
+            repository.deleteHistoryItem(item)
+        }
+    }
+    
+    fun clearHistory() {
+        viewModelScope.launch {
+             repository.clearHistory()
+        }
+    }
 
     fun onImagesSelected(uris: List<Uri>) {
         val currentCount = _uiState.value.selectedImages.size
@@ -152,6 +203,10 @@ private fun recalculateMaxDimensions() {
         if (_uiState.value.maintainAspectRatio && width.isNotBlank()) {
             val widthInt = width.toIntOrNull()
             if (widthInt != null) {
+                if (widthInt > 8192) {
+                     _uiState.update { it.copy(width = "8192") }
+                     return
+                }
                 // Use 16:9 as default ratio for UI calculation
                 val calculatedHeight = (widthInt * 9 / 16).toString()
                 _uiState.update { it.copy(height = calculatedHeight) }
@@ -164,6 +219,10 @@ private fun recalculateMaxDimensions() {
         if (_uiState.value.maintainAspectRatio && height.isNotBlank()) {
             val heightInt = height.toIntOrNull()
             if (heightInt != null) {
+                if (heightInt > 8192) {
+                    _uiState.update { it.copy(height = "8192") }
+                    return
+                }
                 // Use 16:9 as default ratio for UI calculation
                 val calculatedWidth = (heightInt * 16 / 9).toString()
                 _uiState.update { it.copy(width = calculatedWidth) }
@@ -339,6 +398,17 @@ private fun recalculateMaxDimensions() {
                     val convertedUri = result.getOrThrow()
                     // Get details of converted image
                     val details = getImageDetails(convertedUri)
+                    
+                    // Add to History
+                    repository.addToHistory(
+                        originalUri = uri,
+                        outputUri = convertedUri,
+                        format = state.format,
+                        sizeBytes = details.sizeBytes,
+                        width = details.width,
+                        height = details.height
+                    )
+
                     results.add(ConvertedImage(
                         uri = convertedUri,
                         originalUri = uri,
@@ -385,6 +455,12 @@ private fun recalculateMaxDimensions() {
                 processedCount = 0
             ) 
         }
+    }
+
+
+
+    fun setScreenState(state: BatchScreenState) {
+        _uiState.update { it.copy(screenState = state) }
     }
     
     fun saveAllToDevice(context: android.content.Context, treeUri: Uri?) {

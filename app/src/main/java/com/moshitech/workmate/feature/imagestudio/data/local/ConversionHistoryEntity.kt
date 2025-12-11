@@ -11,5 +11,7 @@ data class ConversionHistoryEntity(
     val originalUri: String,
     val outputUri: String,
     val format: String,
-    val sizeBytes: Long
+    val sizeBytes: Long,
+    val width: Int = 0,
+    val height: Int = 0
 )
