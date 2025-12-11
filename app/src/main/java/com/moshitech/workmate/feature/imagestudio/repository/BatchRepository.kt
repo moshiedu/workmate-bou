@@ -8,20 +8,33 @@ import com.moshitech.workmate.feature.imagestudio.data.CompressFormat
 import com.moshitech.workmate.feature.imagestudio.data.ConversionSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import java.io.File
 import java.io.FileOutputStream
 import androidx.core.graphics.scale
 import androidx.heifwriter.HeifWriter
+import androidx.exifinterface.media.ExifInterface
+import android.graphics.pdf.PdfDocument
+import kotlin.coroutines.cancellation.CancellationException
 
 class BatchRepository(private val context: Context) {
 
-    suspend fun convertAndSaveImage(uri: Uri, settings: ConversionSettings): Result<Uri> = withContext(Dispatchers.IO) {
+    suspend fun convertAndSaveImage(
+        uri: Uri, 
+        settings: ConversionSettings,
+        onProgress: (Float) -> Unit = {}
+    ): Result<Uri> = withContext(Dispatchers.IO) {
         try {
+            onProgress(0.1f) // Starting
             val inputStream = context.contentResolver.openInputStream(uri) ?: return@withContext Result.failure(Exception("Cannot open stream"))
             val originalBitmap = BitmapFactory.decodeStream(inputStream)
             inputStream.close()
             
             if (originalBitmap == null) return@withContext Result.failure(Exception("Failed to decode bitmap"))
+
+            onProgress(0.3f) // Decoded
 
             // Resize Logic
             var finalBitmap = originalBitmap
@@ -53,6 +66,8 @@ class BatchRepository(private val context: Context) {
                  finalBitmap = originalBitmap.scale(width, settings.height)
             }
 
+            onProgress(0.5f) // Resized (if applicable)
+
             // Determine Target Format
             var targetFormat = settings.format
             
@@ -79,22 +94,35 @@ class BatchRepository(private val context: Context) {
                 CompressFormat.WEBP -> "webp"
                 CompressFormat.BMP -> "bmp"
                 CompressFormat.HEIF -> "heic"
+                CompressFormat.PDF -> "pdf"
             }
             val compressFmt = when (targetFormat) {
                 CompressFormat.JPEG, CompressFormat.ORIGINAL -> Bitmap.CompressFormat.JPEG
                 CompressFormat.PNG -> Bitmap.CompressFormat.PNG
                 CompressFormat.WEBP -> if (android.os.Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSY else Bitmap.CompressFormat.WEBP
-                CompressFormat.BMP -> Bitmap.CompressFormat.PNG // BMP uses PNG compression internally
-                CompressFormat.HEIF -> null // Special handling
+                CompressFormat.BMP -> Bitmap.CompressFormat.PNG // Bitmap.compress doesn't support BMP, fallback to PNG
+                CompressFormat.HEIF -> Bitmap.CompressFormat.JPEG // Fallback for HEIF writer
+                CompressFormat.PDF -> Bitmap.CompressFormat.JPEG // Fallback, handled separately
             }
 
             val filename = "BATCH_${System.currentTimeMillis()}_${(0..1000).random()}.$ext"
             val file = File(context.cacheDir, filename)
             var out = FileOutputStream(file)
             
+            // Simulate Process for better UX during blocking compression
+            val progressJob = kotlinx.coroutines.CoroutineScope(Dispatchers.Default).launch {
+                var p = 0.7f
+                while (isActive && p < 0.95f) {
+                    onProgress(p)
+                    delay(150)
+                    p += 0.01f
+                }
+            }
+            
             // Logic for Target Size
             // Logic for Target Size or Format
-            if (targetFormat == CompressFormat.HEIF && android.os.Build.VERSION.SDK_INT >= 28) {
+            try {
+                if (targetFormat == CompressFormat.HEIF && android.os.Build.VERSION.SDK_INT >= 28) {
                 // HEIF Saving using HeifWriter
                 // Note: HeifWriter doesn't support target size estimation easily, checking quality loops is expensive. 
                 // We will respect Quality setting.
@@ -189,9 +217,132 @@ class BatchRepository(private val context: Context) {
                  out.flush()
                  out.close()
             }
+            } finally {
+                progressJob.cancel()
+                onProgress(1.0f)
+            }
+            
+            // Metadata Logic
+            if (settings.keepMetadata) {
+                try {
+                    val inputPfd = context.contentResolver.openFileDescriptor(uri, "r")
+                    if (inputPfd != null) {
+                        val oldExif = ExifInterface(inputPfd.fileDescriptor)
+                        val newExif = ExifInterface(file)
+                        
+                        val tags = arrayOf(
+                            ExifInterface.TAG_ORIENTATION,
+                            ExifInterface.TAG_DATETIME,
+                            ExifInterface.TAG_DATETIME_ORIGINAL,
+                            ExifInterface.TAG_FLASH,
+                            ExifInterface.TAG_FOCAL_LENGTH,
+                            ExifInterface.TAG_GPS_LATITUDE,
+                            ExifInterface.TAG_GPS_LATITUDE_REF,
+                            ExifInterface.TAG_GPS_LONGITUDE,
+                            ExifInterface.TAG_GPS_LONGITUDE_REF,
+                            ExifInterface.TAG_GPS_ALTITUDE,
+                            ExifInterface.TAG_GPS_ALTITUDE_REF,
+                            ExifInterface.TAG_MAKE,
+                            ExifInterface.TAG_MODEL,
+                            ExifInterface.TAG_WHITE_BALANCE
+                        )
+                        
+                        tags.forEach { tag ->
+                           val value = oldExif.getAttribute(tag)
+                           if (value != null) {
+                               newExif.setAttribute(tag, value)
+                           }
+                        }
+                        
+                        newExif.saveAttributes()
+                        inputPfd.close()
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace() // Don't fail the whole export just for metadata
+                }
+            }
 
-            Result.success(Uri.fromFile(file))
+            // Use FileProvider to avoid FileUriExposedException on API 24+
+            val contentUri = androidx.core.content.FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                file
+            )
+            Result.success(contentUri)
         } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    suspend fun createPdfFromImages(
+        uris: List<Uri>,
+        settings: ConversionSettings,
+        onProgress: (Float) -> Unit
+    ): Result<Uri> = withContext(Dispatchers.IO) {
+        val pdfDocument = PdfDocument()
+        val uniqueName = "Merged_${System.currentTimeMillis()}.pdf"
+        
+        // Use cache dir consistent with other conversions
+        val pdfFile = File(context.cacheDir, uniqueName)
+        
+        try {
+            uris.forEachIndexed { index, uri ->
+                if (!isActive) return@withContext Result.failure(CancellationException("Cancelled"))
+                onProgress(index.toFloat() / uris.size)
+                
+                // Decode and Resize (reuse logic if possible or copy simplified version)
+                // limit input size to avoid OOM during PDF drawing
+                val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                context.contentResolver.openInputStream(uri)?.use { 
+                    BitmapFactory.decodeStream(it, null, options) 
+                }
+                
+                // Calculate sample size
+                var sampleSize = 1
+                val targetW = settings.width ?: 1024 // Default reasonable width for PDF if not set
+                val targetH = settings.height ?: 1024
+                
+                if (options.outHeight > targetH || options.outWidth > targetW) {
+                     val halfHeight: Int = options.outHeight / 2
+                     val halfWidth: Int = options.outWidth / 2
+                     while ((halfHeight / sampleSize) >= targetH && (halfWidth / sampleSize) >= targetW) {
+                         sampleSize *= 2
+                     }
+                }
+                
+                val finalOptions = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+                val bitmap = context.contentResolver.openInputStream(uri)?.use {
+                    BitmapFactory.decodeStream(it, null, finalOptions)
+                }
+                
+                if (bitmap != null) {
+                    val pageInfo = PdfDocument.PageInfo.Builder(bitmap.width, bitmap.height, index + 1).create()
+                    val page = pdfDocument.startPage(pageInfo)
+                    page.canvas.drawBitmap(bitmap, 0f, 0f, null)
+                    pdfDocument.finishPage(page)
+                    bitmap.recycle()
+                }
+            }
+            
+            onProgress(0.9f) // saving
+            
+            FileOutputStream(pdfFile).use { out ->
+                pdfDocument.writeTo(out)
+            }
+            
+            pdfDocument.close()
+            onProgress(1.0f)
+            
+            // Use FileProvider to avoid FileUriExposedException and allow access
+            val contentUri = androidx.core.content.FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                pdfFile
+            )
+            Result.success(contentUri)
+            
+        } catch (e: Exception) {
+            pdfDocument.close()
             Result.failure(e)
         }
     }

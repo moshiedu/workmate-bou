@@ -69,6 +69,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -86,9 +87,19 @@ import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.composed
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.zIndex
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun BatchConverterScreen(
     navController: NavController,
@@ -137,6 +148,7 @@ fun BatchConverterScreen(
                 progress = uiState.progress,
                 processedCount = uiState.processedCount,
                 totalCount = uiState.totalCount,
+                currentFileProgress = uiState.currentFileProgress,
                 onCancel = viewModel::cancelConversion
             )
         }
@@ -154,6 +166,8 @@ private fun BatchInputScreen(
     val context = LocalContext.current
     
     var showInfoModal by remember { androidx.compose.runtime.mutableStateOf(false) }
+    var showSavePresetDialog by remember { androidx.compose.runtime.mutableStateOf(false) }
+    var newPresetName by remember { androidx.compose.runtime.mutableStateOf("") }
     var imageDetails by remember { androidx.compose.runtime.mutableStateOf<com.moshitech.workmate.feature.imagestudio.viewmodel.BatchConverterViewModel.ImageDetails?>(null) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
@@ -389,6 +403,53 @@ private fun BatchInputScreen(
                 }
             }
 
+
+            // Presets Section
+            Text("Presets", color = Color(0xFF94A3B8), fontSize = 11.sp)
+            androidx.compose.foundation.lazy.LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                // Save New Button
+                item {
+                    Box(
+                        modifier = Modifier
+                            .height(32.dp)
+                            .background(Color(0xFF334155), CircleShape)
+                            .clickable { showSavePresetDialog = true }
+                            .padding(horizontal = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(Icons.Default.Add, null, tint = Color.White, modifier = Modifier.size(12.dp))
+                            Text("New", color = Color.White, fontSize = 11.sp)
+                        }
+                    }
+                }
+                
+                // Existing Presets
+                items(uiState.presets.size) { index ->
+                    val preset = uiState.presets[index]
+                    Box(
+                        modifier = Modifier
+                            .height(32.dp)
+                            .background(Color(0xFF1E293B), CircleShape)
+                            .border(1.dp, Color(0xFF334155), CircleShape)
+                            // We need both click (load) and long click (delete)
+                            .composed {
+                                this.combinedClickable(
+                                    onClick = { viewModel.loadPreset(preset) },
+                                    onLongClick = { viewModel.deletePreset(preset.name) }
+                                )
+                            }
+                            .padding(horizontal = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(preset.name, color = Color(0xFF94A3B8), fontSize = 11.sp)
+                    }
+                }
+            }
+
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val formats = remember {
                     val all = if (android.os.Build.VERSION.SDK_INT >= 28) CompressFormat.values().toList()
@@ -479,24 +540,7 @@ private fun BatchInputScreen(
                     Text("px", color = Color(0xFF64748B), fontSize = 11.sp, modifier = Modifier.align(Alignment.BottomEnd))
                 }
                 
-                // Upscaling Warning
-                val widthInt = uiState.width.toIntOrNull() ?: 0
-                val heightInt = uiState.height.toIntOrNull() ?: 0
-                if ((widthInt > uiState.maxInputWidth && uiState.maxInputWidth > 0) || 
-                    (heightInt > uiState.maxInputHeight && uiState.maxInputHeight > 0)) {
-                    Row(
-                        modifier = Modifier.padding(top = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFEAB308), modifier = Modifier.size(12.dp))
-                        Text(
-                            "Upscaling larger than original causes blurriness.",
-                            color = Color(0xFFEAB308),
-                            fontSize = 11.sp
-                        )
-                    }
-                }
+
 
 
                 // Link/Constraint Toggle
@@ -518,25 +562,49 @@ private fun BatchInputScreen(
                 }
             }
 
-            Text("Target File Size (Optional)", color = Color(0xFF94A3B8), fontSize = 11.sp)
+            // Upscaling Warning
+            val widthInt = uiState.width.toIntOrNull() ?: 0
+            val heightInt = uiState.height.toIntOrNull() ?: 0
+            if ((widthInt > uiState.maxInputWidth && uiState.maxInputWidth > 0) || 
+                (heightInt > uiState.maxInputHeight && uiState.maxInputHeight > 0)) {
+                Row(
+                    modifier = Modifier.padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFEAB308), modifier = Modifier.size(12.dp))
+                    Text(
+                        "Upscaling larger than original causes blurriness.",
+                        color = Color(0xFFEAB308),
+                        fontSize = 11.sp
+                    )
+                }
+            }
+
+            // PDF Mode Check
+            val isPdfMode = uiState.format == CompressFormat.PDF
+            
+            // Target File Size
+            Text("Target File Size (Optional)", color = if (isPdfMode) Color(0xFF64748B) else Color(0xFF94A3B8), fontSize = 11.sp)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(32.dp)
-                    .background(Color(0xFF1E293B), RoundedCornerShape(8.dp)),
+                    .background(if(isPdfMode) Color(0xFF1E293B).copy(alpha=0.5f) else Color(0xFF1E293B), RoundedCornerShape(8.dp)),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 androidx.compose.foundation.text.BasicTextField(
-                    value = uiState.targetSize,
-                    onValueChange = viewModel::updateTargetSize,
+                    value = if(isPdfMode) "Not supported for PDF" else uiState.targetSize,
+                    onValueChange = { if(!isPdfMode) viewModel.updateTargetSize(it) },
                     modifier = Modifier
                         .weight(1f)
                         .padding(horizontal = 12.dp),
-                    textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 11.sp),
+                    textStyle = androidx.compose.ui.text.TextStyle(color = if (isPdfMode) Color(0xFF64748B) else Color.White, fontSize = 11.sp),
                     singleLine = true,
+                    enabled = !isPdfMode,
                     cursorBrush = androidx.compose.ui.graphics.SolidColor(Color(0xFF007AFF)),
                     decorationBox = { innerTextField ->
-                        if (uiState.targetSize.isEmpty()) {
+                        if (uiState.targetSize.isEmpty() && !isPdfMode) {
                              Text("Max Size", color = Color(0xFF475569), fontSize = 11.sp)
                         }
                         innerTextField()
@@ -545,7 +613,7 @@ private fun BatchInputScreen(
                 )
 
                 // Clear Button
-                if (uiState.targetSize.isNotEmpty()) {
+                if (uiState.targetSize.isNotEmpty() && !isPdfMode) {
                     Box(
                         modifier = Modifier
                             .padding(end = 4.dp)
@@ -567,29 +635,31 @@ private fun BatchInputScreen(
                 Row(
                    modifier = Modifier
                        .padding(2.dp)
-                       .background(Color(0xFF334155), RoundedCornerShape(6.dp)) 
+                       .background(if(isPdfMode) Color(0xFF334155).copy(alpha=0.5f) else Color(0xFF334155), RoundedCornerShape(6.dp)) 
                 ) {
                     Box(
                         modifier = Modifier
-                            .background(if (!uiState.isTargetSizeInMb) Color(0xFF007AFF) else Color.Transparent, RoundedCornerShape(6.dp))
-                            .clickable { if (uiState.isTargetSizeInMb) viewModel.toggleTargetSizeUnit() }
+                            .background(if (!uiState.isTargetSizeInMb && !isPdfMode) Color(0xFF007AFF) else Color.Transparent, RoundedCornerShape(6.dp))
+                            .clickable { if (uiState.isTargetSizeInMb && !isPdfMode) viewModel.toggleTargetSizeUnit() }
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                         Text("KB", color = if (!uiState.isTargetSizeInMb) Color.White else Color(0xFF94A3B8), fontSize = 10.sp)
+                         Text("KB", color = if (!uiState.isTargetSizeInMb && !isPdfMode) Color.White else Color(0xFF94A3B8), fontSize = 10.sp)
                     }
                     Box(
                         modifier = Modifier
-                            .background(if (uiState.isTargetSizeInMb) Color(0xFF007AFF) else Color.Transparent, RoundedCornerShape(6.dp))
-                            .clickable { if (!uiState.isTargetSizeInMb) viewModel.toggleTargetSizeUnit() }
+                            .background(if (uiState.isTargetSizeInMb && !isPdfMode) Color(0xFF007AFF) else Color.Transparent, RoundedCornerShape(6.dp))
+                            .clickable { if (!uiState.isTargetSizeInMb && !isPdfMode) viewModel.toggleTargetSizeUnit() }
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                         Text("MB", color = if (uiState.isTargetSizeInMb) Color.White else Color(0xFF94A3B8), fontSize = 10.sp)
+                         Text("MB", color = if (uiState.isTargetSizeInMb && !isPdfMode) Color.White else Color(0xFF94A3B8), fontSize = 10.sp)
                     }
                 }
             }
             
-            Text("Overrides Quality slider below.", color = Color(0xFF64748B), fontSize = 11.sp)
-            if (uiState.targetSize.isNotBlank()) {
+            if (!isPdfMode) {
+                Text("Overrides Quality slider below.", color = Color(0xFF64748B), fontSize = 11.sp)
+            }
+            if (uiState.targetSize.isNotBlank() && !isPdfMode) {
                 Text(
                     "Note: Resolution will be reduced if necessary to meet target.",
                     color = Color(0xFFEAB308),
@@ -598,15 +668,42 @@ private fun BatchInputScreen(
                 )
             }
 
+            // Metadata Toggle
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Keep Metadata", color = if (isPdfMode) Color(0xFF64748B) else Color(0xFF94A3B8), fontSize = 11.sp)
+                    Text("Preserve EXIF data (GPS, Date, Camera)", color = Color(0xFF64748B), fontSize = 10.sp)
+                }
+                androidx.compose.material3.Switch(
+                    checked = uiState.keepMetadata && !isPdfMode,
+                    onCheckedChange = { if (!isPdfMode) viewModel.toggleKeepMetadata() },
+                    enabled = !isPdfMode,
+                    colors = androidx.compose.material3.SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = Color(0xFF007AFF),
+                        uncheckedThumbColor = if (isPdfMode) Color(0xFF475569) else Color(0xFF94A3B8),
+                        uncheckedTrackColor = Color(0xFF334155),
+                        disabledCheckedTrackColor = Color(0xFF334155),
+                        disabledUncheckedTrackColor = Color(0xFF1E293B)
+                    ),
+                    modifier = Modifier.scale(0.8f)
+                )
+            }
+
             Spacer(modifier = Modifier.height(4.dp))
 
             // Quality Slider
-            val isQualityDisabled = uiState.targetSize.isNotBlank()
+            val isQualityDisabled = uiState.targetSize.isNotBlank() || isPdfMode
             
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF1E293B), RoundedCornerShape(8.dp))
+                    .background(if(isPdfMode) Color(0xFF1E293B).copy(alpha=0.5f) else Color(0xFF1E293B), RoundedCornerShape(8.dp))
                     .padding(horizontal = 12.dp, vertical = 6.dp)
             ) {
                 Row(
@@ -615,11 +712,11 @@ private fun BatchInputScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("Quality", color = if (isQualityDisabled) Color(0xFF64748B) else Color(0xFF94A3B8), fontSize = 11.sp)
-                    Text("${uiState.quality}%", color = if (isQualityDisabled) Color(0xFF64748B) else Color.White, fontSize = 11.sp)
+                    Text(if (isPdfMode) "Auto" else "${uiState.quality}%", color = if (isQualityDisabled) Color(0xFF64748B) else Color.White, fontSize = 11.sp)
                 }
                 
                 Slider(
-                    value = uiState.quality.toFloat(),
+                    value = if(isPdfMode) 100f else uiState.quality.toFloat(),
                     onValueChange = { viewModel.updateQuality(it.toInt()) },
                     valueRange = 0f..100f,
                     enabled = !isQualityDisabled,
@@ -630,7 +727,7 @@ private fun BatchInputScreen(
                             modifier = Modifier
                                 .width(4.dp)
                                 .height(16.dp)
-                                .background(Color(0xFF007AFF), CircleShape)
+                                .background(if (isQualityDisabled) Color(0xFF475569) else Color(0xFF007AFF), CircleShape)
                         )
                     },
                     track = { sliderState ->
@@ -651,9 +748,17 @@ private fun BatchInputScreen(
                 )
             }
             
-            if (isQualityDisabled) {
+            if (isQualityDisabled && !isPdfMode) { // Only show specific message if not PDF (PDF has its own context)
                 Text(
                     "Quality slider disabled by Target Size.",
+                    color = Color(0xFF64748B),
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 4.dp, start = 4.dp)
+                )
+            }
+            if (isPdfMode) {
+                 Text(
+                    "PDF uses automatic quality and compression.",
                     color = Color(0xFF64748B),
                     fontSize = 12.sp,
                     modifier = Modifier.padding(top = 4.dp, start = 4.dp)
@@ -686,6 +791,47 @@ private fun BatchInputScreen(
             onDismiss = { viewModel.toggleGuide() }
         )
     }
+    
+    if (showSavePresetDialog) {
+        AlertDialog(
+            onDismissRequest = { showSavePresetDialog = false },
+            title = { Text("Save Preset") },
+            text = {
+                Column {
+                    Text("Enter a name for this preset:", fontSize = 14.sp, color = Color(0xFF94A3B8))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newPresetName,
+                        onValueChange = { newPresetName = it },
+                        singleLine = true,
+                        textStyle = TextStyle(color = Color.White),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (newPresetName.isNotBlank()) {
+                            viewModel.savePreset(newPresetName)
+                            newPresetName = ""
+                            showSavePresetDialog = false
+                        }
+                    }
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSavePresetDialog = false }) {
+                    Text("Cancel")
+                }
+            },
+            containerColor = Color(0xFF1E293B),
+            titleContentColor = Color.White,
+            textContentColor = Color(0xFF94A3B8)
+        )
+    }
 
     if (showInfoModal && imageDetails != null) {
         AlertDialog(
@@ -700,6 +846,50 @@ private fun BatchInputScreen(
                     Text("Type: ${imageDetails?.type}", color = Color(0xFF334155))
                     androidx.compose.material3.HorizontalDivider()
                     Text("Path: ${imageDetails?.path}", color = Color(0xFF64748B), fontSize = 12.sp, lineHeight = 14.sp)
+                    
+                    if (imageDetails?.exifData?.isNotEmpty() == true) {
+                        androidx.compose.material3.HorizontalDivider()
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Metadata", color = Color(0xFF0F172A), fontWeight = FontWeight.SemiBold)
+                            // Copy Button
+                            val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+                            androidx.compose.material3.TextButton(
+                                onClick = {
+                                    val text = imageDetails?.exifData?.entries?.joinToString("\n") { (k, v) -> "$k: $v" } ?: ""
+                                    clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
+                                }
+                            ) {
+                                Text("Copy", fontSize = 12.sp, color = Color(0xFF007AFF))
+                            }
+                        }
+                        
+                        imageDetails?.exifData?.forEach { (key, value) ->
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(
+                                    key.substringAfter("TAG_").replace("_", " ").lowercase()
+                                        .replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString() },
+                                    color = Color(0xFF64748B),
+                                    fontSize = 12.sp
+                                )
+                                Text(
+                                    value,
+                                    color = Color(0xFF334155),
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(start = 8.dp).weight(1f),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.End
+                                )
+                            }
+                        }
+                    } else {
+                        androidx.compose.material3.HorizontalDivider()
+                        Text("No metadata available", color = Color(0xFF94A3B8), fontSize = 12.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
+                    }
                 }
             },
             confirmButton = {
@@ -762,18 +952,28 @@ private fun BatchSuccessScreen(
                     val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
                         setDataAndType(uiState.lastSavedLocation, "vnd.android.document/directory")
                         addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        putExtra("android.provider.extra.INITIAL_URI", uiState.lastSavedLocation)
                     }
                     context.startActivity(intent)
                 } catch (e: Exception) {
                     // Try fallback
                      try {
                         val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                            setDataAndType(uiState.lastSavedLocation, "*/*")
+                            setDataAndType(uiState.lastSavedLocation, "resource/folder")
                             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
                         context.startActivity(intent)
                     } catch (e2: Exception) {
-                        android.widget.Toast.makeText(context, "Could not open folder", android.widget.Toast.LENGTH_SHORT).show()
+                         try {
+                             // Last resort: standard chooser
+                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                setDataAndType(uiState.lastSavedLocation, "*/*")
+                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(android.content.Intent.createChooser(intent, "Open Folder"))
+                        } catch (e3: Exception) {
+                            android.widget.Toast.makeText(context, "Could not open folder", android.widget.Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
             }
@@ -933,6 +1133,11 @@ private fun BatchDetailScreen(
     uiState: com.moshitech.workmate.feature.imagestudio.viewmodel.BatchConverterUiState
 ) {
     val image = uiState.selectedDetailImage ?: return
+    var details by remember { androidx.compose.runtime.mutableStateOf<com.moshitech.workmate.feature.imagestudio.viewmodel.BatchConverterViewModel.ImageDetails?>(null) }
+    
+    LaunchedEffect(image) {
+        details = viewModel.getImageDetails(image.uri)
+    }
     
     Scaffold(
         topBar = {
@@ -990,7 +1195,54 @@ private fun BatchDetailScreen(
                              Text(image.resolution, color = Color.White, fontWeight = FontWeight.Bold) 
                          }
                      }
-                 }
+                         
+                         // Metadata Section
+                         // Metadata Section
+                         if (details?.exifData?.isNotEmpty() == true) {
+                             androidx.compose.material3.HorizontalDivider(color = Color(0xFF334155))
+                             Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                             ) {
+                                 Text("METADATA", color = Color(0xFF007AFF), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                 
+                                 // Copy Button
+                                 val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+                                 androidx.compose.material3.TextButton(
+                                    onClick = {
+                                        val text = details?.exifData?.entries?.joinToString("\n") { (k, v) -> "$k: $v" } ?: ""
+                                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
+                                    }
+                                 ) {
+                                    Text("Copy", fontSize = 12.sp, color = Color(0xFF007AFF))
+                                }
+                             }
+                             
+                             details?.exifData?.forEach { (key, value) ->
+                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                     Text(
+                                         key.substringAfter("TAG_").replace("_", " ").lowercase()
+                                             .replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString() },
+                                         color = Color(0xFF94A3B8),
+                                         fontSize = 12.sp
+                                     )
+                                     Text(
+                                         value,
+                                         color = Color.White,
+                                         fontSize = 12.sp,
+                                         maxLines = 1,
+                                         overflow = TextOverflow.Ellipsis,
+                                         modifier = Modifier.padding(start = 8.dp).weight(1f),
+                                         textAlign = androidx.compose.ui.text.style.TextAlign.End
+                                     )
+                                 }
+                             }
+                         } else {
+                             androidx.compose.material3.HorizontalDivider(color = Color(0xFF334155))
+                             Text("No metadata available", color = Color(0xFF64748B), fontSize = 12.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
+                         }
+                     }
 
                  
                  Spacer(modifier = Modifier.height(24.dp)) // Increased gap
@@ -1017,19 +1269,71 @@ private fun BatchDetailScreen(
                 .transformable(state = state),
             contentAlignment = Alignment.Center
         ) {
-             AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current).data(image.uri).build(),
-                contentDescription = null,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer(
-                        scaleX = scale.value,
-                        scaleY = scale.value,
-                        translationX = offset.value.x,
-                        translationY = offset.value.y
-                    )
-            )
+        Box(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize()
+                .background(Color.Black)
+                .clipToBounds() // Clip sticking out parts
+                .transformable(state = state),
+            contentAlignment = Alignment.Center
+        ) {
+             val isPdf = image.type.contains("pdf", ignoreCase = true)
+             // DEBUG OVERLAY
+             Text(
+                 text = "Type: ${image.type}, PDF: $isPdf",
+                 color = Color.Green,
+                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 40.dp).zIndex(10f)
+             )
+             if (isPdf) {
+                 PdfPreview(
+                     uri = image.uri,
+                     modifier = Modifier
+                         .fillMaxSize()
+                         .graphicsLayer(
+                             scaleX = scale.value,
+                             scaleY = scale.value,
+                             translationX = offset.value.x,
+                             translationY = offset.value.y
+                         )
+                 )
+                 
+                 // Overlay Open Button
+                 val context = LocalContext.current
+                 androidx.compose.material3.ExtendedFloatingActionButton(
+                     onClick = {
+                         try {
+                              val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                  setDataAndType(image.uri, "application/pdf")
+                                  addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                              }
+                              context.startActivity(intent)
+                         } catch (e: Exception) {
+                             android.widget.Toast.makeText(context, "No PDF Viewer found", android.widget.Toast.LENGTH_SHORT).show()
+                         }
+                     },
+                     text = { Text("Open PDF") },
+                     icon = { Icon(Icons.Default.Visibility, null) },
+                     containerColor = Color(0xFF007AFF),
+                     contentColor = Color.White,
+                     modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
+                 )
+             } else {
+                 AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current).data(image.uri).build(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer(
+                            scaleX = scale.value,
+                            scaleY = scale.value,
+                            translationX = offset.value.x,
+                            translationY = offset.value.y
+                        )
+                )
+             }
+        }
         }
     }
 }
@@ -1039,6 +1343,7 @@ fun BatchProgressOverlay(
     progress: Float,
     processedCount: Int,
     totalCount: Int,
+    currentFileProgress: Float,
     onCancel: () -> Unit
 ) {
     Box(
@@ -1082,9 +1387,31 @@ fun BatchProgressOverlay(
             
             Text(
                 text = "Converting $processedCount of $totalCount",
-                color = Color(0xFF94A3B8),
                 fontSize = 14.sp
             )
+            
+            // Per-File Progress
+            if (currentFileProgress > 0f && currentFileProgress < 1f) {
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "Current file: ${(currentFileProgress * 100).toInt()}%",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    LinearProgressIndicator(
+                        progress = { currentFileProgress },
+                        modifier = Modifier
+                            .width(180.dp)
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = Color(0xFF007AFF),
+                        trackColor = Color(0xFF334155),
+                    )
+                }
+            }
             
             Spacer(modifier = Modifier.height(48.dp))
             
@@ -1102,5 +1429,59 @@ fun BatchProgressOverlay(
                 Text("Cancel")
             }
         }
+    }
+}
+
+@Composable
+private fun PdfPreview(
+    uri: Uri,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    var bitmap by remember { androidx.compose.runtime.mutableStateOf<android.graphics.Bitmap?>(null) }
+    var error by remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    
+    LaunchedEffect(uri) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                // Debug log
+                android.util.Log.d("PdfPreview", "Rendering $uri")
+                context.contentResolver.openFileDescriptor(uri, "r")?.use { descriptor ->
+                    val renderer = android.graphics.pdf.PdfRenderer(descriptor)
+                    if (renderer.pageCount > 0) {
+                        val page = renderer.openPage(0)
+                        val w = (page.width * 2).coerceAtMost(2048)
+                        val h = (page.height * 2).coerceAtMost(2048)
+                        val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+                        page.render(bmp, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        page.close()
+                        bitmap = bmp
+                    }
+                    renderer.close()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                error = e.localizedMessage
+            }
+        }
+    }
+
+    if (bitmap != null) {
+        androidx.compose.foundation.Image(
+            bitmap = bitmap!!.asImageBitmap(),
+            contentDescription = "PDF Preview",
+            contentScale = ContentScale.Fit,
+            modifier = modifier
+        )
+    } else {
+         Box(modifier = modifier, contentAlignment = Alignment.Center) {
+             Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                 CircularProgressIndicator(color = Color.White)
+                 if (error != null) {
+                     Text("Error: $error", color = Color.Red, modifier = Modifier.padding(16.dp))
+                 }
+                 Text("Loading Preview...", color = Color.Gray)
+             }
+         }
     }
 }

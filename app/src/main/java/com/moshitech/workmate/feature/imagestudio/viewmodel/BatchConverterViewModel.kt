@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.moshitech.workmate.feature.imagestudio.data.CompressFormat
 import com.moshitech.workmate.feature.imagestudio.data.ConversionSettings
+import com.moshitech.workmate.feature.imagestudio.data.ConversionPreset
 import com.moshitech.workmate.feature.imagestudio.repository.BatchRepository
 import com.moshitech.workmate.feature.imagestudio.util.MonetizationManager
 import com.moshitech.workmate.data.repository.UserPreferencesRepository
@@ -63,7 +64,10 @@ data class BatchConverterUiState(
     val totalCount: Int = 0,
     val maxInputWidth: Int = 0,
     val maxInputHeight: Int = 0,
-    val showGuide: Boolean = false
+    val showGuide: Boolean = false,
+    val currentFileProgress: Float = 0f,
+    val keepMetadata: Boolean = false,
+    val presets: List<ConversionPreset> = emptyList()
 )
 
 class BatchConverterViewModel(application: Application) : AndroidViewModel(application) {
@@ -170,6 +174,46 @@ private fun recalculateMaxDimensions() {
     fun updateTargetSize(size: String) { _uiState.update { it.copy(targetSize = size) } }
     fun toggleTargetSizeUnit() { _uiState.update { it.copy(isTargetSizeInMb = !it.isTargetSizeInMb) } }
     fun toggleAspectRatio() { _uiState.update { it.copy(maintainAspectRatio = !it.maintainAspectRatio) } }
+    fun toggleKeepMetadata() { _uiState.update { it.copy(keepMetadata = !it.keepMetadata) } }
+    
+    fun savePreset(name: String) {
+        val state = _uiState.value
+        val preset = ConversionPreset(
+            name = name,
+            format = state.format,
+            quality = state.quality,
+            width = state.width,
+            height = state.height,
+            maintainAspectRatio = state.maintainAspectRatio,
+            targetSize = state.targetSize,
+            isTargetSizeInMb = state.isTargetSizeInMb,
+            keepMetadata = state.keepMetadata
+        )
+        viewModelScope.launch {
+            preferencesRepository.savePreset(preset)
+        }
+    }
+    
+    fun loadPreset(preset: ConversionPreset) {
+        _uiState.update {
+            it.copy(
+                format = preset.format,
+                quality = preset.quality,
+                width = preset.width,
+                height = preset.height,
+                maintainAspectRatio = preset.maintainAspectRatio,
+                targetSize = preset.targetSize,
+                isTargetSizeInMb = preset.isTargetSizeInMb,
+                keepMetadata = preset.keepMetadata
+            )
+        }
+    }
+    
+    fun deletePreset(name: String) {
+        viewModelScope.launch {
+            preferencesRepository.deletePreset(name)
+        }
+    }
 
     fun convertImages() {
         val state = _uiState.value
@@ -189,7 +233,8 @@ private fun recalculateMaxDimensions() {
                     conversionMessage = "Starting...",
                     progress = 0f,
                     processedCount = 0,
-                    totalCount = state.selectedImages.size
+                    totalCount = state.selectedImages.size,
+                    currentFileProgress = 0f
                 ) 
             }
             
@@ -204,10 +249,65 @@ private fun recalculateMaxDimensions() {
                 width = if (state.width.isBlank()) null else state.width.toIntOrNull(),
                 height = if (state.height.isBlank()) null else state.height.toIntOrNull(),
                 maintainAspectRatio = state.maintainAspectRatio,
-                targetSizeKB = targetSizeKb
+                targetSizeKB = targetSizeKb,
+                keepMetadata = state.keepMetadata
             )
 
+
+
             val results = mutableListOf<ConvertedImage>()
+            
+            // PDF Logic
+            if (state.format == CompressFormat.PDF) {
+                 _uiState.update { it.copy(conversionMessage = "Merging into PDF...") }
+                 val result = repository.createPdfFromImages(
+                     state.selectedImages,
+                     settings
+                 ) { p ->
+                     _uiState.update { it.copy(currentFileProgress = p, progress = p) }
+                 }
+                 
+                 result.onSuccess { uri ->
+                     // For PDF, we treat it as 1 "converted image" result
+                     var sizeBytes: Long = 0
+                     var sizeString = "Unknown"
+                     try {
+                          getApplication<Application>().contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                              sizeBytes = pfd.statSize
+                              sizeString = formatFileSize(sizeBytes)
+                          }
+                     } catch (e: Exception) { e.printStackTrace() }
+
+                     results.add(ConvertedImage(
+                         uri = uri,
+                         originalUri = state.selectedImages.firstOrNull() ?: Uri.EMPTY, // Fallback
+                         name = "Merged PDF",
+                         size = sizeString,
+                         resolution = "Multi-Page",
+                         type = "application/pdf",
+                         originalSize = "Multiple",
+                         originalResolution = "Multiple",
+                         originalType = "Multiple",
+                         sizeBytes = sizeBytes
+                     ))
+                 }.onFailure { e ->
+                     // Handle failure
+                 }
+                 
+                 _uiState.update { 
+                    it.copy(
+                        isConverting = false, 
+                        conversionMessage = "Done!", 
+                        progress = 1f, 
+                        convertedImages = results,
+                        screenState = BatchScreenState.SUCCESS,
+                        processedCount = if(result.isSuccess) state.selectedImages.size else 0
+                    ) 
+                 }
+                 return@launch
+            }
+
+            // Standard Logic: Loop through images
             var successCount = 0
             
             val totalImages = state.selectedImages.size
@@ -226,7 +326,13 @@ private fun recalculateMaxDimensions() {
                 val originalDetails = getImageDetails(uri)
                 
                 // Use original name for destination if possible
-                val result = repository.convertAndSaveImage(uri, settings)
+                val result = repository.convertAndSaveImage(
+                    uri, 
+                    settings,
+                    onProgress = { p ->
+                        _uiState.update { it.copy(currentFileProgress = p) }
+                    }
+                )
                 
                 if (result.isSuccess) {
                     successCount++
@@ -411,7 +517,8 @@ private fun recalculateMaxDimensions() {
         val type: String,
         val sizeBytes: Long = 0,
         val width: Int = 0,
-        val height: Int = 0
+        val height: Int = 0,
+        val exifData: Map<String, String> = emptyMap()
     )
     
     fun toggleGuide() {
@@ -427,6 +534,7 @@ private fun recalculateMaxDimensions() {
             var type = "Unknown"
             var wRef = 0
             var hRef = 0
+            val exifMap = mutableMapOf<String, String>()
             
             try {
                 // Try querying MediaStore
@@ -493,6 +601,38 @@ private fun recalculateMaxDimensions() {
                      } catch (e: Exception) {}
                 }
                 
+                // EXIF Extraction
+                try {
+                     getApplication<Application>().contentResolver.openInputStream(uri)?.use { 
+                         val exif = androidx.exifinterface.media.ExifInterface(it)
+                         
+                         val tags = listOf(
+                             androidx.exifinterface.media.ExifInterface.TAG_DATETIME,
+                             androidx.exifinterface.media.ExifInterface.TAG_MAKE,
+                             androidx.exifinterface.media.ExifInterface.TAG_MODEL,
+                             androidx.exifinterface.media.ExifInterface.TAG_APERTURE_VALUE,
+                             androidx.exifinterface.media.ExifInterface.TAG_ISO_SPEED_RATINGS,
+                             androidx.exifinterface.media.ExifInterface.TAG_EXPOSURE_TIME,
+                             androidx.exifinterface.media.ExifInterface.TAG_FOCAL_LENGTH
+                         )
+                         
+                         tags.forEach { tag ->
+                             val value = exif.getAttribute(tag)
+                             if (!value.isNullOrBlank()) {
+                                 exifMap[tag] = value
+                             }
+                         }
+                         
+                         // Lat/Long special handling
+                         val latLong = exif.latLong
+                         if (latLong != null) {
+                             exifMap["Location"] = "${latLong[0]}, ${latLong[1]}"
+                         }
+                     }
+                } catch (e: Exception) {
+                    // Ignore EXIF errors
+                }
+
                 // Name fallback (filename from path)
                 if (name == "Unknown") {
                     name = uri.lastPathSegment ?: "Image"
@@ -503,7 +643,7 @@ private fun recalculateMaxDimensions() {
             }
             
             val sizeString = if (sizeBytes > 0) formatFileSize(sizeBytes) else "Unknown"
-            ImageDetails(name, path, sizeString, resolution, type, sizeBytes, wRef, hRef)
+            ImageDetails(name, path, sizeString, resolution, type, sizeBytes, wRef, hRef, exifMap)
         }
     }
     

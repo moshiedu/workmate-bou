@@ -11,6 +11,9 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import com.moshitech.workmate.feature.imagestudio.data.ConversionPreset
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
@@ -112,6 +115,63 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun setBatchOutputFolder(uri: String) {
         context.dataStore.edit { preferences ->
             preferences[BATCH_OUTPUT_FOLDER_KEY] = uri
+        }
+    }
+    
+    // Custom Presets Logic
+    private val CUSTOM_PRESETS_KEY = stringPreferencesKey("custom_image_presets")
+    private val gson = Gson()
+    
+    val customPresets: Flow<List<ConversionPreset>> = context.dataStore.data
+        .map { preferences ->
+            val json = preferences[CUSTOM_PRESETS_KEY]
+            if (json.isNullOrBlank()) {
+                emptyList()
+            } else {
+                try {
+                    val type = object : TypeToken<List<ConversionPreset>>() {}.type
+                    gson.fromJson(json, type)
+                } catch (e: Exception) {
+                    emptyList()
+                }
+            }
+        }
+        
+    suspend fun savePreset(preset: ConversionPreset) {
+        context.dataStore.edit { preferences ->
+            val currentJson = preferences[CUSTOM_PRESETS_KEY]
+            val currentList = if (currentJson.isNullOrBlank()) {
+                mutableListOf()
+            } else {
+                try {
+                    val type = object : TypeToken<MutableList<ConversionPreset>>() {}.type
+                    gson.fromJson<MutableList<ConversionPreset>>(currentJson, type)
+                } catch (e: Exception) {
+                    mutableListOf()
+                }
+            }
+            
+            // Remove existing with same name if any (overwrite)
+            currentList.removeAll { it.name == preset.name }
+            currentList.add(preset)
+            
+            preferences[CUSTOM_PRESETS_KEY] = gson.toJson(currentList)
+        }
+    }
+    
+    suspend fun deletePreset(presetName: String) {
+        context.dataStore.edit { preferences ->
+            val currentJson = preferences[CUSTOM_PRESETS_KEY]
+            if (!currentJson.isNullOrBlank()) {
+                try {
+                    val type = object : TypeToken<MutableList<ConversionPreset>>() {}.type
+                    val currentList = gson.fromJson<MutableList<ConversionPreset>>(currentJson, type)
+                    currentList.removeAll { it.name == presetName }
+                    preferences[CUSTOM_PRESETS_KEY] = gson.toJson(currentList)
+                } catch (e: Exception) {
+                    // Ignore
+                }
+            }
         }
     }
 }
