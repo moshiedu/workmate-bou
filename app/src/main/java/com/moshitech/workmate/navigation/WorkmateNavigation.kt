@@ -337,7 +337,7 @@ fun WorkmateNavigation(
             )
         ) { backStackEntry ->
              val urisString = backStackEntry.arguments?.getString("uris")
-             com.moshitech.workmate.feature.imagestudio.ui.BatchConverterScreen(navController, urisString)
+             com.moshitech.workmate.feature.imagestudio.ui.BatchConverterScreen(navController, urisString, mainViewModel = mainViewModel)
         }
         composable(
             route = "${Screen.PhotoEditor.route}?uri={uri}",

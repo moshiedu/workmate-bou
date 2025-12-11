@@ -99,15 +99,59 @@ import androidx.compose.material3.TextButton
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.zIndex
+import androidx.compose.foundation.isSystemInDarkTheme
+
+private object BatchColors {
+    fun background(isDark: Boolean): Color = if (isDark) Color(0xFF0F172A) else Color(0xFFF1F5F9)
+    
+    fun surface(isDark: Boolean): Color = if (isDark) Color(0xFF1E293B) else Color.White
+    
+    fun surfaceContainer(isDark: Boolean): Color = if (isDark) Color(0xFF1E293B) else Color.White
+    
+    fun textPrimary(isDark: Boolean): Color = if (isDark) Color.White else Color(0xFF1E293B)
+
+    fun textSecondary(isDark: Boolean): Color = if (isDark) Color(0xFF94A3B8) else Color(0xFF6B7280)
+    
+    fun primary(isDark: Boolean): Color = if (isDark) Color(0xFF3B82F6) else Color(0xFF3B82F6) // Consistent Blue
+
+    fun outline(isDark: Boolean): Color = if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)
+    
+    fun scrim(isDark: Boolean): Color = if (isDark) Color(0xE60F172A) else Color(0xFFF1F5F9).copy(alpha=0.95f)
+
+    fun chipBackground(isDark: Boolean, selected: Boolean): Color {
+        if (selected) return primary(isDark)
+        // Light mode uses dark chips (high contrast)
+        return if (isDark) Color.Transparent else Color(0xFF1E293B)
+    }
+
+    fun chipContent(isDark: Boolean, selected: Boolean): Color {
+        if (selected) return Color.White
+        return if (isDark) textSecondary(isDark) else Color.White
+    }
+
+    fun chipBorder(isDark: Boolean, selected: Boolean): Color {
+        if (selected) return Color.Transparent
+        return if (isDark) outline(isDark) else Color.Transparent
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun BatchConverterScreen(
     navController: NavController,
     incomingUris: String? = null,
-    viewModel: BatchConverterViewModel = viewModel()
+    viewModel: BatchConverterViewModel = viewModel(),
+    mainViewModel: com.moshitech.workmate.MainViewModel
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val themeState by mainViewModel.theme.collectAsState()
+    val isSystemDark = isSystemInDarkTheme()
+    
+    val isDark = when (themeState) {
+        com.moshitech.workmate.data.repository.AppTheme.LIGHT -> false
+        com.moshitech.workmate.data.repository.AppTheme.DARK -> true
+        com.moshitech.workmate.data.repository.AppTheme.SYSTEM -> isSystemDark
+    }
     
     // Handle back press
     androidx.activity.compose.BackHandler(enabled = uiState.screenState != com.moshitech.workmate.feature.imagestudio.viewmodel.BatchScreenState.INPUT) {
@@ -134,13 +178,13 @@ fun BatchConverterScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         when (uiState.screenState) {
             com.moshitech.workmate.feature.imagestudio.viewmodel.BatchScreenState.INPUT -> {
-                BatchInputScreen(navController, viewModel, uiState)
+                BatchInputScreen(navController, viewModel, uiState, isDark)
             }
             com.moshitech.workmate.feature.imagestudio.viewmodel.BatchScreenState.SUCCESS -> {
-                BatchSuccessScreen(navController, viewModel, uiState)
+                BatchSuccessScreen(navController, viewModel, uiState, isDark)
             }
             com.moshitech.workmate.feature.imagestudio.viewmodel.BatchScreenState.DETAIL -> {
-                BatchDetailScreen(viewModel, uiState)
+                BatchDetailScreen(viewModel, uiState, isDark)
             }
         }
         
@@ -150,7 +194,8 @@ fun BatchConverterScreen(
                 processedCount = uiState.processedCount,
                 totalCount = uiState.totalCount,
                 currentFileProgress = uiState.currentFileProgress,
-                onCancel = viewModel::cancelConversion
+                onCancel = viewModel::cancelConversion,
+                isDark = isDark
             )
         }
     }
@@ -161,7 +206,8 @@ fun BatchConverterScreen(
 private fun BatchInputScreen(
     navController: NavController,
     viewModel: BatchConverterViewModel,
-    uiState: com.moshitech.workmate.feature.imagestudio.viewmodel.BatchConverterUiState
+    uiState: com.moshitech.workmate.feature.imagestudio.viewmodel.BatchConverterUiState,
+    isDark: Boolean
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
@@ -204,7 +250,7 @@ private fun BatchInputScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("Convert Image", color = Color.White, fontWeight = FontWeight.SemiBold) },
+                title = { Text("Convert Image", fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
@@ -217,7 +263,10 @@ private fun BatchInputScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF0F172A)
+                    containerColor = BatchColors.background(isDark),
+                    titleContentColor = BatchColors.textPrimary(isDark),
+                    navigationIconContentColor = BatchColors.textPrimary(isDark),
+                    actionIconContentColor = BatchColors.textPrimary(isDark)
                 )
             )
         },
@@ -239,7 +288,7 @@ private fun BatchInputScreen(
                 }
             )
         },
-        containerColor = Color(0xFF0F172A)
+        containerColor = BatchColors.background(isDark)
     ) { padding ->
         Column(
             modifier = Modifier
@@ -255,7 +304,7 @@ private fun BatchInputScreen(
                     .fillMaxWidth()
                     .height(250.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF1E293B)), // Darker placeholder
+                    .background(BatchColors.surface(isDark)), // Darker placeholder
                 contentAlignment = Alignment.Center
             ) {
                 if (activePreviewUri != null) {
@@ -294,8 +343,8 @@ private fun BatchInputScreen(
                              )
                          }
                      ) {
-                         Icon(Icons.Default.Add, null, tint = Color(0xFF007AFF), modifier = Modifier.size(48.dp))
-                         Text("Tap to add images", color = Color(0xFF94A3B8))
+                         Icon(Icons.Default.Add, null, tint = BatchColors.primary(isDark), modifier = Modifier.size(48.dp))
+                         Text("Tap to add images", color = BatchColors.textSecondary(isDark))
                      }
                 }
             }
@@ -304,7 +353,7 @@ private fun BatchInputScreen(
             if (previewDetails != null) {
                 Text(
                     text = "${previewDetails?.size} • ${previewDetails?.type}", 
-                    color = Color(0xFF94A3B8),
+                    color = BatchColors.textSecondary(isDark),
                     fontSize = 12.sp,
                     modifier = Modifier.align(Alignment.CenterHorizontally),
                     fontWeight = FontWeight.Medium
@@ -312,7 +361,7 @@ private fun BatchInputScreen(
             } else if (uiState.selectedImages.isNotEmpty()) {
                  Text(
                     text = "Loading info...",
-                    color = Color(0xFF94A3B8),
+                    color = BatchColors.textSecondary(isDark),
                     fontSize = 12.sp,
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                 )
@@ -333,7 +382,7 @@ private fun BatchInputScreen(
                             .clip(RoundedCornerShape(8.dp))
                             .border(
                                 if (isPreviewing) 2.dp else 0.dp, 
-                                if (isPreviewing) Color(0xFF007AFF) else Color.Transparent, 
+                                if (isPreviewing) BatchColors.primary(isDark) else Color.Transparent, 
                                 RoundedCornerShape(8.dp)
                             )
                             .clickable { selectedPreviewUri = uri }
@@ -366,8 +415,8 @@ private fun BatchInputScreen(
                         modifier = Modifier
                             .size(60.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF1E293B))
-                            .border(1.dp, Color(0xFF334155), RoundedCornerShape(8.dp)) // Dashed effect hard to do simply, solid for now
+                            .background(BatchColors.surface(isDark))
+                            .border(1.dp, BatchColors.outline(isDark), RoundedCornerShape(8.dp)) // Dashed effect hard to do simply, solid for now
                             .clickable {
                                 multiplePhotoPickerLauncher.launch(
                                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
@@ -386,7 +435,7 @@ private fun BatchInputScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(32.dp)
-                        .background(Color(0xFF1E293B), RoundedCornerShape(8.dp)),
+                        .background(BatchColors.surface(isDark), RoundedCornerShape(8.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -441,8 +490,8 @@ private fun BatchInputScreen(
                     Box(
                         modifier = Modifier
                             .height(32.dp)
-                            .background(Color(0xFF1E293B), CircleShape)
-                            .border(1.dp, Color(0xFF334155), CircleShape)
+                            .background(BatchColors.surface(isDark), CircleShape)
+                            .border(1.dp, BatchColors.outline(isDark), CircleShape)
                             // We need both click (load) and long click (delete)
                             .composed {
                                 this.combinedClickable(
@@ -473,12 +522,13 @@ private fun BatchInputScreen(
                             .weight(1f)
                             .height(32.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(if (isSelected) Color(0xFF007AFF) else Color(0xFF334155))
+                            .background(BatchColors.chipBackground(isDark, isSelected))
+                            .border(1.dp, BatchColors.chipBorder(isDark, isSelected), RoundedCornerShape(8.dp))
                             .clickable { viewModel.updateFormat(format) },
                         contentAlignment = Alignment.Center
                     ) {
                         val label = if (format == CompressFormat.ORIGINAL) "Auto" else format.name
-                        Text(label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                        Text(label, color = BatchColors.chipContent(isDark, isSelected), fontSize = 11.sp, fontWeight = FontWeight.Medium)
                     }
                 }
             }
@@ -506,11 +556,11 @@ private fun BatchInputScreen(
                     modifier = Modifier
                         .weight(1f)
                         .height(48.dp)
-                        .background(Color(0xFF1E293B), RoundedCornerShape(8.dp))
+                        .background(BatchColors.surface(isDark), RoundedCornerShape(8.dp))
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        Text("Width", color = Color(0xFF64748B), fontSize = 9.sp)
+                        Text("Width", color = BatchColors.textSecondary(isDark), fontSize = 9.sp)
                         androidx.compose.foundation.text.BasicTextField(
                             value = uiState.width,
                             onValueChange = viewModel::updateWidth,
@@ -529,17 +579,17 @@ private fun BatchInputScreen(
                     modifier = Modifier
                         .weight(1f)
                         .height(48.dp)
-                        .background(Color(0xFF1E293B), RoundedCornerShape(8.dp))
+                        .background(BatchColors.surface(isDark), RoundedCornerShape(8.dp))
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        Text("Height", color = Color(0xFF64748B), fontSize = 9.sp)
+                        Text("Height", color = BatchColors.textSecondary(isDark), fontSize = 9.sp)
                         androidx.compose.foundation.text.BasicTextField(
                             value = uiState.height,
                             onValueChange = viewModel::updateHeight,
                             textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 11.sp),
                             singleLine = true,
-                            cursorBrush = androidx.compose.ui.graphics.SolidColor(Color(0xFF007AFF)),
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(BatchColors.primary(isDark)),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -555,7 +605,7 @@ private fun BatchInputScreen(
                 Box(
                     modifier = Modifier
                         .size(48.dp)
-                        .background(Color(0xFF1E293B), RoundedCornerShape(8.dp))
+                        .background(BatchColors.surface(isDark), RoundedCornerShape(8.dp))
                         .clickable { viewModel.toggleAspectRatio() },
                     contentAlignment = Alignment.Center
                 ) {
@@ -564,7 +614,7 @@ private fun BatchInputScreen(
                     Icon(
                         if (uiState.maintainAspectRatio) androidx.compose.material.icons.Icons.Default.Link else androidx.compose.material.icons.Icons.Default.LinkOff,
                         contentDescription = "Toggle Aspect Ratio",
-                        tint = if (uiState.maintainAspectRatio) Color(0xFF007AFF) else Color(0xFF64748B),
+                        tint = if (uiState.maintainAspectRatio) BatchColors.primary(isDark) else BatchColors.textSecondary(isDark),
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -593,12 +643,12 @@ private fun BatchInputScreen(
             val isPdfMode = uiState.format == CompressFormat.PDF
             
             // Target File Size
-            Text("Target File Size (Optional)", color = if (isPdfMode) Color(0xFF64748B) else Color(0xFF94A3B8), fontSize = 11.sp)
+            Text("Target File Size (Optional)", color = if (isPdfMode) BatchColors.textSecondary(isDark).copy(alpha=0.5f) else BatchColors.textSecondary(isDark), fontSize = 11.sp)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(32.dp)
-                    .background(if(isPdfMode) Color(0xFF1E293B).copy(alpha=0.5f) else Color(0xFF1E293B), RoundedCornerShape(8.dp)),
+                    .background(if(isPdfMode) BatchColors.surface(isDark).copy(alpha=0.5f) else BatchColors.surface(isDark), RoundedCornerShape(8.dp)),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 androidx.compose.foundation.text.BasicTextField(
@@ -607,13 +657,13 @@ private fun BatchInputScreen(
                     modifier = Modifier
                         .weight(1f)
                         .padding(horizontal = 12.dp),
-                    textStyle = androidx.compose.ui.text.TextStyle(color = if (isPdfMode) Color(0xFF64748B) else Color.White, fontSize = 11.sp),
+                    textStyle = androidx.compose.ui.text.TextStyle(color = if (isPdfMode) BatchColors.textSecondary(isDark) else BatchColors.textPrimary(isDark), fontSize = 11.sp),
                     singleLine = true,
                     enabled = !isPdfMode,
-                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Color(0xFF007AFF)),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(BatchColors.primary(isDark)),
                     decorationBox = { innerTextField ->
                         if (uiState.targetSize.isEmpty() && !isPdfMode) {
-                             Text("Max Size", color = Color(0xFF475569), fontSize = 11.sp)
+                             Text("Max Size", color = BatchColors.textSecondary(isDark), fontSize = 11.sp)
                         }
                         innerTextField()
                     },
@@ -643,23 +693,23 @@ private fun BatchInputScreen(
                 Row(
                    modifier = Modifier
                        .padding(2.dp)
-                       .background(if(isPdfMode) Color(0xFF334155).copy(alpha=0.5f) else Color(0xFF334155), RoundedCornerShape(6.dp)) 
+                       .background(if(isPdfMode) BatchColors.outline(isDark).copy(alpha=0.5f) else BatchColors.outline(isDark), RoundedCornerShape(6.dp)) 
                 ) {
                     Box(
                         modifier = Modifier
-                            .background(if (!uiState.isTargetSizeInMb && !isPdfMode) Color(0xFF007AFF) else Color.Transparent, RoundedCornerShape(6.dp))
+                            .background(if (!uiState.isTargetSizeInMb && !isPdfMode) BatchColors.primary(isDark) else Color.Transparent, RoundedCornerShape(6.dp))
                             .clickable { if (uiState.isTargetSizeInMb && !isPdfMode) viewModel.toggleTargetSizeUnit() }
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                         Text("KB", color = if (!uiState.isTargetSizeInMb && !isPdfMode) Color.White else Color(0xFF94A3B8), fontSize = 10.sp)
+                         Text("KB", color = if (!uiState.isTargetSizeInMb && !isPdfMode) Color.White else BatchColors.textSecondary(isDark), fontSize = 10.sp)
                     }
                     Box(
                         modifier = Modifier
-                            .background(if (uiState.isTargetSizeInMb && !isPdfMode) Color(0xFF007AFF) else Color.Transparent, RoundedCornerShape(6.dp))
+                            .background(if (uiState.isTargetSizeInMb && !isPdfMode) BatchColors.primary(isDark) else Color.Transparent, RoundedCornerShape(6.dp))
                             .clickable { if (!uiState.isTargetSizeInMb && !isPdfMode) viewModel.toggleTargetSizeUnit() }
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                         Text("MB", color = if (uiState.isTargetSizeInMb && !isPdfMode) Color.White else Color(0xFF94A3B8), fontSize = 10.sp)
+                         Text("MB", color = if (uiState.isTargetSizeInMb && !isPdfMode) Color.White else BatchColors.textSecondary(isDark), fontSize = 10.sp)
                     }
                 }
             }
@@ -711,7 +761,7 @@ private fun BatchInputScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(if(isPdfMode) Color(0xFF1E293B).copy(alpha=0.5f) else Color(0xFF1E293B), RoundedCornerShape(8.dp))
+                    .background(if(isPdfMode) MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.5f) else MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
                     .padding(horizontal = 12.dp, vertical = 6.dp)
             ) {
                 Row(
@@ -781,7 +831,7 @@ private fun BatchInputScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF)),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = BatchColors.primary(isDark)),
                 shape = RoundedCornerShape(12.dp),
                 enabled = uiState.selectedImages.isNotEmpty() && !uiState.isConverting
             ) {
@@ -835,21 +885,21 @@ private fun BatchInputScreen(
                     Text("Cancel")
                 }
             },
-            containerColor = Color(0xFF1E293B),
-            titleContentColor = Color.White,
-            textContentColor = Color(0xFF94A3B8)
+            containerColor = BatchColors.surfaceContainer(isDark),
+            titleContentColor = BatchColors.textPrimary(isDark),
+            textContentColor = BatchColors.textSecondary(isDark)
         )
     }
 
     if (showUserGuide) {
-        BatchConverterUserGuide(onDismiss = { showUserGuide = false })
+        BatchConverterUserGuide(onDismiss = { showUserGuide = false }, isDark = isDark)
     }
 
     if (showInfoModal && imageDetails != null) {
         AlertDialog(
             onDismissRequest = { showInfoModal = false },
             icon = { Icon(Icons.Outlined.Info, null, tint = Color(0xFF007AFF)) },
-            title = { Text("Image Details", color = Color(0xFF0F172A)) },
+            title = { Text("Image Details", color = MaterialTheme.colorScheme.onSurface) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Name: ${imageDetails?.name}", color = Color(0xFF334155))
@@ -875,7 +925,7 @@ private fun BatchInputScreen(
                                     clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
                                 }
                             ) {
-                                Text("Copy", fontSize = 12.sp, color = Color(0xFF007AFF))
+                                Text("Copy", fontSize = 12.sp, color = BatchColors.primary(isDark))
                             }
                         }
                         
@@ -884,12 +934,12 @@ private fun BatchInputScreen(
                                 Text(
                                     key.substringAfter("TAG_").replace("_", " ").lowercase()
                                         .replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString() },
-                                    color = Color(0xFF64748B),
+                                    color = BatchColors.textSecondary(isDark),
                                     fontSize = 12.sp
                                 )
                                 Text(
                                     value,
-                                    color = Color(0xFF334155),
+                                    color = BatchColors.textPrimary(isDark),
                                     fontSize = 12.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
@@ -900,13 +950,13 @@ private fun BatchInputScreen(
                         }
                     } else {
                         androidx.compose.material3.HorizontalDivider()
-                        Text("No metadata available", color = Color(0xFF94A3B8), fontSize = 12.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
+                        Text("No metadata available", color = BatchColors.textSecondary(isDark), fontSize = 12.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
                     }
                 }
             },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = { showInfoModal = false }) {
-                    Text("Close", color = Color(0xFF007AFF))
+                    Text("Close", color = BatchColors.primary(isDark))
                 }
             },
             dismissButton = {
@@ -925,10 +975,10 @@ private fun BatchInputScreen(
                          // Fallback or ignore
                      }
                 }) {
-                    Text("Open", color = Color(0xFF007AFF))
+                    Text("Open", color = BatchColors.primary(isDark))
                 }
             },
-            containerColor = Color.White
+            containerColor = BatchColors.surfaceContainer(isDark)
         )
     }
 }
@@ -938,7 +988,8 @@ private fun BatchInputScreen(
 private fun BatchSuccessScreen(
     navController: NavController,
     viewModel: BatchConverterViewModel,
-    uiState: com.moshitech.workmate.feature.imagestudio.viewmodel.BatchConverterUiState
+    uiState: com.moshitech.workmate.feature.imagestudio.viewmodel.BatchConverterUiState,
+    isDark: Boolean
 ) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -997,19 +1048,22 @@ private fun BatchSuccessScreen(
          snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("Batch Conversion Complete", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 18.sp) },
+                title = { Text("Batch Conversion Complete", fontWeight = FontWeight.SemiBold, fontSize = 18.sp) },
                 actions = {
                     androidx.compose.material3.TextButton(onClick = { viewModel.resetState() }) {
-                        Text("Done", color = Color(0xFF007AFF), fontWeight = FontWeight.Bold)
+                        Text("Done", color = BatchColors.primary(isDark), fontWeight = FontWeight.Bold)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF0F172A))
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = BatchColors.background(isDark),
+                    titleContentColor = BatchColors.textPrimary(isDark)
+                )
             )
         },
         bottomBar = {
              // 
         },
-        containerColor = Color(0xFF0F172A)
+        containerColor = BatchColors.background(isDark)
     ) { padding ->
         Column(
             modifier = Modifier
@@ -1030,7 +1084,7 @@ private fun BatchSuccessScreen(
                         modifier = Modifier
                             .size(120.dp, 160.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFF1E293B))
+                            .background(BatchColors.surface(isDark))
                             .clickable { viewModel.selectDetailImage(image) },
                         contentAlignment = Alignment.Center
                     ) {
@@ -1051,11 +1105,11 @@ private fun BatchSuccessScreen(
                 }
             }
             
-            Text("Conversion Summary", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            Text("Conversion Summary", color = BatchColors.textPrimary(isDark), fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
             
             // Summary Card
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -1063,16 +1117,16 @@ private fun BatchSuccessScreen(
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         val label = if (uiState.format == com.moshitech.workmate.feature.imagestudio.data.CompressFormat.PDF) "Images Merged" else "Total Images Converted"
                         val count = if (uiState.format == com.moshitech.workmate.feature.imagestudio.data.CompressFormat.PDF) "${uiState.processedCount}" else "${uiState.convertedImages.size}"
-                        Text(label, color = Color(0xFF94A3B8))
-                        Text(count, color = Color.White, fontWeight = FontWeight.Bold)
+                        Text(label, color = BatchColors.textSecondary(isDark))
+                        Text(count, color = BatchColors.textSecondary(isDark), fontWeight = FontWeight.Bold)
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Output Format", color = Color(0xFF94A3B8))
-                        Text(uiState.format.name, color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("Output Format", color = BatchColors.textSecondary(isDark))
+                        Text(uiState.format.name, color = BatchColors.textSecondary(isDark), fontWeight = FontWeight.Bold)
                     }
                     // Avg Size placeholder
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Average File Size", color = Color(0xFF94A3B8))
+                        Text("Average File Size", color = BatchColors.textSecondary(isDark))
                          // Simple avg calc
                         // Avg Size calc
                         val avgSize = if (uiState.convertedImages.isNotEmpty()) {
@@ -1080,7 +1134,7 @@ private fun BatchSuccessScreen(
                             val avgBytes = totalBytes / uiState.convertedImages.size
                             viewModel.formatFileSize(avgBytes)
                         } else "0 KB"
-                        Text(avgSize, color = Color.White, fontWeight = FontWeight.Bold)
+                        Text(avgSize, color = BatchColors.textSecondary(isDark), fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -1095,12 +1149,12 @@ private fun BatchSuccessScreen(
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(48.dp),
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B)),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = BatchColors.surface(isDark)),
                 shape = RoundedCornerShape(8.dp)
             ) {
-                Icon(Icons.Filled.Visibility, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                Icon(Icons.Filled.Visibility, null, tint = BatchColors.textSecondary(isDark), modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("View Changes", color = Color.White)
+                Text("View Changes", color = BatchColors.textSecondary(isDark))
             }
             
             Button(
@@ -1109,12 +1163,12 @@ private fun BatchSuccessScreen(
                     saveLauncher.launch(uiState.savedFolderUri)
                 },
                 modifier = Modifier.fillMaxWidth().height(48.dp),
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B)),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = BatchColors.surface(isDark)),
                 shape = RoundedCornerShape(8.dp)
             ) {
-                 Icon(Icons.Filled.Save, null, tint = Color(0xFF007AFF), modifier = Modifier.size(20.dp))
+                 Icon(Icons.Filled.Save, null, tint = BatchColors.primary(isDark), modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Save All to Device", color = Color(0xFF007AFF))
+                Text("Save All to Device", color = BatchColors.primary(isDark))
             }
             
             Button(
@@ -1143,7 +1197,7 @@ private fun BatchSuccessScreen(
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(48.dp),
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF)),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = BatchColors.primary(isDark)),
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Icon(Icons.Filled.Share, null, tint = Color.White, modifier = Modifier.size(20.dp))
@@ -1158,7 +1212,8 @@ private fun BatchSuccessScreen(
 @Composable
 private fun BatchDetailScreen(
     viewModel: BatchConverterViewModel,
-    uiState: com.moshitech.workmate.feature.imagestudio.viewmodel.BatchConverterUiState
+    uiState: com.moshitech.workmate.feature.imagestudio.viewmodel.BatchConverterUiState,
+    isDark: Boolean
 ) {
     val image = uiState.selectedDetailImage ?: return
     var details by remember { androidx.compose.runtime.mutableStateOf<com.moshitech.workmate.feature.imagestudio.viewmodel.BatchConverterViewModel.ImageDetails?>(null) }
@@ -1173,7 +1228,7 @@ private fun BatchDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(image.name, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, maxLines = 1) },
+                title = { Text("presets", color = BatchColors.textPrimary(isDark), fontWeight = FontWeight.SemiBold, fontSize = 16.sp, maxLines = 1) },
                 navigationIcon = {
                     IconButton(onClick = { viewModel.closeDetail() }) {
                         Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
@@ -1185,7 +1240,7 @@ private fun BatchDetailScreen(
                         Icon(Icons.Outlined.Info, "User Guide", tint = Color.White)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF0F172A))
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = BatchColors.background(isDark))
             )
         },
         floatingActionButton = {
@@ -1205,7 +1260,7 @@ private fun BatchDetailScreen(
                      },
                      text = { Text("Open PDF") },
                      icon = { Icon(Icons.Default.Visibility, null) },
-                     containerColor = Color(0xFF007AFF),
+                     containerColor = BatchColors.primary(isDark),
                      contentColor = Color.White
                  )
             }
@@ -1215,7 +1270,7 @@ private fun BatchDetailScreen(
              Column(
                  modifier = Modifier
                      .fillMaxWidth()
-                     .background(Color(0xFF0F172A))
+                     .background(BatchColors.background(isDark))
                      .navigationBarsPadding()
                      .heightIn(max = 400.dp)
                      .verticalScroll(rememberScrollState())
@@ -1238,7 +1293,7 @@ private fun BatchDetailScreen(
                  // Let's do it in chunks.
              }
         },
-        containerColor = Color(0xFF0F172A)
+        containerColor = BatchColors.background(isDark)
     ) { padding ->
         val scale = remember { androidx.compose.runtime.mutableStateOf(1f) }
         val offset = remember { androidx.compose.runtime.mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
@@ -1288,6 +1343,10 @@ private fun BatchDetailScreen(
              }
         }
     }
+
+    if (showUserGuide) {
+        BatchConverterUserGuide(onDismiss = { showUserGuide = false }, isDark = isDark)
+    }
 }
 
 @Composable
@@ -1296,12 +1355,13 @@ fun BatchProgressOverlay(
     processedCount: Int,
     totalCount: Int,
     currentFileProgress: Float,
-    onCancel: () -> Unit
+    onCancel: () -> Unit,
+    isDark: Boolean
 ) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xE60F172A)) // Dark scrim
+            .background(BatchColors.scrim(isDark)) // Scrim adhering to theme
             .clickable(enabled = true, onClick = {}) // Block touches
             ,
         contentAlignment = Alignment.Center
@@ -1314,13 +1374,13 @@ fun BatchProgressOverlay(
                 CircularProgressIndicator(
                     progress = { progress },
                     modifier = Modifier.size(120.dp),
-                    color = Color(0xFF007AFF),
+                    color = BatchColors.primary(isDark),
                     strokeWidth = 8.dp,
-                    trackColor = Color(0xFF334155),
+                    trackColor = BatchColors.outline(isDark),
                 )
                 Text(
                     text = "${(progress * 100).toInt()}%",
-                    color = Color.White,
+                    color = BatchColors.textPrimary(isDark),
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -1330,7 +1390,7 @@ fun BatchProgressOverlay(
             
             Text(
                 text = "Converting your images...",
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Medium
             )
@@ -1339,7 +1399,8 @@ fun BatchProgressOverlay(
             
             Text(
                 text = "Converting $processedCount of $totalCount",
-                fontSize = 14.sp
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             
             // Per-File Progress
@@ -1349,7 +1410,7 @@ fun BatchProgressOverlay(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         text = "Current file: ${(currentFileProgress * 100).toInt()}%",
-                        color = Color(0xFF94A3B8),
+                        color = BatchColors.textSecondary(isDark),
                         fontSize = 12.sp,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
@@ -1359,8 +1420,8 @@ fun BatchProgressOverlay(
                             .width(180.dp)
                             .height(4.dp)
                             .clip(RoundedCornerShape(2.dp)),
-                        color = Color(0xFF007AFF),
-                        trackColor = Color(0xFF334155),
+                        color = BatchColors.primary(isDark),
+                        trackColor = BatchColors.outline(isDark),
                     )
                 }
             }
@@ -1370,8 +1431,8 @@ fun BatchProgressOverlay(
             Button(
                 onClick = onCancel,
                 colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF334155),
-                    contentColor = Color.White
+                    containerColor = BatchColors.surface(isDark),
+                    contentColor = BatchColors.textSecondary(isDark)
                 ),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier
@@ -1439,11 +1500,11 @@ private fun PdfPreview(
 }
 
 @Composable
-private fun BatchConverterUserGuide(onDismiss: () -> Unit) {
+private fun BatchConverterUserGuide(onDismiss: () -> Unit, isDark: Boolean) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Outlined.Info, null, tint = Color(0xFF007AFF)) },
-        title = { Text("Converter Guide", color = Color(0xFF0F172A), fontWeight = FontWeight.Bold) },
+        icon = { Icon(Icons.Outlined.Info, null, tint = BatchColors.primary(isDark)) },
+        title = { Text("Converter Guide", color = BatchColors.textPrimary(isDark), fontWeight = FontWeight.Bold) },
         text = {
             Column(
                 modifier = Modifier
@@ -1453,52 +1514,52 @@ private fun BatchConverterUserGuide(onDismiss: () -> Unit) {
             ) {
                 // Formats Section
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Supported Formats", color = Color(0xFF0F172A), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    Text("• JPEG: Best for photos. Small size, but no transparency.", fontSize = 13.sp, color = Color(0xFF475569))
-                    Text("• PNG: Best for graphics. Lossless quality & transparency.", fontSize = 13.sp, color = Color(0xFF475569))
-                    Text("• WEBP: Modern web format. High quality, very small size.", fontSize = 13.sp, color = Color(0xFF475569))
-                    Text("• PDF: Merges all selected images into a single document.", fontSize = 13.sp, color = Color(0xFF475569))
-                    Text("• ORIGINAL: Keeps format but allows resizing.", fontSize = 13.sp, color = Color(0xFF475569))
+                    Text("Supported Formats", color = BatchColors.textPrimary(isDark), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Text("• JPEG: Best for photos. Small size, but no transparency.", fontSize = 13.sp, color = BatchColors.textSecondary(isDark))
+                    Text("• PNG: Best for graphics. Lossless quality & transparency.", fontSize = 13.sp, color = BatchColors.textSecondary(isDark))
+                    Text("• WEBP: Modern web format. High quality, very small size.", fontSize = 13.sp, color = BatchColors.textSecondary(isDark))
+                    Text("• PDF: Merges all selected images into a single document.", fontSize = 13.sp, color = BatchColors.textSecondary(isDark))
+                    Text("• ORIGINAL: Keeps format but allows resizing.", fontSize = 13.sp, color = BatchColors.textSecondary(isDark))
                 }
                 
-                androidx.compose.material3.HorizontalDivider(color = Color(0xFFE2E8F0))
+                androidx.compose.material3.HorizontalDivider(color = BatchColors.outline(isDark))
 
                 // Quality Section
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Quality Control", color = Color(0xFF0F172A), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    Text("Adjust the slider from 1-100 to trade quality for file size. 80% is recommended for most uses.", fontSize = 13.sp, color = Color(0xFF475569))
+                    Text("Quality Control", color = BatchColors.textPrimary(isDark), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Text("Adjust the slider from 1-100 to trade quality for file size. 80% is recommended for most uses.", fontSize = 13.sp, color = BatchColors.textSecondary(isDark))
                 }
 
-                androidx.compose.material3.HorizontalDivider(color = Color(0xFFE2E8F0))
+                androidx.compose.material3.HorizontalDivider(color = BatchColors.outline(isDark))
 
                 // Resizing Section
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Resizing Options", color = Color(0xFF0F172A), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    Text("• Width/Height: Set exact pixel dimensions.", fontSize = 13.sp, color = Color(0xFF475569))
-                    Text("• Target Size: Set a max file size (e.g., 500 KB). The app will automatically adjust quality to fit.", fontSize = 13.sp, color = Color(0xFF475569))
+                    Text("Resizing Options", color = BatchColors.textPrimary(isDark), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Text("• Width/Height: Set exact pixel dimensions.", fontSize = 13.sp, color = BatchColors.textSecondary(isDark))
+                    Text("• Target Size: Set a max file size (e.g., 500 KB). The app will automatically adjust quality to fit.", fontSize = 13.sp, color = BatchColors.textSecondary(isDark))
                 }
                 
-                androidx.compose.material3.HorizontalDivider(color = Color(0xFFE2E8F0))
+                androidx.compose.material3.HorizontalDivider(color = BatchColors.outline(isDark))
 
                 // Pro Tip
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F5F9)),
+                    colors = CardDefaults.cardColors(containerColor = BatchColors.surface(isDark)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Text("💡 Pro Tip", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF0F172A))
-                        Text("Use 'Save Preset' to remember your favorite settings for next time!", fontSize = 12.sp, color = Color(0xFF475569))
+                        Text("💡 Pro Tip", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = BatchColors.textPrimary(isDark))
+                        Text("Use 'Save Preset' to remember your favorite settings for next time!", fontSize = 12.sp, color = BatchColors.textSecondary(isDark))
                     }
                 }
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Got it", color = Color(0xFF007AFF), fontWeight = FontWeight.Bold)
+                Text("Got it", color = BatchColors.primary(isDark), fontWeight = FontWeight.Bold)
             }
         },
-        containerColor = Color.White,
-        titleContentColor = Color(0xFF0F172A),
-        textContentColor = Color(0xFF475569)
+        containerColor = BatchColors.surfaceContainer(isDark),
+        titleContentColor = BatchColors.textPrimary(isDark),
+        textContentColor = BatchColors.textSecondary(isDark)
     )
 }
