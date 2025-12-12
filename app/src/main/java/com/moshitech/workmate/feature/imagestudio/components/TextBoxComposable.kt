@@ -104,7 +104,7 @@ fun TextBoxComposable(
                     }
                 }
                 .background(
-                    if (layer.showBackground) Color(layer.backgroundColor).copy(alpha = layer.backgroundOpacity) 
+                    if (layer.showBackground) Color(layer.backgroundColor)
                     else Color.Transparent,
                     RoundedCornerShape(4.dp)
                 )

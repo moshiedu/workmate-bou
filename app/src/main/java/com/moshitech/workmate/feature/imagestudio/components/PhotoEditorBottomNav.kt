@@ -1,6 +1,7 @@
 package com.moshitech.workmate.feature.imagestudio.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -29,8 +30,9 @@ fun PhotoEditorBottomNav(
     modifier: Modifier = Modifier
 ) {
     Surface(
-        modifier = modifier.fillMaxWidth(),
-        color = Color(0xFF0D121F), // Deep dark blue/black
+        modifier = modifier
+            .fillMaxWidth()
+            .border(width = 1.dp, color = Color(0xFF2C2C2E)), // Add Top Border (using full border for simplicity or drawBehind for top only)
         tonalElevation = 8.dp
     ) {
         Row(

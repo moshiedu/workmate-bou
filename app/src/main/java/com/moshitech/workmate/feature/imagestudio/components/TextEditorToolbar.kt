@@ -1,8 +1,12 @@
 package com.moshitech.workmate.feature.imagestudio.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -11,11 +15,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import com.moshitech.workmate.feature.imagestudio.viewmodel.TextLayer
 
 enum class TextToolTab {
@@ -154,14 +163,14 @@ fun FontTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
 fun StyleTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
     Column(
         modifier = Modifier.fillMaxWidth(), // Use fillMaxWidth instead of fillMaxSize inside wrapContent parent
-        verticalArrangement = Arrangement.spacedBy(20.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp), // Reduced spacing
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // Row 1: B, I, U, Strikethrough
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 32.dp), // Add horizontal padding
+                .padding(horizontal = 16.dp), // Reduced horizontal padding
             horizontalArrangement = Arrangement.SpaceBetween, // Spread out evenly
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -195,8 +204,8 @@ fun StyleTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
         
         // Row 2: All Caps, Small Caps
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), // Match others
+            horizontalArrangement = Arrangement.spacedBy(8.dp) // Reduced spacing
         ) {
             CapsButton(
                 iconText = "TT",
@@ -218,7 +227,7 @@ fun StyleTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 32.dp),
+                .padding(horizontal = 16.dp), // Reduced padding
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -257,7 +266,7 @@ fun IconStyleToggleButton(
     
     Box(
         modifier = Modifier
-            .size(width = 60.dp, height = 50.dp)
+            .size(width = 48.dp, height = 40.dp) // Reduced size
             .background(backgroundColor, RoundedCornerShape(8.dp))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
@@ -286,7 +295,7 @@ fun StyleToggleButton(
     
     Box(
         modifier = Modifier
-            .size(width = 60.dp, height = 50.dp) // Rectangular shape as per image
+            .size(width = 48.dp, height = 40.dp) // Reduced size
             .background(backgroundColor, RoundedCornerShape(8.dp))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
@@ -345,7 +354,315 @@ fun FormatTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
 
 @Composable
 fun ColorTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
-    Text("Color options", color = Color.White)
+    var colorMode by remember { mutableStateOf(ColorMode.TEXT) }
+    
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Mode Selector (Text | Background)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(36.dp)
+                .padding(horizontal = 16.dp)
+                .background(Color(0xFF2C2C2E), RoundedCornerShape(8.dp))
+                .padding(2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Text Mode Button
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .background(
+                        if (colorMode == ColorMode.TEXT) Color(0xFF334155) else Color.Transparent,
+                        RoundedCornerShape(6.dp)
+                    )
+                    .clickable { colorMode = ColorMode.TEXT },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Text",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = if (colorMode == ColorMode.TEXT) FontWeight.SemiBold else FontWeight.Medium
+                )
+            }
+            
+            // Background Mode Button
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .background(
+                        if (colorMode == ColorMode.BACKGROUND) Color(0xFF334155) else Color.Transparent,
+                        RoundedCornerShape(6.dp)
+                    )
+                    .clickable { colorMode = ColorMode.BACKGROUND },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Background",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = if (colorMode == ColorMode.BACKGROUND) FontWeight.SemiBold else FontWeight.Medium
+                )
+            }
+        }
+        
+        // Color Palette
+        val colors = listOf(
+            Color.White, Color.Black, Color(0xFFE91E63), Color(0xFFF44336), 
+            Color(0xFFFF9800), Color(0xFFFFEB3B), Color(0xFF4CAF50), Color(0xFF009688), 
+            Color(0xFF2196F3), Color(0xFF3F51B5), Color(0xFF9C27B0), Color(0xFF673AB7),
+            Color(0xFF795548), Color(0xFF607D8B)
+        )
+        
+        androidx.compose.foundation.lazy.LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // No Color Option (Only for Background)
+            if (colorMode == ColorMode.BACKGROUND) {
+                item {
+                    ColorCircle(
+                        color = Color.Transparent,
+                        isSelected = !layer.showBackground,
+                        isNoColor = true,
+                        onClick = { 
+                            onUpdate(layer.copy(showBackground = false)) 
+                        }
+                    )
+                }
+            }
+            
+            items(colors.size) { index ->
+                val color = colors[index]
+                val isSelected = if (colorMode == ColorMode.TEXT) {
+                    layer.color == color.toArgb()
+                } else {
+                    layer.showBackground && layer.backgroundColor == color.toArgb()
+                }
+                
+                ColorCircle(
+                    color = color,
+                    isSelected = isSelected,
+                    onClick = {
+                        if (colorMode == ColorMode.TEXT) {
+                            onUpdate(layer.copy(color = color.toArgb()))
+                        } else {
+                            onUpdate(layer.copy(
+                                showBackground = true,
+                                backgroundColor = color.toArgb()
+                            ))
+                        }
+                    }
+                )
+            }
+        }
+
+        // Advanced Sliders
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            val currentColorInt = if (colorMode == ColorMode.TEXT) layer.color else layer.backgroundColor
+            val currentColor = Color(currentColorInt)
+            
+            // Spectrum Slider (Hue)
+            SpectrumSlider(
+                selectedColor = currentColor,
+                onColorSelected = { newColor ->
+                    // Preserve alpha of current selection
+                    val alpha = if (colorMode == ColorMode.TEXT) Color(layer.color).alpha else Color(layer.backgroundColor).alpha
+                    val finalColor = newColor.copy(alpha = alpha)
+                    
+                    if (colorMode == ColorMode.TEXT) {
+                        onUpdate(layer.copy(color = finalColor.toArgb()))
+                    } else {
+                        onUpdate(layer.copy(
+                            showBackground = true,
+                            backgroundColor = finalColor.toArgb()
+                        ))
+                    }
+                }
+            )
+            
+            // Opacity Slider
+            OpacitySlider(
+                color = currentColor,
+                alpha = currentColor.alpha,
+                onAlphaChanged = { newAlpha ->
+                    val finalColor = currentColor.copy(alpha = newAlpha)
+                    if (colorMode == ColorMode.TEXT) {
+                        onUpdate(layer.copy(color = finalColor.toArgb()))
+                    } else {
+                        onUpdate(layer.copy(
+                            showBackground = true,
+                            backgroundColor = finalColor.toArgb()
+                        ))
+                    }
+                }
+            )
+        }
+    }
+}
+
+enum class ColorMode { TEXT, BACKGROUND }
+
+@Composable
+fun ColorCircle(
+    color: Color,
+    isSelected: Boolean,
+    isNoColor: Boolean = false,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(36.dp) // Compact size
+            .background(
+                if (isNoColor) Color.Transparent else color,
+                CircleShape
+            )
+            .border(
+                width = if (isSelected) 2.dp else 1.dp,
+                color = if (isSelected) Color(0xFF007AFF) else if (isNoColor) Color.Gray else Color.Transparent,
+                shape = CircleShape
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        if (isNoColor) {
+            Icon(
+                imageVector = Icons.Default.Block,
+                contentDescription = "No Color",
+                tint = Color.Gray,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun SpectrumSlider(
+    selectedColor: Color,
+    onColorSelected: (Color) -> Unit
+) {
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(20.dp)
+            .clip(RoundedCornerShape(10.dp))
+    ) {
+        val width = maxWidth
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red
+                        )
+                    )
+                )
+                .pointerInput(Unit) {
+                    detectTapGestures { offset ->
+                        if (size.width > 0) {
+                            val hue = (offset.x / size.width.toFloat()).coerceIn(0f, 1f) * 360f
+                            val color = android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f))
+                            onColorSelected(Color(color))
+                        }
+                    }
+                }
+                .pointerInput(Unit) {
+                    detectDragGestures { change, _ ->
+                        change.consume()
+                        if (size.width > 0) {
+                            val hue = (change.position.x.coerceIn(0f, size.width.toFloat()) / size.width.toFloat()) * 360f
+                            val color = android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f))
+                            onColorSelected(Color(color))
+                        }
+                    }
+                }
+        )
+    }
+}
+
+@Composable
+fun OpacitySlider(
+    color: Color,
+    alpha: Float,
+    onAlphaChanged: (Float) -> Unit
+) {
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxWidth().height(30.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        val width = maxWidth
+        val widthPx = constraints.maxWidth.toFloat()
+        
+        // Track
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(12.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color.LightGray) // Checkerboard placeholder
+        ) {
+             Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(color.copy(alpha = 0f), color.copy(alpha = 1f))
+                        )
+                    )
+            )
+        }
+        
+        // Interaction Area (Invisible but captures touches)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectTapGestures { offset ->
+                        if (size.width > 0) {
+                            val newAlpha = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                            onAlphaChanged(newAlpha)
+                        }
+                    }
+                }
+                .pointerInput(Unit) {
+                    detectDragGestures { change, _ ->
+                        change.consume()
+                        if (size.width > 0) {
+                            val newAlpha = (change.position.x.coerceIn(0f, size.width.toFloat()) / size.width.toFloat()).coerceIn(0f, 1f)
+                            onAlphaChanged(newAlpha)
+                        }
+                    }
+                }
+        )
+        
+        // Thumb - Manually calculated offset
+        val thumbOffset = if (widthPx > 0) width * alpha else 0.dp
+        // Adjust to center thumb on the point (subtract half thumb size, but clamp?)
+        // Simple visual approximation: 
+        val constrainedOffset = (width - 20.dp) * alpha // Keep inside bounds
+        
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .offset(x = constrainedOffset)
+                .size(20.dp)
+                .background(Color.White, CircleShape)
+                .border(2.dp, Color(0xFF007AFF), CircleShape)
+                .shadow(2.dp, CircleShape)
+        )
+    }
 }
 
 @Composable
