@@ -25,4 +25,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             repository.setTheme(theme)
         }
     }
+    
+    // Quick Share Data
+    private val _sharedUris = kotlinx.coroutines.flow.MutableStateFlow<List<android.net.Uri>>(emptyList())
+    val sharedUris: StateFlow<List<android.net.Uri>> = _sharedUris
+    
+    fun setSharedUris(uris: List<android.net.Uri>) {
+        _sharedUris.value = uris
+    }
+    
+    fun consumeSharedUris() {
+        _sharedUris.value = emptyList()
+    }
 }

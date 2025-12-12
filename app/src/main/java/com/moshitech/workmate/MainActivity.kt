@@ -32,11 +32,44 @@ class MainActivity : ComponentActivity() {
                 AppTheme.SYSTEM -> isSystemInDarkTheme()
             }
 
+            // Quick Share Handling
+            val startDestination = androidx.compose.runtime.remember {
+                var route = com.moshitech.workmate.navigation.Screen.Splash.route
+                val action = intent?.action
+                val type = intent?.type
+
+                if (android.content.Intent.ACTION_SEND == action && type?.startsWith("image/") == true) {
+                    val uri = if (android.os.Build.VERSION.SDK_INT >= 33) {
+                        intent.getParcelableExtra(android.content.Intent.EXTRA_STREAM, android.net.Uri::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        intent.getParcelableExtra<android.net.Uri>(android.content.Intent.EXTRA_STREAM)
+                    }
+                    if (uri != null) {
+                         mainViewModel.setSharedUris(listOf(uri))
+                         route = com.moshitech.workmate.navigation.Screen.BatchConverter.route
+                    }
+                } else if (android.content.Intent.ACTION_SEND_MULTIPLE == action && type?.startsWith("image/") == true) {
+                    val uris = if (android.os.Build.VERSION.SDK_INT >= 33) {
+                         intent.getParcelableArrayListExtra(android.content.Intent.EXTRA_STREAM, android.net.Uri::class.java)
+                    } else {
+                         @Suppress("DEPRECATION")
+                         intent.getParcelableArrayListExtra<android.net.Uri>(android.content.Intent.EXTRA_STREAM)
+                    }
+                    if (!uris.isNullOrEmpty()) {
+                         mainViewModel.setSharedUris(uris)
+                         route = com.moshitech.workmate.navigation.Screen.BatchConverter.route
+                    }
+                }
+                route
+            }
+
             WorkmateTheme(darkTheme = isDarkTheme) {
                 Scaffold(modifier = Modifier.fillMaxSize()) {
                     WorkmateNavigation(
                         navController = rememberNavController(),
-                        mainViewModel = mainViewModel
+                        mainViewModel = mainViewModel,
+                        startDestination = startDestination
                     )
                 }
             }

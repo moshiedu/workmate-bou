@@ -153,6 +153,26 @@ fun BatchConverterScreen(
         }
     }
 
+    // Consuming Shared URIs from MainViewModel (Robust way)
+    val sharedUris by mainViewModel.sharedUris.collectAsState()
+    LaunchedEffect(sharedUris) {
+        if (sharedUris.isNotEmpty()) {
+            viewModel.onImagesSelected(sharedUris)
+            mainViewModel.consumeSharedUris()
+        }
+    }
+
+    // Legacy String Handling (Deprecated but kept for safety if needed, can remove later)
+    /*
+    LaunchedEffect(incomingUris) {
+        if (!incomingUris.isNullOrBlank()) {
+            try {
+                // ...
+            } catch(e: Exception) { e.printStackTrace() }
+        }
+    }
+    */
+
     // Load Incoming
     LaunchedEffect(incomingUris) {
         if (!incomingUris.isNullOrEmpty()) {
