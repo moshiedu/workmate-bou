@@ -87,6 +87,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.runtime.key
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -111,7 +114,7 @@ fun PhotoEditorScreen(
     viewModel: PhotoEditorViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var currentTab by remember { mutableStateOf(EditorTab.ADJUST) }
+    var currentTab by remember { mutableStateOf(EditorTab.TEXT) }
     var showOriginal by remember { mutableStateOf(false) }
     var showImageSourceDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -173,27 +176,30 @@ fun PhotoEditorScreen(
         Scaffold(
             containerColor = Color(0xFF121212),
             snackbarHost = { SnackbarHost(snackbarHostState) },
-            floatingActionButton = {
-                FloatingActionButton(
-                    onClick = { showImageSourceDialog = true },
-                    containerColor = MaterialTheme.colorScheme.primary
-                ) {
-                    Icon(
-                        imageVector = if (uiState.originalBitmap == null) Icons.Default.Add else Icons.Default.Image,
-                        contentDescription = if (uiState.originalBitmap == null) "Add Image" else "Change Image"
-                    )
-                }
-            },
+            // floatingActionButton removed as per design request
             topBar = {
-                TopAppBar(
-                    title = { Text("Photo Editor", color = Color.White) },
-                    navigationIcon = {
-                        IconButton(onClick = { navController.popBackStack() }) {
-                            Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
-                        }
-                    },
-                    actions = {
-                        // Undo button
+                // Custom Top Bar for Pixel Perfect Look
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF0D121F)) // Deep dark blue/black
+                        .statusBarsPadding()
+                        .height(56.dp)
+                        .padding(horizontal = 8.dp)
+                ) {
+                    // Left: Close
+                    IconButton(
+                        onClick = { navController.popBackStack() },
+                        modifier = Modifier.align(Alignment.CenterStart)
+                    ) {
+                        Icon(Icons.Default.Close, "Close", tint = Color.White)
+                    }
+                    
+                    // Center: Undo/Redo
+                    Row(
+                        modifier = Modifier.align(Alignment.Center),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         IconButton(
                             onClick = { viewModel.undo() },
                             enabled = uiState.canUndo
@@ -202,11 +208,10 @@ fun PhotoEditorScreen(
                                 imageVector = Icons.Default.Undo,
                                 contentDescription = "Undo",
                                 tint = if (uiState.canUndo) Color.White else Color.Gray,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(24.dp)
                             )
                         }
-                        
-                        // Redo button
+                        Spacer(modifier = Modifier.width(16.dp))
                         IconButton(
                             onClick = { viewModel.redo() },
                             enabled = uiState.canRedo
@@ -215,60 +220,35 @@ fun PhotoEditorScreen(
                                 imageVector = Icons.Default.Redo,
                                 contentDescription = "Redo",
                                 tint = if (uiState.canRedo) Color.White else Color.Gray,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(24.dp)
                             )
                         }
-                        
-                        // Reset button
-                        IconButton(
-                            onClick = { viewModel.resetToOriginal() },
-                            enabled = uiState.canUndo
-                        ) {
+                    }
+                    
+                    // Right: Save/Check
+                    IconButton(
+                        onClick = { viewModel.showSaveDialog() },
+                        enabled = !uiState.isLoading && !uiState.isSaving,
+                         modifier = Modifier.align(Alignment.CenterEnd)
+                    ) {
+                        if (uiState.isSaving) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
+                        } else {
                             Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Reset",
-                                tint = if (uiState.canUndo) Color.White else Color.Gray,
-                                modifier = Modifier.size(20.dp)
+                                imageVector = Icons.Default.Check,
+                                contentDescription = "Save",
+                                tint = Color(0xFF007AFF) // iOS Blue for Done
                             )
                         }
-                        
-                        // Compare button (toggle original/edited)
-                        IconButton(
-                            onClick = { showOriginal = !showOriginal },
-                            enabled = uiState.originalBitmap != null
-                        ) {
-                            Icon(
-                                imageVector = if (showOriginal) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                contentDescription = if (showOriginal) "Showing Original" else "Show Original",
-                                tint = if (showOriginal) Color(0xFF4CAF50) else Color.White,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                        
-                        // Save button
-                        IconButton(
-                            onClick = { viewModel.showSaveDialog() },
-                            enabled = !uiState.isLoading && !uiState.isSaving
-                        ) {
-                            if (uiState.isSaving) {
-                                CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
-                            } else {
-                                Icon(Icons.Default.Check, "Save", tint = Color.White)
-                            }
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color(0xFF1E1E1E)
-                    )
-                )
+                    }
+                }
             },
             bottomBar = {
-                Column(modifier = Modifier.background(Color(0xFF1E1E1E))) {
+                Column(modifier = Modifier.background(Color(0xFF0D121F))) {
                     // Tool Content Area
                     Box(modifier = Modifier
                         .fillMaxWidth()
-                        .height(120.dp) // Fixed height for tools
-                        .padding(16.dp)
+                        .padding(bottom = 8.dp) // Add some spacing above nav
                     ) {
                         when (currentTab) {
                             EditorTab.CROP -> {
@@ -442,9 +422,10 @@ fun PhotoEditorScreen(
                 modifier = Modifier
                     .padding(padding)
                     .fillMaxSize()
-                    .background(Color(0xFF121212))
+                .background(Color(0xFF0D121F)) // Deep dark blue/black
                     .pointerInput(Unit) {
                         detectTapGestures(
+                            onTap = { viewModel.exitTextEditMode() },
                             onDoubleTap = {
                                 // Double tap to reset zoom
                                 scale = 1f
@@ -471,7 +452,7 @@ fun PhotoEditorScreen(
                                     translationX = offset.x,
                                     translationY = offset.y
                                 ),
-                            contentScale = ContentScale.Fit
+                            contentScale = ContentScale.FillWidth
                         )
                     } else {
                         Text("No Image Loaded", color = Color.Gray)
@@ -504,12 +485,11 @@ fun PhotoEditorScreen(
                     }
                 }
                 
-                // Text Layers - New text box system
-                // Text Layers
                 // Text Layers
                 uiState.textLayers.forEach { textLayer ->
-                    com.moshitech.workmate.feature.imagestudio.components.TextBoxComposable(
-                        layer = textLayer,
+                    key(textLayer.id) {
+                        com.moshitech.workmate.feature.imagestudio.components.TextBoxComposable(
+                            layer = textLayer,
                         isSelected = textLayer.id == uiState.selectedTextLayerId,
                         isEditing = textLayer.id == uiState.editingTextLayerId,
                         onSelect = { viewModel.selectTextLayer(it) },
@@ -518,65 +498,48 @@ fun PhotoEditorScreen(
                             viewModel.updateTextLayerTransform(id, pan, zoom, rotation) 
                         },
                         onTextChange = { id, text -> viewModel.updateTextInline(id, text) },
-                        modifier = Modifier
+                        onDuplicate = { viewModel.duplicateTextLayer(it) },
+                        onDelete = { viewModel.removeTextLayer(it) },
                     )
-                }
-                
-                
-                // Bottom Text Editor Toolbar
-                if (currentTab == EditorTab.TEXT && (uiState.showFloatingToolbar || uiState.editingTextLayerId != null) && uiState.selectedTextLayerId != null) {
-                    val selectedLayer = uiState.textLayers.find { it.id == uiState.selectedTextLayerId }
-                    selectedLayer?.let { layer ->
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                        ) {
-                            com.moshitech.workmate.feature.imagestudio.components.TextEditorBottomToolbar(
-                                layer = layer,
-                                visible = true,
-                                onUpdate = { updatedLayer ->
-                                    viewModel.updateTextProperty(layer.id) { updatedLayer }
-                                }
-                            )
-                        }
                     }
                 }
                 
                 
+                // Bottom Text Editor Toolbar
+                // Floating Toolbar Removed - Moved to Bottom Bar
+
                 
-                // ADD NEW TEXT Button - pixel perfect design
+                
+                
+                // ADD NEW TEXT Pill Button
                 if (currentTab == EditorTab.TEXT) {
                     Button(
                         onClick = { viewModel.createTextBoxAtCenter() },
                         modifier = Modifier
                             .align(Alignment.TopCenter)
-                            .padding(top = 16.dp),
+                            .padding(top = 24.dp)
+                            .height(40.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF007AFF) // iOS blue
+                            containerColor = Color(0xFF007AFF) // iOS Blue
                         ),
-                        shape = RoundedCornerShape(20.dp)
+                        shape = RoundedCornerShape(50), // Pill Shape
+                        contentPadding = PaddingValues(horizontal = 16.dp)
                     ) {
                         Icon(
                             Icons.Default.Add,
                             contentDescription = null,
                             tint = Color.White,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(16.dp)
                         )
-                        Spacer(Modifier.width(6.dp))
+                        Spacer(Modifier.width(8.dp))
                         Text(
                             "Add New Text",
                             color = Color.White,
-                            fontWeight = FontWeight.Medium,
+                            fontWeight = FontWeight.SemiBold,
                             fontSize = 14.sp
                         )
                     }
                 }
-                
-
-                
-                
-                
-                
                 
                 // Drawing Canvas
                 if (currentTab == EditorTab.DRAW) {

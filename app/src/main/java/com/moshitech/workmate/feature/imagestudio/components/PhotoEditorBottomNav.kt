@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
@@ -29,7 +30,7 @@ fun PhotoEditorBottomNav(
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        color = Color(0xFF1C1C1E), // Dark background matching design
+        color = Color(0xFF0D121F), // Deep dark blue/black
         tonalElevation = 8.dp
     ) {
         Row(
@@ -102,17 +103,17 @@ fun BottomNavItem(
     Column(
         modifier = Modifier
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = 4.dp, vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp) // More space between icon and text
     ) {
-        // Icon with blue circle background if selected
+        // Icon with blue rounded square background if selected
         Box(
             modifier = Modifier
-                .size(40.dp)
+                .size(48.dp) // Larger square
                 .background(
                     if (isSelected) Color(0xFF007AFF) else Color.Transparent,
-                    CircleShape
+                    RoundedCornerShape(16.dp) // Softer corners
                 ),
             contentAlignment = Alignment.Center
         ) {
@@ -120,7 +121,7 @@ fun BottomNavItem(
                 // Show "T" text instead of icon
                 Text(
                     text = customLabel,
-                    color = Color.White,
+                    color = if (isSelected) Color.White else Color.Gray,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -128,7 +129,7 @@ fun BottomNavItem(
                 Icon(
                     imageVector = icon,
                     contentDescription = label,
-                    tint = Color.White,
+                    tint = if (isSelected) Color.White else Color.Gray,
                     modifier = Modifier.size(24.dp)
                 )
             }
@@ -137,9 +138,9 @@ fun BottomNavItem(
         // Label
         Text(
             text = label,
-            color = if (isSelected) Color.White else Color.Gray,
-            fontSize = 11.sp,
-            fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal
+            color = if (isSelected) Color(0xFF007AFF) else Color.Gray,
+            fontSize = 12.sp, // Slightly larger label
+            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
         )
     }
 }

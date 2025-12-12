@@ -699,7 +699,7 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
     // Text Box Management
     fun createTextBoxAtCenter() {
         val newLayer = TextLayer(
-            text = "Tap to edit",
+            text = "Your Text Here",
             x = 90f, // Centered horizontally (screen width ~360-400dp, text width 200dp)
             y = 400f, // Centered vertically in visible area
             width = 200f,
@@ -762,6 +762,31 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
                 showFloatingToolbar = true
             ) 
         }
+    }
+    
+    fun removeTextLayer(id: String) {
+        val currentLayers = _uiState.value.textLayers.toMutableList()
+        currentLayers.removeAll { it.id == id }
+        _uiState.update { it.copy(
+            textLayers = currentLayers,
+            selectedTextLayerId = null,
+            editingTextLayerId = null
+        ) }
+    }
+
+    fun duplicateTextLayer(id: String) {
+        val layerToDuplicate = _uiState.value.textLayers.find { it.id == id } ?: return
+        val newLayer = layerToDuplicate.copy(
+            id = java.util.UUID.randomUUID().toString(),
+            x = layerToDuplicate.x + 40f, // Offset slightly
+            y = layerToDuplicate.y + 40f
+        )
+        val currentLayers = _uiState.value.textLayers.toMutableList()
+        currentLayers.add(newLayer)
+        _uiState.update { it.copy(
+            textLayers = currentLayers,
+            selectedTextLayerId = newLayer.id // Select the new layer
+        ) }
     }
     
     fun enterTextEditMode(id: String) {
