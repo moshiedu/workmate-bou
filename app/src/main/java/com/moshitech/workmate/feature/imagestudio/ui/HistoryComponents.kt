@@ -4,7 +4,12 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.text.format.DateUtils
+import androidx.annotation.OptIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.exifinterface.media.ExifInterface
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -13,6 +18,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,6 +36,7 @@ import com.moshitech.workmate.feature.imagestudio.data.local.ConversionHistoryEn
 import java.io.File
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.net.toUri
 
 @Composable
 fun ImageDetailDialog(
@@ -42,13 +49,27 @@ fun ImageDetailDialog(
     customPath: String? = null,
     customStatus: String? = null
 ) {
+    var exifInfo by remember { mutableStateOf<ExifInfo?>(null) }
+    var isExifLoaded by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    
+    LaunchedEffect(item.outputUri) {
+         exifInfo = getExifMetadata(context, item.outputUri.toUri())
+         isExifLoaded = true
+    }
+
     Dialog(onDismissRequest = onDismiss) {
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = BatchColors.surfaceContainer(isDark)),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().heightIn(max = 600.dp) // Limit height
         ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Column(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .verticalScroll(rememberScrollState()), // Make scrollable
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
                 // Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -115,6 +136,24 @@ fun ImageDetailDialog(
                         }
                     }
                 }
+
+                // Exif Metadata Section
+                Divider(color = BatchColors.outline(isDark))
+                Text("Camera Details", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = BatchColors.textPrimary(isDark))
+                
+                if (!isExifLoaded) {
+                     Text("Loading details...", color = BatchColors.textSecondary(isDark), fontSize = 14.sp)
+                } else if (exifInfo != null) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        exifInfo!!.cameraModel?.let { DetailRow("Camera", it, isDark) }
+                        exifInfo!!.aperture?.let { DetailRow("Aperture", "f/$it", isDark) }
+                        exifInfo!!.shutterSpeed?.let { DetailRow("Shutter", "${it}s", isDark) }
+                        exifInfo!!.iso?.let { DetailRow("ISO", it, isDark) }
+                        exifInfo!!.focalLength?.let { DetailRow("Focal Len", "${it}mm", isDark) }
+                    }
+                } else {
+                    Text("No metadata available", color = BatchColors.textSecondary(isDark), fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, fontSize = 14.sp)
+                }
                 
                 Divider(color = BatchColors.outline(isDark))
                 
@@ -165,95 +204,131 @@ fun formatFileSize(size: Long): String {
     return String.format("%.2f KB", kb)
 }
 
-// Helper to open folder or show file
-fun openFileFolder(context: Context, uriString: String) {
+// Helper to open folder only
+fun openDirectory(context: Context, uriString: String) {
     try {
         val uri = Uri.parse(uriString)
-        
-        // Strategy 1: DocumentFile (Best for SAF/Tree URIs)
+        var intentStarted = false
+
+        // Strategy 1: SAF / DocumentFile
         if (uri.scheme == "content") {
             try {
+                // Try to find parent
                 val docFile = androidx.documentfile.provider.DocumentFile.fromSingleUri(context, uri)
-                val parent = docFile?.parentFile
-                if (parent != null) {
-                    // Try specific directory intent
-                    try {
-                        val intent = Intent(Intent.ACTION_VIEW)
-                        intent.setDataAndType(parent.uri, "vnd.android.document/directory")
-                        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        if (intent.resolveActivity(context.packageManager) != null) {
-                             context.startActivity(intent)
-                             return
-                        }
-                    } catch (e: Exception) { e.printStackTrace() }
-                    
-                    // Fallback to generic view on parent for SAF
-                    try {
-                        val intent = Intent(Intent.ACTION_VIEW)
-                        intent.setData(parent.uri)
-                        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                         if (intent.resolveActivity(context.packageManager) != null) {
-                             context.startActivity(Intent.createChooser(intent, "Open Folder"))
-                             return
-                        }
-                    } catch (e: Exception) { e.printStackTrace() }
+                val parentUri = docFile?.parentFile?.uri ?: uri // If parent null, try uri itself (though unlikely for single file)
+
+                val intent = Intent(Intent.ACTION_VIEW)
+                intent.setDataAndType(parentUri, "vnd.android.document/directory")
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                
+                if (intent.resolveActivity(context.packageManager) != null) {
+                    context.startActivity(intent)
+                    intentStarted = true
+                    return
                 }
-            } catch (e: Exception) {
-                // Ignore and fall through
-            }
+            } catch (e: Exception) { e.printStackTrace() }
         }
 
-        var filePath: String? = null
-        // Strategy 2: File System Path (File URI or MediaStore _data)
-        if (uri.scheme == "file") {
-            filePath = uri.path
-        } else if (uri.scheme == "content") {
-             // Try to query MediaStore for _data column
-             try {
-                 context.contentResolver.query(uri, arrayOf(android.provider.MediaStore.MediaColumns.DATA), null, null, null)?.use { cursor ->
-                     if (cursor.moveToFirst()) {
-                         filePath = cursor.getString(cursor.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA))
+        // Strategy 2: File Path
+        if (!intentStarted) {
+             var filePath: String? = null
+             if (uri.scheme == "file") {
+                 filePath = uri.path
+             } else if (uri.scheme == "content") {
+                 try {
+                     context.contentResolver.query(uri, arrayOf(android.provider.MediaStore.MediaColumns.DATA), null, null, null)?.use { cursor ->
+                         if (cursor.moveToFirst()) {
+                             filePath = cursor.getString(cursor.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA))
+                         }
+                     }
+                 } catch (e: Exception) {}
+             }
+             
+             if (filePath != null) {
+                 val file = File(filePath)
+                 val parent = file.parentFile ?: file
+                 if (parent.exists()) {
+                     // Try specific resource/folder
+                     val intent = Intent(Intent.ACTION_VIEW)
+                     intent.setDataAndType(Uri.fromFile(parent), "resource/folder")
+                     if (intent.resolveActivity(context.packageManager) != null) {
+                         context.startActivity(intent)
+                         return
+                     }
+                     // Try generic */* with hierarchy
+                     val intent2 = Intent(Intent.ACTION_VIEW)
+                     intent2.setDataAndType(Uri.fromFile(parent), "*/*")
+                     // Hint for some file managers
+                     intent2.putExtra("org.openintents.extra.ABSOLUTE_PATH", parent.absolutePath)
+                     
+                     if (intent2.resolveActivity(context.packageManager) != null) {
+                         context.startActivity(Intent.createChooser(intent2, "Open Folder"))
+                         return
                      }
                  }
-             } catch (e: Exception) {
-                 e.printStackTrace()
-                 // Fallback: Use path if it looks like a path (rare for content uri but possible)
-                 // filePath = uri.path 
              }
         }
-
-        if (filePath != null) {
-            val file = File(filePath)
-            val parent = file.parentFile
-            if (parent != null && parent.exists()) {
-                 val intent = Intent(Intent.ACTION_VIEW)
-                 intent.setDataAndType(Uri.fromFile(parent), "resource/folder")
-                 if (intent.resolveActivity(context.packageManager) != null) {
-                     context.startActivity(intent)
-                     return
-                 }
-                 // Try generic file manager
-                 intent.setDataAndType(Uri.fromFile(parent), "*/*")
-                 context.startActivity(Intent.createChooser(intent, "Open Folder"))
+        
+        // Final Fallback: Open Downloads or Files App generally
+        try {
+            val intent = Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS)
+            if (intent.resolveActivity(context.packageManager) != null) {
+                 android.widget.Toast.makeText(context, "Specific folder access restricted. Opening file manager...", android.widget.Toast.LENGTH_LONG).show()
+                 context.startActivity(intent)
                  return
             }
-        }
-        
-        // If we reach here, we couldn't open the folder properly.
-        // Fallback: Try to "view" the file itself, many viewers allow jumping to folder.
-        // Or show a toast explaining limitation.
-        
-        try {
-            val intent = Intent(Intent.ACTION_VIEW)
-            intent.setDataAndType(uri, "image/*") // or try generic
-            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            context.startActivity(Intent.createChooser(intent, "Open File"))
-        } catch (e: Exception) {
-            android.widget.Toast.makeText(context, "Cannot open folder directly.", android.widget.Toast.LENGTH_SHORT).show()
-        }
+        } catch (e: Exception) {}
 
+        // If we reach here, we couldn't open the folder properly.
+        android.widget.Toast.makeText(context, "Cannot find file manager to open this location.", android.widget.Toast.LENGTH_SHORT).show()
     } catch (e: Exception) {
         e.printStackTrace()
         android.widget.Toast.makeText(context, "Error opening location", android.widget.Toast.LENGTH_SHORT).show()
+    }
+}
+
+fun openFile(context: Context, uriString: String, mimeType: String = "*/*") {
+    try {
+        val uri = uriString.toUri()
+        val intent = Intent(Intent.ACTION_VIEW)
+        intent.setDataAndType(uri, mimeType)
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        context.startActivity(Intent.createChooser(intent, "Open File"))
+    } catch (e: Exception) {
+        e.printStackTrace()
+        android.widget.Toast.makeText(context, "Cannot open file", android.widget.Toast.LENGTH_SHORT).show()
+    }
+}
+
+
+
+data class ExifInfo(
+    val cameraModel: String? = null,
+    val aperture: String? = null,
+    val shutterSpeed: String? = null,
+    val iso: String? = null,
+    val focalLength: String? = null
+)
+
+private suspend fun getExifMetadata(context: Context, uri: Uri): ExifInfo? {
+    return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        try {
+            context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                val exif = ExifInterface(inputStream)
+                val model = exif.getAttribute(ExifInterface.TAG_MODEL) ?: exif.getAttribute(ExifInterface.TAG_MAKE)
+                val aperture = exif.getAttribute(ExifInterface.TAG_F_NUMBER)
+                val shutter = exif.getAttribute(ExifInterface.TAG_EXPOSURE_TIME)
+                val iso = exif.getAttribute(ExifInterface.TAG_PHOTOGRAPHIC_SENSITIVITY) ?: exif.getAttribute(ExifInterface.TAG_ISO_SPEED_RATINGS)
+                val focal = exif.getAttribute(ExifInterface.TAG_FOCAL_LENGTH)
+                
+                if (model != null || aperture != null || shutter != null) {
+                     ExifInfo(model, aperture, shutter, iso, focal)
+                } else {
+                    null
+                }
+            }
+        } catch (e: Exception) {
+            null
+        }
     }
 }

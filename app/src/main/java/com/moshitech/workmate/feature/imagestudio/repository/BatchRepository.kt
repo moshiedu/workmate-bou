@@ -296,8 +296,6 @@ class BatchRepository(private val context: Context) {
     ): Result<Uri> = withContext(Dispatchers.IO) {
         val pdfDocument = PdfDocument()
         val uniqueName = "Merged_${System.currentTimeMillis()}.pdf"
-        
-        // Use cache dir consistent with other conversions
         val pdfFile = File(context.cacheDir, uniqueName)
         
         try {
@@ -305,22 +303,59 @@ class BatchRepository(private val context: Context) {
                 if (!isActive) return@withContext Result.failure(CancellationException("Cancelled"))
                 onProgress(index.toFloat() / uris.size)
                 
-                // Decode and Resize (reuse logic if possible or copy simplified version)
-                // limit input size to avoid OOM during PDF drawing
+                // 1. Decode generic (downsampled if needed)
                 val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 context.contentResolver.openInputStream(uri)?.use { 
                     BitmapFactory.decodeStream(it, null, options) 
                 }
                 
-                // Calculate sample size
-                var sampleSize = 1
-                val targetW = settings.width ?: 1024 // Default reasonable width for PDF if not set
-                val targetH = settings.height ?: 1024
+                val originalW = options.outWidth
+                val originalH = options.outHeight
                 
-                if (options.outHeight > targetH || options.outWidth > targetW) {
-                     val halfHeight: Int = options.outHeight / 2
-                     val halfWidth: Int = options.outWidth / 2
-                     while ((halfHeight / sampleSize) >= targetH && (halfWidth / sampleSize) >= targetW) {
+                // 2. Determine Page Dimensions
+                val (pageW, pageH) = when (settings.pdfPageSize) {
+                    com.moshitech.workmate.feature.imagestudio.data.PdfPageSize.A4 -> 595 to 842 // 72 DPI
+                    com.moshitech.workmate.feature.imagestudio.data.PdfPageSize.LETTER -> 612 to 792
+                    else -> originalW to originalH // Original
+                }
+                
+                // 3. Handle Orientation
+                // If AUTO, match page orientation to image orientation
+                // If Portrait/Landscape forced, swap dimensions if needed
+                val finalPageW: Int
+                val finalPageH: Int
+                
+                if (settings.pdfPageSize == com.moshitech.workmate.feature.imagestudio.data.PdfPageSize.ORIGINAL) {
+                    finalPageW = originalW
+                    finalPageH = originalH
+                } else {
+                     val isImageLandscape = originalW > originalH
+                     val isPageLandscape = when (settings.pdfOrientation) {
+                         com.moshitech.workmate.feature.imagestudio.data.PdfOrientation.LANDSCAPE -> true
+                         com.moshitech.workmate.feature.imagestudio.data.PdfOrientation.PORTRAIT -> false
+                         else -> isImageLandscape // AUTO
+                     }
+                     
+                     if (isPageLandscape) {
+                         finalPageW = maxOf(pageW, pageH)
+                         finalPageH = minOf(pageW, pageH)
+                     } else {
+                         finalPageW = minOf(pageW, pageH)
+                         finalPageH = maxOf(pageW, pageH)
+                     }
+                }
+                
+                // 4. Load Bitmap (limit resolution to avoid excessive memory)
+                // If page is A4/Letter (small), we don't need huge bitmaps.
+                // A4 @ 72DPI is small. Let's aim for higher quality if printing: 300DPI ~ 2480px width
+                // But PDF canvas is 72pt units. Drawing a big bitmap scales it down.
+                // Let's decode safely proportional to targets.
+                
+                var sampleSize = 1
+                val decodeTargetW = if (settings.pdfPageSize == com.moshitech.workmate.feature.imagestudio.data.PdfPageSize.ORIGINAL) 2048 else 2480
+                
+                if (originalH > decodeTargetW || originalW > decodeTargetW) {
+                     while ((originalH / sampleSize) > decodeTargetW || (originalW / sampleSize) > decodeTargetW) {
                          sampleSize *= 2
                      }
                 }
@@ -331,28 +366,46 @@ class BatchRepository(private val context: Context) {
                 }
                 
                 if (bitmap != null) {
-                    val pageInfo = PdfDocument.PageInfo.Builder(bitmap.width, bitmap.height, index + 1).create()
+                    val pageInfo = PdfDocument.PageInfo.Builder(finalPageW, finalPageH, index + 1).create()
                     val page = pdfDocument.startPage(pageInfo)
-                    page.canvas.drawBitmap(bitmap, 0f, 0f, null)
+                    
+                    if (settings.pdfPageSize == com.moshitech.workmate.feature.imagestudio.data.PdfPageSize.ORIGINAL) {
+                        // Draw full size (scaled by system density effectively, but simple 0,0 mapping)
+                        page.canvas.drawBitmap(bitmap, 0f, 0f, null)
+                    } else {
+                        // 5. Center & Fit logic
+                        // Calculate scale to fit within page bounds (with margin?)
+                        val margin = 20f
+                        val contentW = finalPageW - (margin * 2)
+                        val contentH = finalPageH - (margin * 2)
+                        
+                        val scale = minOf(contentW / bitmap.width, contentH / bitmap.height)
+                        
+                        val drawW = bitmap.width * scale
+                        val drawH = bitmap.height * scale
+                        
+                        val msgX = (finalPageW - drawW) / 2
+                        val msgY = (finalPageH - drawH) / 2
+                        
+                        val matrix = android.graphics.Matrix()
+                        matrix.postScale(scale, scale)
+                        matrix.postTranslate(msgX, msgY)
+                        
+                        page.canvas.drawBitmap(bitmap, matrix, null)
+                    }
+                    
                     pdfDocument.finishPage(page)
                     bitmap.recycle()
                 }
             }
             
-            onProgress(0.9f) // saving
-            
-            FileOutputStream(pdfFile).use { out ->
-                pdfDocument.writeTo(out)
-            }
-            
+            onProgress(0.9f)
+            FileOutputStream(pdfFile).use { pdfDocument.writeTo(it) }
             pdfDocument.close()
             onProgress(1.0f)
             
-            // Use FileProvider to avoid FileUriExposedException and allow access
             val contentUri = androidx.core.content.FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.fileprovider",
-                pdfFile
+                context, "${context.packageName}.fileprovider", pdfFile
             )
             Result.success(contentUri)
             

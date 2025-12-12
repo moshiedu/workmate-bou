@@ -45,7 +45,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Settings
+
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.Delete
@@ -236,6 +239,11 @@ fun PhotoGalleryScreen(
                 // ... (Standard Top Bar)
                 TopAppBar(
                     title = { Text("Photo Studio", color = TextWhite, fontWeight = FontWeight.SemiBold) },
+                    navigationIcon = {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = TextWhite)
+                        }
+                    },
                     actions = {
                         IconButton(onClick = { viewModel.setSelectionMode(true) }) {
                             Icon(Icons.Filled.CheckCircle, contentDescription = "Select", tint = TextWhite)
@@ -251,6 +259,9 @@ fun PhotoGalleryScreen(
                             }
                         }) {
                             Icon(Icons.Filled.CameraAlt, contentDescription = "Camera", tint = TextWhite)
+                        }
+                        IconButton(onClick = { navController.navigate(com.moshitech.workmate.navigation.Screen.Settings.route) }) {
+                            Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = TextWhite)
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBackground)

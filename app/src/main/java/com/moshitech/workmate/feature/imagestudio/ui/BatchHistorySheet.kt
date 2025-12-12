@@ -29,6 +29,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.clip
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Info
@@ -46,6 +47,7 @@ fun BatchHistoryScreen(
     var itemToDelete by remember { mutableStateOf<ConversionHistoryEntity?>(null) }
     var itemForDetail by remember { mutableStateOf<ConversionHistoryEntity?>(null) }
     var showClearAllDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     // Grouping
     val groupedHistory = remember(history) {
@@ -67,7 +69,7 @@ fun BatchHistoryScreen(
             isFileExists = isAvailable,
             onDismiss = { itemForDetail = null },
             onDelete = { itemToDelete = itemForDetail; itemForDetail = null },
-            onOpenFolder = { openFileFolder(viewModel.getApplication(), itemForDetail!!.outputUri) },
+            onOpenFolder = { openDirectory(context, itemForDetail!!.outputUri) },
             isDark = isDark
         )
     }
@@ -327,10 +329,13 @@ fun HistoryItem(
         // Actions
         Row {
              if (isAvailable) {
+                 IconButton(onClick = { openFile(context, item.outputUri) }) {
+                     Icon(Icons.Default.Visibility, "View", tint = BatchColors.primary(isDark))
+                 }
                  IconButton(onClick = { onLongPress() }) {
                      Icon(Icons.Default.Info, "Details", tint = BatchColors.primary(isDark))
                  }
-                 IconButton(onClick = { openFileFolder(context, item.outputUri) }) {
+                 IconButton(onClick = { openDirectory(context, item.outputUri) }) {
                      Icon(Icons.Default.FolderOpen, "Open Folder", tint = BatchColors.primary(isDark))
                  }
              }

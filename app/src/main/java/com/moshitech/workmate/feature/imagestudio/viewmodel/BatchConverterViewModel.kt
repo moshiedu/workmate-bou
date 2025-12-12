@@ -74,6 +74,8 @@ data class BatchConverterUiState(
     val showGuide: Boolean = false,
     val currentFileProgress: Float = 0f,
     val keepMetadata: Boolean = false,
+    val pdfPageSize: com.moshitech.workmate.feature.imagestudio.data.PdfPageSize = com.moshitech.workmate.feature.imagestudio.data.PdfPageSize.ORIGINAL,
+    val pdfOrientation: com.moshitech.workmate.feature.imagestudio.data.PdfOrientation = com.moshitech.workmate.feature.imagestudio.data.PdfOrientation.AUTO,
     val presets: List<ConversionPreset> = emptyList(),
     val history: List<com.moshitech.workmate.feature.imagestudio.data.local.ConversionHistoryEntity> = emptyList()
 )
@@ -176,6 +178,19 @@ fun removeImage(uri: Uri) {
     recalculateMaxDimensions()
 }
 
+fun moveImage(fromIndex: Int, toIndex: Int) {
+    val list = _uiState.value.selectedImages.toMutableList()
+    if (fromIndex in list.indices && toIndex in list.indices) {
+        val item = list.removeAt(fromIndex)
+        list.add(toIndex, item)
+        _uiState.update { it.copy(selectedImages = list) }
+    }
+}
+
+fun updateImageOrder(newOrder: List<Uri>) {
+    _uiState.update { it.copy(selectedImages = newOrder) }
+}
+
 private fun recalculateMaxDimensions() {
     viewModelScope.launch(Dispatchers.IO) {
         var maxW = 0
@@ -240,6 +255,14 @@ private fun recalculateMaxDimensions() {
     fun toggleTargetSizeUnit() { _uiState.update { it.copy(isTargetSizeInMb = !it.isTargetSizeInMb) } }
     fun toggleAspectRatio() { _uiState.update { it.copy(maintainAspectRatio = !it.maintainAspectRatio) } }
     fun toggleKeepMetadata() { _uiState.update { it.copy(keepMetadata = !it.keepMetadata) } }
+    
+    fun updatePdfPageSize(size: com.moshitech.workmate.feature.imagestudio.data.PdfPageSize) {
+        _uiState.update { it.copy(pdfPageSize = size) }
+    }
+    
+    fun updatePdfOrientation(orientation: com.moshitech.workmate.feature.imagestudio.data.PdfOrientation) {
+        _uiState.update { it.copy(pdfOrientation = orientation) }
+    }
     
     fun savePreset(name: String) {
         val state = _uiState.value
@@ -315,7 +338,9 @@ private fun recalculateMaxDimensions() {
                 height = if (state.height.isBlank()) null else state.height.toIntOrNull(),
                 maintainAspectRatio = state.maintainAspectRatio,
                 targetSizeKB = targetSizeKb,
-                keepMetadata = state.keepMetadata
+                keepMetadata = state.keepMetadata,
+                pdfPageSize = state.pdfPageSize,
+                pdfOrientation = state.pdfOrientation
             )
 
 
@@ -448,6 +473,10 @@ private fun recalculateMaxDimensions() {
                         progress = 1f
                     ) 
                 }
+                
+                if (state.savedFolderUri != null) {
+                    saveAllToDevice(state.savedFolderUri)
+                }
             }
         }
     }
@@ -470,8 +499,9 @@ private fun recalculateMaxDimensions() {
         _uiState.update { it.copy(screenState = state) }
     }
     
-    fun saveAllToDevice(context: android.content.Context, treeUri: Uri?) {
+    fun saveAllToDevice(treeUri: Uri?) {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val context = getApplication<Application>()
             val state = _uiState.value
             var savedCount = 0
             
@@ -593,6 +623,26 @@ private fun recalculateMaxDimensions() {
         }
     }
     
+    fun updateOutputFolder(uri: Uri) {
+        try {
+            val takeFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            getApplication<Application>().contentResolver.takePersistableUriPermission(uri, takeFlags)
+        } catch (e: Exception) { e.printStackTrace() }
+
+        _uiState.update { it.copy(savedFolderUri = uri, lastSavedLocation = uri) }
+        viewModelScope.launch {
+            preferencesRepository.setBatchOutputFolder(uri.toString())
+        }
+    }
+
+    fun clearOutputFolder() {
+        _uiState.update { it.copy(savedFolderUri = null, lastSavedLocation = null) }
+        viewModelScope.launch {
+            preferencesRepository.setBatchOutputFolder("")
+        }
+    }
+
     fun resetState() {
         _uiState.update { 
             it.copy(
@@ -600,8 +650,8 @@ private fun recalculateMaxDimensions() {
                 convertedImages = emptyList(),
                 selectedImages = emptyList(),
                 selectedDetailImage = null,
-                lastSavedLocation = null,
                 failedImages = emptyList()
+                // Keep savedFolderUri
             )
         }
     }

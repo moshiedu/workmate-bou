@@ -12,6 +12,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -26,6 +29,7 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Info
@@ -34,7 +38,10 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -70,6 +77,7 @@ import com.moshitech.workmate.feature.imagestudio.viewmodel.BatchConverterViewMo
 import com.moshitech.workmate.feature.imagestudio.viewmodel.BatchScreenState
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.History
+import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -212,12 +220,17 @@ private fun BatchInputScreen(
     
     // Info Modal State
     var showInfoModal by remember { mutableStateOf(false) }
+    var showReorderDialog by remember { mutableStateOf(false) }
     var imageDetails by remember { mutableStateOf<BatchConverterViewModel.ImageDetails?>(null) }
 
     val multiplePhotoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(),
         onResult = { uris -> viewModel.onImagesSelected(uris) }
     )
+
+    val folderLauncher = rememberLauncherForActivityResult(contract = ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) viewModel.updateOutputFolder(uri)
+    }
 
     // Preview Selection Logic
     var selectedPreviewUri by remember { mutableStateOf<Uri?>(null) }
@@ -481,10 +494,17 @@ private fun BatchInputScreen(
 
             // Batch Info Card
             if (uiState.selectedImages.isNotEmpty()) {
-                Box(modifier = Modifier.fillMaxWidth().background(BatchColors.surface(isDark), RoundedCornerShape(8.dp)).clickable { showUserGuide = true }.padding(12.dp)) {
+                Box(modifier = Modifier.fillMaxWidth().background(BatchColors.surface(isDark), RoundedCornerShape(8.dp)).padding(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                        Text("Batch Conversion: ${uiState.selectedImages.size} images selected", color = BatchColors.textPrimary(isDark), fontSize = 12.sp)
-                        Icon(Icons.Outlined.Info, null, tint = BatchColors.textSecondary(isDark), modifier = Modifier.size(16.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { showUserGuide = true }) {
+                             Text("Batch Conversion: ${uiState.selectedImages.size} images selected", color = BatchColors.textPrimary(isDark), fontSize = 12.sp)
+                             Icon(Icons.Outlined.Info, null, tint = BatchColors.textSecondary(isDark), modifier = Modifier.padding(start=4.dp).size(16.dp))
+                        }
+                        if (uiState.selectedImages.size > 1) {
+                            TextButton(onClick = { showReorderDialog = true }, contentPadding = PaddingValues(0.dp), modifier = Modifier.height(24.dp)) {
+                                Text("Reorder", fontSize = 12.sp, color = BatchColors.primary(isDark))
+                            }
+                        }
                     }
                 }
             }
@@ -522,6 +542,51 @@ private fun BatchInputScreen(
                 }
             }
             
+            // Output Location
+            Text("Output Location", color = BatchColors.textSecondary(isDark), fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(BatchColors.surface(isDark), RoundedCornerShape(8.dp))
+                    .border(1.dp, BatchColors.outline(isDark), RoundedCornerShape(8.dp))
+                    .clickable { folderLauncher.launch(uiState.savedFolderUri) }
+                    .padding(12.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        val context = LocalContext.current
+                        val folderName = remember(uiState.savedFolderUri) {
+                            if (uiState.savedFolderUri != null) {
+                                try {
+                                    val docFile = androidx.documentfile.provider.DocumentFile.fromTreeUri(context, uiState.savedFolderUri!!)
+                                    docFile?.name ?: "Custom Folder"
+                                } catch (e: Exception) { "Custom Folder" }
+                            } else "Default (Pictures/Workmate)"
+                        }
+                        
+                        Text(
+                            text = folderName,
+                            color = BatchColors.textPrimary(isDark),
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (uiState.savedFolderUri != null) {
+                            Text(uiState.savedFolderUri!!.path ?: "", color = BatchColors.textSecondary(isDark), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                    
+                    if (uiState.savedFolderUri != null) {
+                         IconButton(onClick = { viewModel.clearOutputFolder() }, modifier = Modifier.size(24.dp)) {
+                             Icon(Icons.Default.Close, null, tint = BatchColors.textSecondary(isDark), modifier = Modifier.size(16.dp))
+                         }
+                    } else {
+                         Icon(Icons.Default.FolderOpen, null, tint = BatchColors.primary(isDark), modifier = Modifier.size(20.dp))
+                    }
+                }
+            }
+            
             // Format Selection
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val formats = remember {
@@ -545,47 +610,92 @@ private fun BatchInputScreen(
 
             // Dimensions + Logic
             val isPdfMode = uiState.format == CompressFormat.PDF
-            Text("Dimensions", color = BatchColors.textSecondary(isDark), fontSize = 12.sp)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                // Width
-                Box(modifier = Modifier.weight(1f).height(48.dp).background(BatchColors.surface(isDark), RoundedCornerShape(8.dp)).padding(horizontal = 12.dp, vertical = 6.dp)) {
-                    Column {
-                        Text("Width", color = BatchColors.textSecondary(isDark), fontSize = 9.sp)
-                        androidx.compose.foundation.text.BasicTextField(
-                            value = uiState.width, onValueChange = viewModel::updateWidth,
-                            textStyle = TextStyle(color = BatchColors.textPrimary(isDark), fontSize = 11.sp),
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.fillMaxWidth()
-                        )
+            
+            if (isPdfMode) {
+                // PDF Options Card
+                Text("PDF Options", color = BatchColors.textSecondary(isDark), fontSize = 12.sp)
+                Column(modifier = Modifier.fillMaxWidth().background(BatchColors.surface(isDark), RoundedCornerShape(8.dp)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // Page Size
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                        Text("Page Size", color = BatchColors.textPrimary(isDark), fontSize = 11.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            com.moshitech.workmate.feature.imagestudio.data.PdfPageSize.values().forEach { size ->
+                                val isSelected = uiState.pdfPageSize == size
+                                Box(modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(BatchColors.chipBackground(isDark, isSelected))
+                                    .border(1.dp, BatchColors.chipBorder(isDark, isSelected), RoundedCornerShape(6.dp))
+                                    .clickable { viewModel.updatePdfPageSize(size) }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(size.name.lowercase().replaceFirstChar { it.titlecase() }, color = BatchColors.chipContent(isDark, isSelected), fontSize = 10.sp)
+                                }
+                            }
+                        }
                     }
-                    Text("px", color = BatchColors.textSecondary(isDark), fontSize = 11.sp, modifier = Modifier.align(Alignment.BottomEnd))
-                }
-                // Height
-                Box(modifier = Modifier.weight(1f).height(48.dp).background(BatchColors.surface(isDark), RoundedCornerShape(8.dp)).padding(horizontal = 12.dp, vertical = 6.dp)) {
-                    Column {
-                        Text("Height", color = BatchColors.textSecondary(isDark), fontSize = 9.sp)
-                        androidx.compose.foundation.text.BasicTextField(
-                            value = uiState.height, onValueChange = viewModel::updateHeight,
-                            textStyle = TextStyle(color = BatchColors.textPrimary(isDark), fontSize = 11.sp),
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                    HorizontalDivider(color = BatchColors.outline(isDark))
+                    // Orientation
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                         Text("Orientation", color = BatchColors.textPrimary(isDark), fontSize = 11.sp)
+                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                             com.moshitech.workmate.feature.imagestudio.data.PdfOrientation.values().forEach { orient ->
+                                 val isSelected = uiState.pdfOrientation == orient
+                                 Box(modifier = Modifier
+                                     .clip(RoundedCornerShape(6.dp))
+                                     .background(BatchColors.chipBackground(isDark, isSelected))
+                                     .border(1.dp, BatchColors.chipBorder(isDark, isSelected), RoundedCornerShape(6.dp))
+                                     .clickable { viewModel.updatePdfOrientation(orient) }
+                                     .padding(horizontal = 8.dp, vertical = 4.dp)
+                                 ) {
+                                     Text(orient.name.lowercase().replaceFirstChar { it.titlecase() }, color = BatchColors.chipContent(isDark, isSelected), fontSize = 10.sp)
+                                 }
+                             }
+                         }
                     }
-                    Text("px", color = BatchColors.textSecondary(isDark), fontSize = 11.sp, modifier = Modifier.align(Alignment.BottomEnd))
                 }
-                // Ratio Toggle
-                Box(modifier = Modifier.size(48.dp).background(BatchColors.surface(isDark), RoundedCornerShape(8.dp)).clickable { viewModel.toggleAspectRatio() }, contentAlignment = Alignment.Center) {
-                    Icon(if (uiState.maintainAspectRatio) Icons.Default.Link else Icons.Default.LinkOff, null, tint = if (uiState.maintainAspectRatio) BatchColors.primary(isDark) else BatchColors.textSecondary(isDark), modifier = Modifier.size(24.dp))
+            } else {
+                Text("Dimensions", color = BatchColors.textSecondary(isDark), fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // Width
+                    Box(modifier = Modifier.weight(1f).height(48.dp).background(BatchColors.surface(isDark), RoundedCornerShape(8.dp)).padding(horizontal = 12.dp, vertical = 6.dp)) {
+                        Column {
+                            Text("Width", color = BatchColors.textSecondary(isDark), fontSize = 9.sp)
+                            androidx.compose.foundation.text.BasicTextField(
+                                value = uiState.width, onValueChange = viewModel::updateWidth,
+                                textStyle = TextStyle(color = BatchColors.textPrimary(isDark), fontSize = 11.sp),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        Text("px", color = BatchColors.textSecondary(isDark), fontSize = 11.sp, modifier = Modifier.align(Alignment.BottomEnd))
+                    }
+                    // Height
+                    Box(modifier = Modifier.weight(1f).height(48.dp).background(BatchColors.surface(isDark), RoundedCornerShape(8.dp)).padding(horizontal = 12.dp, vertical = 6.dp)) {
+                        Column {
+                            Text("Height", color = BatchColors.textSecondary(isDark), fontSize = 9.sp)
+                            androidx.compose.foundation.text.BasicTextField(
+                                value = uiState.height, onValueChange = viewModel::updateHeight,
+                                textStyle = TextStyle(color = BatchColors.textPrimary(isDark), fontSize = 11.sp),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        Text("px", color = BatchColors.textSecondary(isDark), fontSize = 11.sp, modifier = Modifier.align(Alignment.BottomEnd))
+                    }
+                    // Ratio Toggle
+                    Box(modifier = Modifier.size(48.dp).background(BatchColors.surface(isDark), RoundedCornerShape(8.dp)).clickable { viewModel.toggleAspectRatio() }, contentAlignment = Alignment.Center) {
+                        Icon(if (uiState.maintainAspectRatio) Icons.Default.Link else Icons.Default.LinkOff, null, tint = if (uiState.maintainAspectRatio) BatchColors.primary(isDark) else BatchColors.textSecondary(isDark), modifier = Modifier.size(24.dp))
+                    }
                 }
-            }
-            // Upscaling Warning
-            if (uiState.width.isNotBlank() && uiState.width.toIntOrNull() ?: 0 > uiState.maxInputWidth && uiState.maxInputWidth > 0) {
-                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                     Icon(Icons.Default.Warning, null, tint = Color(0xFFEAB308), modifier = Modifier.size(12.dp))
-                     Text("Upscaling larger than original causes blurriness.", color = Color(0xFFEAB308), fontSize = 11.sp)
-                 }
+                // Upscaling Warning
+                if (uiState.width.isNotBlank() && uiState.width.toIntOrNull() ?: 0 > uiState.maxInputWidth && uiState.maxInputWidth > 0) {
+                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                         Icon(Icons.Default.Warning, null, tint = Color(0xFFEAB308), modifier = Modifier.size(12.dp))
+                         Text("Upscaling larger than original causes blurriness.", color = Color(0xFFEAB308), fontSize = 11.sp)
+                     }
+                }
             }
 
             // Target Size
@@ -704,7 +814,19 @@ private fun BatchInputScreen(
     if (showUserGuide) {
         BatchConverterUserGuide(onDismiss = { showUserGuide = false }, isDark = isDark)
     }
-    
+
+    if (showReorderDialog && uiState.selectedImages.isNotEmpty()) {
+        ReorderImagesDialog(
+            originalImages = uiState.selectedImages,
+            onSave = { newOrder -> 
+                viewModel.updateImageOrder(newOrder)
+                showReorderDialog = false 
+            },
+            onDismiss = { showReorderDialog = false },
+            isDark = isDark
+        )
+    }
+        
     if (showInfoModal && imageDetails != null) {
         AlertDialog(
             onDismissRequest = { showInfoModal = false },
@@ -818,7 +940,7 @@ private fun BatchSuccessScreen(
 ) {
     val context = LocalContext.current
     val saveLauncher = rememberLauncherForActivityResult(contract = ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if (uri != null) viewModel.saveAllToDevice(context, uri)
+        if (uri != null) viewModel.saveAllToDevice(uri)
     }
     
     val hasFailures = uiState.failedImages.isNotEmpty()
@@ -931,9 +1053,17 @@ private fun BatchSuccessScreen(
                  Button(onClick = { if (uiState.convertedImages.isNotEmpty()) viewModel.selectDetailImage(uiState.convertedImages.first()) }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = BatchColors.surface(isDark))) {
                      Icon(Icons.Filled.Visibility, null, tint = BatchColors.textSecondary(isDark)); Spacer(Modifier.width(8.dp)); Text("View Changes", color = BatchColors.textSecondary(isDark))
                  }
-                 Button(onClick = { saveLauncher.launch(uiState.savedFolderUri) }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = BatchColors.surface(isDark))) {
-                     Icon(Icons.Filled.Save, null, tint = BatchColors.primary(isDark)); Spacer(Modifier.width(8.dp)); Text("Save All", color = BatchColors.primary(isDark))
-                 }
+                  if (uiState.savedFolderUri != null) {
+                      Button(onClick = { 
+                          com.moshitech.workmate.feature.imagestudio.ui.openDirectory(context, uiState.savedFolderUri.toString())
+                      }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = BatchColors.surface(isDark))) {
+                          Icon(Icons.Default.FolderOpen, null, tint = BatchColors.primary(isDark)); Spacer(Modifier.width(8.dp)); Text("Open Output Folder", color = BatchColors.primary(isDark))
+                      }
+                  } else {
+                      Button(onClick = { saveLauncher.launch(uiState.savedFolderUri) }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = BatchColors.surface(isDark))) {
+                          Icon(Icons.Filled.Save, null, tint = BatchColors.primary(isDark)); Spacer(Modifier.width(8.dp)); Text("Save All", color = BatchColors.primary(isDark))
+                      }
+                  }
                  Button(onClick = {
                      if (uiState.convertedImages.isNotEmpty()) {
                          try {
@@ -1260,4 +1390,188 @@ private fun BatchConverterUserGuide(onDismiss: () -> Unit, isDark: Boolean) {
         titleContentColor = BatchColors.textPrimary(isDark),
         textContentColor = BatchColors.textSecondary(isDark)
     )
+}
+
+@Composable
+fun ReorderImagesDialog(
+    originalImages: List<Uri>,
+    onSave: (List<Uri>) -> Unit,
+    onDismiss: () -> Unit,
+    isDark: Boolean
+) {
+    // Local mutable state for smooth dragging without triggering full screen recompositions
+    val images = remember { mutableStateListOf<Uri>().apply { addAll(originalImages) } }
+    
+    // Drag State
+    var draggingItemIndex by remember { mutableStateOf<Int?>(null) }
+    var delta by remember { mutableStateOf(0f) }
+    
+    // Constants
+    val itemHeight = 60.dp
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val itemHeightPx = with(density) { itemHeight.toPx() }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = BatchColors.surfaceContainer(isDark)),
+            modifier = Modifier.fillMaxWidth().heightIn(max = 600.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Reorder Images", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = BatchColors.textPrimary(isDark))
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, null, tint = BatchColors.textSecondary(isDark))
+                    }
+                }
+                
+                Text(
+                    "Drag handle to reorder pages.", 
+                    fontSize = 13.sp, 
+                    color = BatchColors.textSecondary(isDark)
+                )
+                
+                // Draggable List
+                Column(
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState())
+                        .padding(vertical = 4.dp)
+                ) {
+                    images.forEachIndexed { index, uri ->
+                        key(uri) {
+                            val isDragging = draggingItemIndex == index
+                            val translationY = if (isDragging) delta else 0f
+                            val zIndex = if (isDragging) 1f else 0f
+                            val scale = if (isDragging) 1.05f else 1f
+                            val shadow = if (isDragging) 8.dp else 0.dp
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(itemHeight)
+                                    .zIndex(zIndex)
+                                    .graphicsLayer {
+                                        this.translationY = translationY
+                                        this.scaleX = scale
+                                        this.scaleY = scale
+                                        this.shadowElevation = shadow.toPx()
+                                        this.shape = RoundedCornerShape(8.dp)
+                                        this.clip = true
+                                    }
+                                    .background(BatchColors.surface(isDark), RoundedCornerShape(8.dp))
+                                    .padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Number
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .background(BatchColors.primary(isDark), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text((index + 1).toString(), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                                
+                                Spacer(Modifier.width(12.dp))
+                                
+                                // Thumbnail
+                                AsyncImage(
+                                    model = ImageRequest.Builder(LocalContext.current).data(uri).build(),
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                )
+                                
+                                Spacer(Modifier.width(12.dp))
+                                
+                                // Name
+                                Text(
+                                    uri.lastPathSegment ?: "Image $index",
+                                    color = BatchColors.textPrimary(isDark),
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                
+                                // Drag Handle
+                                Icon(
+                                    Icons.Default.DragHandle, 
+                                    null, 
+                                    tint = BatchColors.textSecondary(isDark),
+                                    modifier = Modifier
+                                        .size(48.dp) // Large touch target
+                                        .pointerInput(Unit) {
+                                            detectDragGestures(
+                                                onDragStart = { 
+                                                    draggingItemIndex = index
+                                                    delta = 0f
+                                                },
+                                                onDrag = { change, dragAmount ->
+                                                    change.consume()
+                                                    delta += dragAmount.y
+                                                    
+                                                    // Swap Logic
+                                                    val currentDist = delta
+                                                    val threshold = itemHeightPx
+                                                    
+                                                    if (currentDist > threshold) {
+                                                        // Swap Down
+                                                        val currentIndex = draggingItemIndex ?: return@detectDragGestures
+                                                        val targetIndex = currentIndex + 1
+                                                        if (targetIndex < images.size) {
+                                                            images.add(targetIndex, images.removeAt(currentIndex))
+                                                            draggingItemIndex = targetIndex
+                                                            delta -= itemHeightPx
+                                                        }
+                                                    } else if (currentDist < -threshold) {
+                                                        // Swap Up
+                                                        val currentIndex = draggingItemIndex ?: return@detectDragGestures
+                                                        val targetIndex = currentIndex - 1
+                                                        if (targetIndex >= 0) {
+                                                            images.add(targetIndex, images.removeAt(currentIndex))
+                                                            draggingItemIndex = targetIndex
+                                                            delta += itemHeightPx
+                                                        }
+                                                    }
+                                                },
+                                                onDragEnd = {
+                                                    draggingItemIndex = null
+                                                    delta = 0f
+                                                },
+                                                onDragCancel = {
+                                                    draggingItemIndex = null
+                                                    delta = 0f
+                                                }
+                                            )
+                                        }
+                                        .padding(12.dp)
+                                )
+                            }
+                            Spacer(Modifier.height(8.dp)) // Spacing between items
+                        }
+                    }
+                }
+                
+                Button(
+                    onClick = { onSave(images.toList()) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = BatchColors.primary(isDark))
+                ) {
+                    Text("Save Order", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
 }
