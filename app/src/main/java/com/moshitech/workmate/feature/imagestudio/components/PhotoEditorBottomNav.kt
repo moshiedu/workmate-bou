@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 enum class EditorTool {
-    CROP, FILTERS, STICKERS, ROTATE, ADJUST, TEXT, DRAW
+    CROP, FILTERS, STICKERS, SHAPES, ROTATE, ADJUST, TEXT, DRAW
 }
 
 @Composable
@@ -65,6 +65,7 @@ fun PhotoEditorBottomNav(
                 isSelected = selectedTool == EditorTool.STICKERS,
                 onClick = { onToolSelected(EditorTool.STICKERS) }
             )
+            
 
             
             // Rotate

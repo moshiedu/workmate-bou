@@ -1,0 +1,374 @@
+package com.moshitech.workmate.feature.imagestudio.components
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.moshitech.workmate.feature.imagestudio.viewmodel.*
+
+@Composable
+fun DrawAndShapesToolbar(
+    uiState: PhotoEditorUiState,
+    viewModel: PhotoEditorViewModel
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF1E1E1E))
+            .padding(bottom = 16.dp)
+    ) {
+        // 1. Mode Switcher (Paint | Shapes)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.Center
+        ) {
+            ModeSegmentedControl(
+                selectedMode = uiState.activeDrawMode,
+                onModeSelected = { viewModel.setDrawMode(it) }
+            )
+        }
+
+        Divider(color = Color(0xFF333333))
+
+        // 2. Content based on Mode
+        if (uiState.activeDrawMode == DrawMode.PAINT) {
+            PaintToolbar(uiState, viewModel)
+        } else {
+            ShapesToolbar(uiState, viewModel)
+        }
+    }
+}
+
+@Composable
+fun ModeSegmentedControl(
+    selectedMode: DrawMode,
+    onModeSelected: (DrawMode) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .height(40.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color(0xFF2C2C2C))
+            .padding(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        DrawMode.values().forEach { mode ->
+            val isSelected = selectedMode == mode
+            Box(
+                modifier = Modifier
+                    .weight(1f) // Adjust if not filling width
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(if (isSelected) Color(0xFF404040) else Color.Transparent)
+                    .clickable { onModeSelected(mode) }
+                    .padding(horizontal = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = mode.name,
+                    color = if (isSelected) Color.White else Color.Gray,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                    fontSize = 14.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun PaintToolbar(
+    uiState: PhotoEditorUiState,
+    viewModel: PhotoEditorViewModel
+) {
+    Column(modifier = Modifier.padding(16.dp)) {
+        // Tool Icons
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            ToolIcon(
+                icon = Icons.Default.Brush,
+                label = "Brush",
+                isSelected = uiState.selectedDrawTool == DrawTool.BRUSH,
+                onClick = { viewModel.selectDrawTool(DrawTool.BRUSH) }
+            )
+            ToolIcon(
+                icon = Icons.Default.LightMode, // Placeholder for Neon
+                label = "Neon",
+                isSelected = uiState.selectedDrawTool == DrawTool.NEON,
+                onClick = { viewModel.selectDrawTool(DrawTool.NEON) }
+            )
+            ToolIcon(
+                icon = Icons.Default.BlurOn, // Placeholder for Mosaic
+                label = "Mosaic",
+                isSelected = uiState.selectedDrawTool == DrawTool.MOSAIC,
+                onClick = { viewModel.selectDrawTool(DrawTool.MOSAIC) }
+            )
+            ToolIcon(
+                icon = Icons.Default.Edit, // Placeholder for Highlighter
+                label = "Marker",
+                isSelected = uiState.selectedDrawTool == DrawTool.HIGHLIGHTER,
+                onClick = { viewModel.selectDrawTool(DrawTool.HIGHLIGHTER) }
+            )
+            ToolIcon(
+                icon = Icons.Default.AutoFixNormal, // Placeholder for Eraser
+                label = "Eraser",
+                isSelected = uiState.selectedDrawTool == DrawTool.ERASER,
+                onClick = { viewModel.selectDrawTool(DrawTool.ERASER) }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Color Palette (If not Eraser/Mosaic maybe?) - Mosaic might not need color
+        if (uiState.selectedDrawTool != DrawTool.ERASER && uiState.selectedDrawTool != DrawTool.MOSAIC) {
+            ColorPaletteRow(
+                selectedColor = uiState.currentDrawColor,
+                onColorSelected = { viewModel.updateDrawColor(it) }
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        // Sliders & Style
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+             // Size
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Size", color = Color.Gray, fontSize = 12.sp)
+                Slider(
+                    value = uiState.currentStrokeWidth,
+                    onValueChange = { viewModel.updateStrokeWidth(it) },
+                    valueRange = 1f..50f,
+                    colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color(0xFF007AFF))
+                )
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+            // Opacity
+             Column(modifier = Modifier.weight(1f)) {
+                Text("Opacity", color = Color.Gray, fontSize = 12.sp)
+                Slider(
+                    value = uiState.currentOpacity,
+                    onValueChange = { viewModel.updateOpacity(it) },
+                    valueRange = 0f..1f,
+                    colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color(0xFF007AFF))
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ShapesToolbar(
+    uiState: PhotoEditorUiState,
+    viewModel: PhotoEditorViewModel
+) {
+    if (uiState.selectedShapeLayerId != null) {
+        // Selected Shape Properties
+        ShapePropertiesPanel(uiState, viewModel)
+    } else {
+        // Add Shape Grid
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Add Shape", color = Color.White, modifier = Modifier.padding(bottom = 8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                 ToolIcon(
+                    icon = Icons.Outlined.CropSquare,
+                    label = "Rect",
+                    isSelected = false,
+                    onClick = { viewModel.addShapeLayer(ShapeType.RECTANGLE) }
+                )
+                ToolIcon(
+                    icon = Icons.Outlined.Circle,
+                    label = "Circle",
+                    isSelected = false,
+                    onClick = { viewModel.addShapeLayer(ShapeType.CIRCLE) }
+                )
+                ToolIcon(
+                    icon = Icons.Default.ArrowRightAlt,
+                    label = "Arrow",
+                    isSelected = false,
+                    onClick = { viewModel.addShapeLayer(ShapeType.ARROW) }
+                )
+                ToolIcon(
+                    icon = Icons.Default.HorizontalRule, // Line
+                    label = "Line",
+                    isSelected = false,
+                    onClick = { viewModel.addShapeLayer(ShapeType.LINE) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ShapePropertiesPanel(
+    uiState: PhotoEditorUiState,
+    viewModel: PhotoEditorViewModel
+) {
+    val layer = uiState.shapeLayers.find { it.id == uiState.selectedShapeLayerId } ?: return
+
+    Column(modifier = Modifier.padding(16.dp)) {
+        // Header: Back & Title & Delete
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextButton(onClick = { viewModel.deselectShapeLayer() }) {
+                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Back to Add", color = Color.White)
+            }
+            
+            IconButton(onClick = { viewModel.deleteShapeLayer(layer.id) }) {
+                Icon(Icons.Default.Delete, "Delete", tint = Color.Red)
+            }
+        }
+
+        // Color & Fill
+        Row(verticalAlignment = Alignment.CenterVertically) {
+             ColorPaletteRow(
+                selectedColor = layer.color,
+                onColorSelected = { viewModel.updateDrawColor(it) },
+                modifier = Modifier.weight(1f)
+            )
+             Spacer(modifier = Modifier.width(8.dp))
+             // Fill Toggle
+             Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                 Text("Fill", color = Color.Gray, fontSize = 10.sp)
+                 Switch(
+                     checked = layer.isFilled,
+                     onCheckedChange = { isFilled -> 
+                         viewModel.updateShapeLayer(layer.id) { it.copy(isFilled = isFilled) }
+                     }
+                 )
+             }
+        }
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        // Stroke Style
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            StrokeStyle.values().forEach { style -> // SOLID, DASHED, DOTTED
+                FilterChip(
+                    selected = layer.strokeStyle == style,
+                    onClick = { viewModel.updateShapeStrokeStyle(layer.id, style) },
+                    label = { Text(style.name.toLowerCase().capitalize()) }
+                )
+            }
+        }
+
+        // Sliders: Width, Opacity
+         Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+             // Width
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Thickness", color = Color.Gray, fontSize = 12.sp)
+                Slider(
+                    value = layer.strokeWidth,
+                    onValueChange = { viewModel.updateStrokeWidth(it) },
+                    valueRange = 1f..50f,
+                    colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color(0xFF007AFF))
+                )
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+            // Opacity (Cannot implement layer opacity easily without alpha multiply on color, assuming color updates handle alpha or we add layerOpacity field)
+             // Using helper existing in VM
+        }
+        
+        // Shadow Controls
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(
+                checked = layer.hasShadow,
+                onCheckedChange = { checked ->
+                     viewModel.updateShapeShadow(layer.id, checked, layer.shadowColor, layer.shadowBlur, layer.shadowX, layer.shadowY)
+                }
+            )
+            Text("Shadow", color = Color.White)
+        }
+    }
+}
+
+@Composable
+fun ToolIcon(
+    icon: ImageVector,
+    label: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable { onClick() }
+    ) {
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clip(CircleShape)
+                .background(if (isSelected) Color(0xFF007AFF) else Color(0xFF333333))
+                .padding(12.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = label, tint = Color.White)
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(label, color = if (isSelected) Color(0xFF007AFF) else Color.Gray, fontSize = 12.sp)
+    }
+}
+
+@Composable
+fun ColorPaletteRow(
+    selectedColor: Int,
+    onColorSelected: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        val colors = listOf(
+            Color.Red, Color.Blue, Color.Green, Color.Yellow, 
+            Color.Black, Color.White, Color.Cyan, Color.Magenta, Color.Gray
+        )
+        
+        colors.forEach { c ->
+            val cInt = c.toArgb()
+            Box(
+                modifier = Modifier
+                    .size(30.dp)
+                    .background(c, CircleShape)
+                    .border(
+                        width = if (selectedColor == cInt) 3.dp else 1.dp,
+                        color = if (selectedColor == cInt) Color(0xFF007AFF) else Color.Gray,
+                        shape = CircleShape
+                    )
+                    .clickable { onColorSelected(cInt) }
+            )
+        }
+    }
+}

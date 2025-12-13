@@ -27,8 +27,7 @@ data class EditorState(
     val activeFilterMatrix: FloatArray? = null,
     val textLayers: List<TextLayer> = emptyList(),
     val stickerLayers: List<StickerLayer> = emptyList(),
-    val drawPaths: List<DrawPath> = emptyList(),
-    val shapes: List<Shape> = emptyList()
+    val drawActions: List<DrawAction> = emptyList()
 )
 
 data class TextLayer(
@@ -125,8 +124,17 @@ data class DrawPath(
     val points: List<androidx.compose.ui.geometry.Offset>,
     val color: Int,
     val strokeWidth: Float,
-    val isEraser: Boolean = false
+    val isEraser: Boolean = false,
+    val isHighlighter: Boolean = false,
+    val isNeon: Boolean = false,
+    val isMosaic: Boolean = false,
+    val strokeStyle: StrokeStyle = StrokeStyle.SOLID
 )
+
+sealed class DrawAction {
+    data class Path(val path: DrawPath) : DrawAction()
+    data class Shape(val shape: com.moshitech.workmate.feature.imagestudio.viewmodel.Shape) : DrawAction()
+}
 
 sealed class Shape {
     abstract val id: String
@@ -161,8 +169,41 @@ sealed class Shape {
 }
 
 enum class DrawTool {
-    FREEHAND, LINE, RECTANGLE, CIRCLE
+    BRUSH, NEON, MOSAIC, HIGHLIGHTER, ERASER
 }
+
+enum class DrawMode {
+    PAINT, SHAPES
+}
+
+enum class StrokeStyle {
+    SOLID, DASHED, DOTTED
+}
+
+enum class ShapeType {
+    RECTANGLE, CIRCLE, LINE, ARROW
+}
+
+data class ShapeLayer(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val type: ShapeType,
+    val x: Float, // Center X
+    val y: Float, // Center Y
+    val width: Float,
+    val height: Float,
+    val scale: Float = 1f,
+    val rotation: Float = 0f,
+    val color: Int,
+    val strokeWidth: Float,
+    val isFilled: Boolean = false,
+    val isLocked: Boolean = false,
+    val strokeStyle: StrokeStyle = StrokeStyle.SOLID,
+    val hasShadow: Boolean = false,
+    val shadowColor: Int = android.graphics.Color.BLACK,
+    val shadowBlur: Float = 10f,
+    val shadowX: Float = 5f,
+    val shadowY: Float = 5f
+)
 
 data class PhotoEditorUiState(
     val originalBitmap: Bitmap? = null,
@@ -183,20 +224,34 @@ data class PhotoEditorUiState(
     val showTextDialog: Boolean = false,
     val editingTextId: String? = null,
     val stickerLayers: List<StickerLayer> = emptyList(),
-    val drawPaths: List<DrawPath> = emptyList(),
-    val shapes: List<Shape> = emptyList(),
+    val shapeLayers: List<ShapeLayer> = emptyList(),
+    // Unified Drawing State
+    val drawActions: List<DrawAction> = emptyList(),
+    val redoStack: List<DrawAction> = emptyList(),
+    
     val currentDrawColor: Int = android.graphics.Color.RED,
     val currentStrokeWidth: Float = 5f,
-    val isEraserMode: Boolean = false,
-    val selectedDrawTool: DrawTool = DrawTool.FREEHAND,
+    val selectedDrawTool: DrawTool = DrawTool.BRUSH,
+    val currentOpacity: Float = 1f, 
+
     val rotationAngle: Float = 0f,
+    val flipX: Boolean = false,
+    val flipY: Boolean = false,
     val hue: Float = 0f,           // -180 to 180
     val temperature: Float = 0f,   // -1 to 1
     val tint: Float = 0f,          // -1 to 1
     val selectedTextLayerId: String? = null,
     val editingTextLayerId: String? = null,
     val selectedStickerLayerId: String? = null,
-    val showFloatingToolbar: Boolean = false
+    val selectedShapeLayerId: String? = null,
+    val showFloatingToolbar: Boolean = false,
+    // Add missing properties
+    val activeDrawMode: DrawMode = DrawMode.PAINT,
+    val currentStrokeStyle: StrokeStyle = StrokeStyle.SOLID,
+    val currentShadowColor: Int = android.graphics.Color.BLACK,
+    val currentShadowBlur: Float = 10f,
+    val currentShadowX: Float = 5f,
+    val currentShadowY: Float = 5f
 )
 
 class PhotoEditorViewModel(application: Application) : AndroidViewModel(application) {
@@ -314,7 +369,7 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
             contrast = state.contrast,
             saturation = state.saturation,
             filterMatrix = state.activeFilterMatrix,
-            rotationAngle = state.rotationAngle,
+            rotationAngle = 0f, // Use 0f to keep previewBitmap unrotated (Visual only)
             hue = state.hue,
             temperature = state.temperature,
             tint = state.tint
@@ -342,6 +397,17 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
             var bitmap = state.previewBitmap ?: return@launch
             
             _uiState.update { it.copy(isSaving = true) }
+
+            // Apply Rotation and Flip (Baked for Save)
+            if (state.rotationAngle != 0f || state.flipX || state.flipY) {
+                val matrix = android.graphics.Matrix()
+                matrix.postRotate(state.rotationAngle)
+                matrix.postScale(
+                    if (state.flipX) -1f else 1f, 
+                    if (state.flipY) -1f else 1f
+                )
+                bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+            }
             
             // Render text layers onto bitmap if any exist
             if (state.textLayers.isNotEmpty()) {
@@ -349,8 +415,9 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
             }
             
             // Render drawings onto bitmap if any exist
-            if (state.drawPaths.isNotEmpty() || state.shapes.isNotEmpty()) {
-                bitmap = renderDrawingsOnBitmap(bitmap, state.drawPaths, state.shapes)
+            // Render drawings onto bitmap if any exist
+            if (state.drawActions.isNotEmpty()) {
+                bitmap = renderDrawingsOnBitmap(bitmap, state.drawActions)
             }
             
             // Check Pro Quality
@@ -433,67 +500,94 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
         return mutableBitmap
     }
     
-    private fun renderDrawingsOnBitmap(originalBitmap: Bitmap, paths: List<DrawPath>, shapes: List<Shape>): Bitmap {
+    private fun renderDrawingsOnBitmap(originalBitmap: Bitmap, actions: List<DrawAction>): Bitmap {
         val mutableBitmap = originalBitmap.copy(Bitmap.Config.ARGB_8888, true)
         val canvas = android.graphics.Canvas(mutableBitmap)
         
-        // Render freehand paths
-        paths.forEach { drawPath ->
+        actions.forEach { action ->
             val paint = android.graphics.Paint().apply {
-                color = drawPath.color
-                strokeWidth = drawPath.strokeWidth
-                style = android.graphics.Paint.Style.STROKE
-                strokeCap = android.graphics.Paint.Cap.ROUND
-                strokeJoin = android.graphics.Paint.Join.ROUND
                 isAntiAlias = true
             }
-            
-            val path = android.graphics.Path()
-            drawPath.points.forEach { point ->
-                if (path.isEmpty) path.moveTo(point.x, point.y)
-                else path.lineTo(point.x, point.y)
-            }
-            canvas.drawPath(path, paint)
-        }
-        
-        // Render shapes
-        shapes.forEach { shape ->
-            val paint = android.graphics.Paint().apply {
-                color = shape.color
-                strokeWidth = shape.strokeWidth
-                isAntiAlias = true
-            }
-            
-            when (shape) {
-                is Shape.Line -> {
-                    paint.style = android.graphics.Paint.Style.STROKE
-                    paint.strokeCap = android.graphics.Paint.Cap.ROUND
-                    canvas.drawLine(
-                        shape.start.x, shape.start.y,
-                        shape.end.x, shape.end.y,
-                        paint
-                    )
+
+            when (action) {
+                is DrawAction.Path -> {
+                    val drawPath = action.path
+                    paint.apply {
+                        color = if (drawPath.isEraser) android.graphics.Color.TRANSPARENT else drawPath.color
+                        strokeWidth = drawPath.strokeWidth
+                        style = android.graphics.Paint.Style.STROKE
+                        strokeCap = android.graphics.Paint.Cap.ROUND
+                        strokeJoin = android.graphics.Paint.Join.ROUND
+                        
+                        if (drawPath.isEraser) {
+                            xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
+                        } else if (drawPath.isHighlighter) {
+                             xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DARKEN) // or SC(Source Over) with alpha logic handled in color
+                             alpha = 128 // 50% Opacity for Highlighter
+                        } else if (drawPath.isNeon) {
+                             // Neon Glow
+                             setShadowLayer(12f, 0f, 0f, drawPath.color)
+                             // Main stroke is brighter or white? Often Neon is color with color glow.
+                             // Let's keep it simple: Color with Glow.
+                        }
+                    }
+
+                    val path = android.graphics.Path()
+                    drawPath.points.forEachIndexed { index, point ->
+                        if (index == 0) path.moveTo(point.x, point.y)
+                        else path.lineTo(point.x, point.y)
+                    }
+                    canvas.drawPath(path, paint)
+                    
+                    // Enhancement: Draw a white core for Neon to make it pop
+                    if (drawPath.isNeon) {
+                        paint.setShadowLayer(0f, 0f, 0f, 0) // Clear shadow
+                        paint.color = android.graphics.Color.WHITE
+                        paint.strokeWidth = drawPath.strokeWidth / 3f // Thinner core
+                        paint.alpha = 200
+                        canvas.drawPath(path, paint)
+                    }
                 }
-                is Shape.Rectangle -> {
-                    paint.style = if (shape.filled) android.graphics.Paint.Style.FILL 
-                                  else android.graphics.Paint.Style.STROKE
-                    canvas.drawRect(
-                        shape.topLeft.x,
-                        shape.topLeft.y,
-                        shape.topLeft.x + shape.size.width,
-                        shape.topLeft.y + shape.size.height,
-                        paint
-                    )
-                }
-                is Shape.Circle -> {
-                    paint.style = if (shape.filled) android.graphics.Paint.Style.FILL 
-                                  else android.graphics.Paint.Style.STROKE
-                    canvas.drawCircle(
-                        shape.center.x,
-                        shape.center.y,
-                        shape.radius,
-                        paint
-                    )
+                is DrawAction.Shape -> {
+                    val shape = action.shape
+                    paint.apply {
+                        color = shape.color
+                        strokeWidth = shape.strokeWidth
+                        alpha = (android.graphics.Color.alpha(shape.color)) // Use color alpha
+                    }
+                    
+                    when (shape) {
+                        is Shape.Line -> {
+                            paint.style = android.graphics.Paint.Style.STROKE
+                            paint.strokeCap = android.graphics.Paint.Cap.ROUND
+                            canvas.drawLine(
+                                shape.start.x, shape.start.y,
+                                shape.end.x, shape.end.y,
+                                paint
+                            )
+                        }
+                        is Shape.Rectangle -> {
+                            paint.style = if (shape.filled) android.graphics.Paint.Style.FILL 
+                                          else android.graphics.Paint.Style.STROKE
+                            canvas.drawRect(
+                                shape.topLeft.x,
+                                shape.topLeft.y,
+                                shape.topLeft.x + shape.size.width,
+                                shape.topLeft.y + shape.size.height,
+                                paint
+                            )
+                        }
+                        is Shape.Circle -> {
+                            paint.style = if (shape.filled) android.graphics.Paint.Style.FILL 
+                                          else android.graphics.Paint.Style.STROKE
+                            canvas.drawCircle(
+                                shape.center.x,
+                                shape.center.y,
+                                shape.radius,
+                                paint
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -501,57 +595,37 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
         return mutableBitmap
     }
 
+
     fun clearMessage() {
         _uiState.update { it.copy(message = null) }
     }
     
     // Rotation Methods
-    fun rotate90CW() {
-        val newAngle = (_uiState.value.rotationAngle + 90f) % 360f
-        _uiState.update { it.copy(rotationAngle = newAngle) }
-        scheduleApply(saveHistory = true)
-    }
-    
-    fun rotate90CCW() {
-        val newAngle = (_uiState.value.rotationAngle - 90f + 360f) % 360f
-        _uiState.update { it.copy(rotationAngle = newAngle) }
-        scheduleApply(saveHistory = true)
-    }
-    
-    fun flipHorizontal() {
-        viewModelScope.launch {
-            val bitmap = _uiState.value.previewBitmap ?: return@launch
-            _uiState.update { it.copy(isLoading = true) }
-            
-            val matrix = android.graphics.Matrix().apply {
-                postScale(-1f, 1f, bitmap.width / 2f, bitmap.height / 2f)
-            }
-            val flipped = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-            
-            _uiState.update { it.copy(previewBitmap = flipped, isLoading = false) }
-            saveToHistory()
-        }
-    }
-    
-    fun flipVertical() {
-        viewModelScope.launch {
-            val bitmap = _uiState.value.previewBitmap ?: return@launch
-            _uiState.update { it.copy(isLoading = true) }
-            
-            val matrix = android.graphics.Matrix().apply {
-                postScale(1f, -1f, bitmap.width / 2f, bitmap.height / 2f)
-            }
-            val flipped = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-            
-            _uiState.update { it.copy(previewBitmap = flipped, isLoading = false) }
-            saveToHistory()
-        }
-    }
-    
-    fun setRotationAngle(angle: Float) {
-        _uiState.update { it.copy(rotationAngle = angle) }
-        scheduleApply(saveHistory = false)
-    }
+fun rotate90CW() {
+    val newAngle = (_uiState.value.rotationAngle + 90f) % 360f
+    _uiState.update { it.copy(rotationAngle = newAngle) }
+    // Visual only - no scheduleApply
+}
+
+fun rotate90CCW() {
+    val newAngle = (_uiState.value.rotationAngle - 90f + 360f) % 360f
+    _uiState.update { it.copy(rotationAngle = newAngle) }
+    // Visual only - no scheduleApply
+}
+
+fun flipHorizontal() {
+    _uiState.update { it.copy(flipX = !it.flipX) }
+    saveToHistory()
+}
+
+fun flipVertical() {
+    _uiState.update { it.copy(flipY = !it.flipY) }
+    saveToHistory()
+}
+
+fun setRotationAngle(angle: Float) {
+    _uiState.update { it.copy(rotationAngle = angle) }
+}
     
     // Undo/Redo Methods
     private fun saveToHistory() {
@@ -566,8 +640,7 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
             activeFilterId = _uiState.value.activeFilterId,
             activeFilterMatrix = _uiState.value.activeFilterMatrix,
             textLayers = _uiState.value.textLayers,
-            drawPaths = _uiState.value.drawPaths,
-            shapes = _uiState.value.shapes
+            drawActions = _uiState.value.drawActions
         )
         
         // Remove any states after current index (when user made changes after undo)
@@ -627,8 +700,7 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
                 activeFilterId = state.activeFilterId,
                 activeFilterMatrix = state.activeFilterMatrix,
                 textLayers = state.textLayers,
-                drawPaths = state.drawPaths,
-                shapes = state.shapes,
+                drawActions = state.drawActions,
                 // Reset dialogs
                 showTextDialog = false,
                 editingTextId = null
@@ -712,42 +784,113 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
         saveToHistory()
     }
     
-    // Drawing Methods
-    fun addDrawPath(path: DrawPath) {
-        _uiState.update { it.copy(drawPaths = it.drawPaths + path) }
-        saveToHistory()
-    }
-    
-    fun addShape(shape: Shape) {
-        _uiState.update { it.copy(shapes = it.shapes + shape) }
-        saveToHistory()
-    }
+
     
     fun updateDrawColor(color: Int) {
-        _uiState.update { it.copy(currentDrawColor = color) }
+        _uiState.update { state -> 
+            state.copy(
+                currentDrawColor = color,
+                shapeLayers = if (state.selectedShapeLayerId != null) {
+                    state.shapeLayers.map { 
+                        if (it.id == state.selectedShapeLayerId && !it.isLocked) it.copy(color = color) else it
+                    }
+                } else state.shapeLayers
+            ) 
+        }
     }
-    
+
     fun updateStrokeWidth(width: Float) {
-        _uiState.update { it.copy(currentStrokeWidth = width) }
-    }
-    
-    fun toggleEraserMode() {
-        _uiState.update { it.copy(isEraserMode = !it.isEraserMode) }
+        _uiState.update { state -> 
+            state.copy(
+                currentStrokeWidth = width,
+                shapeLayers = if (state.selectedShapeLayerId != null) {
+                    state.shapeLayers.map { 
+                        if (it.id == state.selectedShapeLayerId && !it.isLocked) it.copy(strokeWidth = width) else it
+                    }
+                } else state.shapeLayers
+            ) 
+        }
     }
     
     fun selectDrawTool(tool: DrawTool) {
-        _uiState.update { it.copy(selectedDrawTool = tool, isEraserMode = false) }
+        _uiState.update { it.copy(selectedDrawTool = tool) }
     }
     
+    // --- Unified Draw Logic ---
+
+    fun addDrawAction(action: DrawAction) {
+        _uiState.update { currentState ->
+            currentState.copy(
+                drawActions = currentState.drawActions + action,
+                redoStack = emptyList(), // Clear redo on new action
+                canUndo = true,
+                canRedo = false
+            )
+        }
+    }
+
+    // Deprecated: Migrating to addDrawAction
+    fun addDrawPath(path: DrawPath) {
+        addDrawAction(DrawAction.Path(path))
+    }
+
+    // Deprecated: Migrating to addDrawAction
+    fun addShape(shape: Shape) {
+        addDrawAction(DrawAction.Shape(shape))
+    }
+
+    fun undoDrawAction() { // Renamed to avoid conflict with general undo()
+        val currentState = _uiState.value
+        if (currentState.drawActions.isNotEmpty()) {
+            val lastAction = currentState.drawActions.last()
+            _uiState.update {
+                it.copy(
+                    drawActions = it.drawActions.dropLast(1),
+                    redoStack = it.redoStack + lastAction,
+                    canUndo = it.drawActions.size > 1,
+                    canRedo = true
+                )
+            }
+        }
+    }
+
+    fun redoDrawAction() { // Renamed to avoid conflict with general redo()
+        val currentState = _uiState.value
+        if (currentState.redoStack.isNotEmpty()) {
+            val actionToRedo = currentState.redoStack.last()
+            _uiState.update {
+                it.copy(
+                    drawActions = it.drawActions + actionToRedo,
+                    redoStack = it.redoStack.dropLast(1),
+                    canUndo = true,
+                    canRedo = it.redoStack.size > 1
+                )
+            }
+        }
+    }
+
+    // New Helpers
+    fun updateOpacity(opacity: Float) {
+        _uiState.update { it.copy(currentOpacity = opacity) }
+    }
+
+    // Legacy Support (To be removed after UI update)
+    // fun undoDrawPath() { ... } 
+    // fun redoDrawPath() { ... }
+    
     fun clearAllDrawings() {
-        _uiState.update { it.copy(drawPaths = emptyList(), shapes = emptyList()) }
+        _uiState.update { it.copy(drawActions = emptyList()) }
     }
     
     fun deleteDrawing(id: String) {
-        _uiState.update {
-            it.copy(
-                drawPaths = it.drawPaths.filter { path -> path.id != id },
-                shapes = it.shapes.filter { shape -> shape.id != id }
+        _uiState.update { state ->
+            state.copy(
+                drawActions = state.drawActions.filter { action ->
+                    when (action) {
+                        is DrawAction.Path -> action.path.id != id
+                        is DrawAction.Shape -> action.shape.id != id
+                    }
+                }
             )
         }
     }
@@ -1059,5 +1202,108 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
         saveToHistory()
     }
 
+    fun setDrawMode(mode: DrawMode) {
+        _uiState.update { it.copy(activeDrawMode = mode) }
+    }
+
+    fun setStrokeStyle(style: StrokeStyle) {
+        _uiState.update { it.copy(currentStrokeStyle = style) }
+    }
+
+    fun addShapeLayer(type: ShapeType) {
+        val newShape = ShapeLayer(
+            type = type,
+            x = 0f, y = 0f, // Default Center relative to image center
+            width = 200f, height = 200f,
+            color = _uiState.value.currentDrawColor,
+            strokeWidth = _uiState.value.currentStrokeWidth,
+            strokeStyle = _uiState.value.currentStrokeStyle,
+            shadowColor = _uiState.value.currentShadowColor,
+            shadowBlur = _uiState.value.currentShadowBlur,
+            shadowX = _uiState.value.currentShadowX,
+            shadowY = _uiState.value.currentShadowY
+        )
+        _uiState.update { 
+            it.copy(
+                shapeLayers = it.shapeLayers + newShape,
+                selectedShapeLayerId = newShape.id,
+                selectedTextLayerId = null,
+                selectedStickerLayerId = null
+            ) 
+        }
+        saveToHistory()
+    }
+
+    fun selectShapeLayer(id: String) {
+        _uiState.update {
+            it.copy(
+                selectedShapeLayerId = id,
+                selectedTextLayerId = null,
+                selectedStickerLayerId = null,
+                showFloatingToolbar = true,
+                activeDrawMode = DrawMode.SHAPES // Auto-switch to shapes mode
+            )
+        }
+    }
+
+    fun deselectShapeLayer() {
+        _uiState.update { it.copy(selectedShapeLayerId = null) }
+    }
+    
+    fun updateShapeLayer(id: String, update: (ShapeLayer) -> ShapeLayer) {
+        _uiState.update { state ->
+            state.copy(
+                shapeLayers = state.shapeLayers.map { if (it.id == id) update(it) else it }
+            )
+        }
+        // Debounce history saving locally if needed, or rely on distinct calls
+        // For sliders, we might usually wait, but here we save for simplicity
+        saveToHistory()
+    }
+
+    fun updateShapeShadow(id: String, hasShadow: Boolean, color: Int, blur: Float, x: Float, y: Float) {
+        updateShapeLayer(id) {
+            it.copy(
+                hasShadow = hasShadow,
+                shadowColor = color,
+                shadowBlur = blur,
+                shadowX = x,
+                shadowY = y
+            )
+        }
+    }
+    
+    fun updateShapeStrokeStyle(id: String, style: StrokeStyle) {
+        updateShapeLayer(id) { it.copy(strokeStyle = style) }
+    }
+    
+    fun deleteShapeLayer(id: String) {
+        _uiState.update { 
+            it.copy(
+                shapeLayers = it.shapeLayers.filter { layer -> layer.id != id },
+                selectedShapeLayerId = if (it.selectedShapeLayerId == id) null else it.selectedShapeLayerId
+            ) 
+        }
+        saveToHistory()
+    }
+
+    fun updateShapeLayerTransform(id: String, pan: androidx.compose.ui.geometry.Offset, zoom: Float, rotation: Float) {
+        _uiState.update { state ->
+            state.copy(
+                shapeLayers = state.shapeLayers.map { layer ->
+                    if (layer.id == id && !layer.isLocked) {
+                        layer.copy(
+                            x = layer.x + pan.x,
+                            y = layer.y + pan.y,
+                            scale = layer.scale * zoom,
+                            rotation = layer.rotation + rotation
+                        )
+                    } else layer
+                }
+            )
+        }
+    }
+
 }
+
 

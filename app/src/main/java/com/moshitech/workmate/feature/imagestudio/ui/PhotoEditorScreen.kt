@@ -12,6 +12,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,7 +27,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Refresh
+import com.moshitech.workmate.feature.imagestudio.components.DrawAndShapesToolbar
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.RotateLeft
+import androidx.compose.material.icons.filled.RotateRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.Undo
@@ -94,6 +99,15 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
+
+import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Brush
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.LinearScale
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.runtime.key
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.runtime.mutableStateOf
@@ -107,10 +121,11 @@ import com.canhub.cropper.CropImageContractOptions
 import com.canhub.cropper.CropImageOptions
 import com.moshitech.workmate.feature.imagestudio.components.AdContainer
 import com.moshitech.workmate.feature.imagestudio.viewmodel.PhotoEditorViewModel
+import com.moshitech.workmate.feature.imagestudio.viewmodel.DrawAction
 
 
 enum class EditorTab {
-    CROP, ADJUST, FILTERS, STICKERS, ROTATE, TEXT, DRAW
+    CROP, ADJUST, FILTERS, STICKERS, SHAPES, ROTATE, TEXT, DRAW
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -276,22 +291,83 @@ fun PhotoEditorScreen(
             },
             // Removed standard bottomBar to implement resizable layout manually
         ) { padding ->
-            // Main Content Column
-            Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            // Main Content Area with BottomBar handling
+            Scaffold(
+                containerColor = Color.Transparent,
+                bottomBar = {
+                    com.moshitech.workmate.feature.imagestudio.components.PhotoEditorBottomNav(
+                        selectedTool = when (currentTab) {
+                            EditorTab.CROP -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.CROP
+                            EditorTab.FILTERS -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.FILTERS
+                            EditorTab.STICKERS -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.STICKERS
+                            EditorTab.ROTATE -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.ROTATE
+                            EditorTab.ADJUST -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.ADJUST
+                            EditorTab.SHAPES -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.SHAPES
+                            EditorTab.TEXT -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.TEXT
+                            EditorTab.DRAW -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.DRAW
+                        },
+                        onToolSelected = { tool ->
+                            if (tool == com.moshitech.workmate.feature.imagestudio.components.EditorTool.CROP) {
+                                if (imageUri != null) {
+                                    val options = CropImageContractOptions(uri = imageUri, cropImageOptions = CropImageOptions())
+                                    cropImageLauncher.launch(options)
+                                }
+                            } else {
+                                currentTab = when (tool) {
+                                    com.moshitech.workmate.feature.imagestudio.components.EditorTool.FILTERS -> EditorTab.FILTERS
+                                    com.moshitech.workmate.feature.imagestudio.components.EditorTool.STICKERS -> EditorTab.STICKERS
+                                    com.moshitech.workmate.feature.imagestudio.components.EditorTool.SHAPES -> {
+                                        viewModel.setDrawMode(com.moshitech.workmate.feature.imagestudio.viewmodel.DrawMode.SHAPES)
+                                        EditorTab.DRAW
+                                    }
+                                    com.moshitech.workmate.feature.imagestudio.components.EditorTool.ROTATE -> EditorTab.ROTATE
+                                    com.moshitech.workmate.feature.imagestudio.components.EditorTool.ADJUST -> EditorTab.ADJUST
+                                    com.moshitech.workmate.feature.imagestudio.components.EditorTool.TEXT -> EditorTab.TEXT
+                                    com.moshitech.workmate.feature.imagestudio.components.EditorTool.DRAW -> {
+                                        viewModel.setDrawMode(com.moshitech.workmate.feature.imagestudio.viewmodel.DrawMode.PAINT)
+                                        EditorTab.DRAW
+                                    }
+                                    else -> currentTab
+                                }
+                            }
+                        }
+                    )
+                }
+            ) { innerPadding ->
+                Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
                 
                 // 1. Image Canvas Area (Flexible Weight)
-                Box(
+                BoxWithConstraints(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
                         .background(Color(0xFF0D121F))
                         .clipToBounds()
                 ) {
+                    val boxWidth = constraints.maxWidth.toFloat()
+                    val boxHeight = constraints.maxHeight.toFloat()
+                    
+                    // Calculate Image Fit Params
+                    val imageBitmap = uiState.previewBitmap
+                    var bitScale = 1f
+                    var bitOffsetX = 0f
+                    var bitOffsetY = 0f
+                    
+                    if (imageBitmap != null) {
+                        val bmpW = imageBitmap.width.toFloat()
+                        val bmpH = imageBitmap.height.toFloat()
+                        val scaleX = boxWidth / bmpW
+                        val scaleY = boxHeight / bmpH
+                        bitScale = minOf(scaleX, scaleY)
+                        bitOffsetX = (boxWidth - bmpW * bitScale) / 2f
+                        bitOffsetY = (boxHeight - bmpH * bitScale) / 2f
+                    }
+
                     // Canvas Content (Moved from original content lambda)
                     // Zoom and Pan state
                     var scale by remember { mutableStateOf(1f) }
                     var offset by remember { mutableStateOf(Offset.Zero) }
-             
+
                     // Reset zoom when entering eyedropper mode for accurate picking
                     LaunchedEffect(isEyedropperActive) {
                         if (isEyedropperActive) {
@@ -299,13 +375,23 @@ fun PhotoEditorScreen(
                             offset = Offset.Zero
                         }
                     }
-             
+
+                    // Reset zoom if rotation changes significantly (optional, but good for UX)
+                    // LaunchedEffect(uiState.rotationAngle) { scale = 1f; offset = Offset.Zero }
+
+                    val isDrawMode = currentTab == EditorTab.DRAW
+                    
+                    var currentDrawPath by remember { mutableStateOf<List<Offset>?>(null) }
+
+                    
                     val transformableState = rememberTransformableState { zoomChange, panChange, _ ->
-                        if (!isEyedropperActive) {
+                        if (!isEyedropperActive && !isDrawMode) {
                             scale = (scale * zoomChange).coerceIn(1f, 5f)
                      
                             // Only allow panning when zoomed in
                             if (scale > 1f) {
+                                // Adjust pan logic if rotated? Complex. 
+                                // For now, standard pan relative to screen.
                                 offset = offset + panChange
                             }
                         }
@@ -337,13 +423,190 @@ fun PhotoEditorScreen(
                                         .fillMaxSize()
                                         .transformable(state = transformableState)
                                         .graphicsLayer(
-                                            scaleX = scale,
-                                            scaleY = scale,
+                                            scaleX = scale * (if (uiState.flipX) -1f else 1f),
+                                            scaleY = scale * (if (uiState.flipY) -1f else 1f),
+                                            rotationZ = uiState.rotationAngle,
                                             translationX = offset.x,
                                             translationY = offset.y
                                         ),
                                     contentScale = ContentScale.Fit
                                 )
+
+                            
+                            // Drawing Overlay
+                            if (imageBitmap != null) {
+                                Canvas(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .graphicsLayer(
+                                            // Apply SAME transformations as Image so paths stick to it visually during Zoom/Pan
+                                            // EXCEPT when drawing? No, usually you want to draw on the zoomed image.
+                                            // BUT if we use simple pointerInput on Box, screen coords don't match zoomed image.
+                                            // Valid strategy: 
+                                            // 1. Lock Zoom/Pan when Draw Mode (Done).
+                                            // 2. Reset Zoom/Pan when entering Draw Mode? Or keep it?
+                                            // If we keep it, we must map Screen -> Zoomed View -> Bitmap.
+                                            // For MVP robustness, let's RESET Zoom when entering Draw Mode or just ignore Zoom in drawing.
+                                            scaleX = scale,
+                                            scaleY = scale,
+                                            translationX = offset.x,
+                                            translationY = offset.y
+                                        )
+                                        .pointerInput(isDrawMode) {
+                                            if (isDrawMode) {
+                                                detectDragGestures(
+                                                    onDragStart = { startOffset ->
+                                                        // RESTRICT TO IMAGE BOUNDS
+                                                        val normX = (startOffset.x - bitOffsetX) / bitScale
+                                                        val normY = (startOffset.y - bitOffsetY) / bitScale
+                                                        
+                                                        // Only start drawing if within bounds
+                                                        if (normX in 0f..imageBitmap.width.toFloat() && normY in 0f..imageBitmap.height.toFloat()) {
+                                                            currentDrawPath = listOf(Offset(normX, normY))
+                                                        }
+                                                    },
+                                                    onDragEnd = {
+                                                        if (uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.BRUSH || 
+                                                            uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.NEON ||
+                                                            uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.MOSAIC ||
+                                                            uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.ERASER ||
+                                                            uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.HIGHLIGHTER) {
+                                                                currentDrawPath?.let { points ->
+                                                                     viewModel.addDrawAction(
+                                                                         com.moshitech.workmate.feature.imagestudio.viewmodel.DrawAction.Path(
+                                                                             com.moshitech.workmate.feature.imagestudio.viewmodel.DrawPath(
+                                                                                points = points,
+                                                                                color = uiState.currentDrawColor,
+                                                                                strokeWidth = uiState.currentStrokeWidth / bitScale,
+                                                                                isEraser = uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.ERASER,
+                                                                                isHighlighter = uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.HIGHLIGHTER,
+                                                                                isNeon = uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.NEON,
+                                                                                isMosaic = uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.MOSAIC
+                                                                             )
+                                                                         )
+                                                                     )
+                                                                     currentDrawPath = null
+                                                                }
+                                                        }
+                                                    },
+                                                    onDrag = { change, _ ->
+                                                        val newPos = change.position
+                                                        // Clamp to bounds
+                                                        val clampedX = newPos.x.coerceIn(bitOffsetX, bitOffsetX + imageBitmap.width * bitScale)
+                                                        val clampedY = newPos.y.coerceIn(bitOffsetY, bitOffsetY + imageBitmap.height * bitScale)
+                                                        
+                                                        val normX = (clampedX - bitOffsetX) / bitScale
+                                                        val normY = (clampedY - bitOffsetY) / bitScale
+                                                        
+                                                        if (uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.BRUSH || 
+                                                            uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.NEON ||
+                                                            uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.MOSAIC ||
+                                                            uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.ERASER || 
+                                                            uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.HIGHLIGHTER) {
+                                                            if (currentDrawPath != null) {
+                                                                currentDrawPath = currentDrawPath?.plus(Offset(normX, normY))
+                                                            }
+                                                        }
+                                                    }
+                                                )
+                                            }
+                                        }
+                                ) {
+                                            // 1. Render All Actions in Order (Unified Z-Index)
+                                            uiState.drawActions.forEach { action ->
+                                                when (action) {
+                                                    is com.moshitech.workmate.feature.imagestudio.viewmodel.DrawAction.Path -> {
+                                                        val path = action.path
+                                                        val pathObj = androidx.compose.ui.graphics.Path().apply {
+                                                            if (path.points.isNotEmpty()) {
+                                                                val start = path.points.first()
+                                                                moveTo(start.x * bitScale + bitOffsetX, start.y * bitScale + bitOffsetY)
+                                                                path.points.drop(1).forEach { pt ->
+                                                                    lineTo(pt.x * bitScale + bitOffsetX, pt.y * bitScale + bitOffsetY)
+                                                                }
+                                                            }
+                                                        }
+                                                        drawPath(
+                                                            path = pathObj,
+                                                            color = if (path.isEraser) Color.Transparent else if (path.isHighlighter) Color(path.color).copy(alpha = 0.5f) else Color(path.color),
+                                                            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                                                width = path.strokeWidth * bitScale,
+                                                                cap = if (path.isHighlighter) androidx.compose.ui.graphics.StrokeCap.Square else androidx.compose.ui.graphics.StrokeCap.Round,
+                                                                join = androidx.compose.ui.graphics.StrokeJoin.Round
+                                                            ),
+                                                            blendMode = if (path.isEraser) androidx.compose.ui.graphics.BlendMode.Clear else androidx.compose.ui.graphics.BlendMode.SrcOver
+                                                        )
+                                                    }
+                                                    is com.moshitech.workmate.feature.imagestudio.viewmodel.DrawAction.Shape -> {
+                                                        val shape = action.shape
+                                                        val color = Color(shape.color)
+                                                        val map = { o: Offset -> Offset(o.x * bitScale + bitOffsetX, o.y * bitScale + bitOffsetY) }
+                                                        val stroke = androidx.compose.ui.graphics.drawscope.Stroke(
+                                                            width = shape.strokeWidth * bitScale,
+                                                            cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                                        )
+                                                        val fill = androidx.compose.ui.graphics.drawscope.Fill
+
+                                                        when (shape) {
+                                                            is com.moshitech.workmate.feature.imagestudio.viewmodel.Shape.Line -> {
+                                                                drawLine(color, map(shape.start), map(shape.end), strokeWidth = shape.strokeWidth * bitScale, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                                                            }
+                                                            is com.moshitech.workmate.feature.imagestudio.viewmodel.Shape.Rectangle -> {
+                                                                val tl = map(shape.topLeft)
+                                                                val sz = androidx.compose.ui.geometry.Size(shape.size.width * bitScale, shape.size.height * bitScale)
+                                                                drawRect(color, tl, sz, style = if (shape.filled) fill else stroke)
+                                                            }
+                                                            is com.moshitech.workmate.feature.imagestudio.viewmodel.Shape.Circle -> {
+                                                                drawCircle(color, radius = shape.radius * bitScale, center = map(shape.center), style = if (shape.filled) fill else stroke)
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                    
+                                    // 3. Render Current Drag Path (Freehand)
+                                    currentDrawPath?.let { points ->
+                                        if (points.isNotEmpty()) {
+                                            val pathObj = androidx.compose.ui.graphics.Path().apply {
+                                                val start = points.first()
+                                                moveTo(start.x * bitScale + bitOffsetX, start.y * bitScale + bitOffsetY)
+                                                points.drop(1).forEach { pt ->
+                                                    lineTo(pt.x * bitScale + bitOffsetX, pt.y * bitScale + bitOffsetY)
+                                                }
+                                            }
+                                            drawPath(
+                                                path = pathObj,
+                                                color = when (uiState.selectedDrawTool) {
+                                                    com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.HIGHLIGHTER -> Color(uiState.currentDrawColor).copy(alpha = 0.5f)
+                                                    com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.ERASER -> Color(0xFFFFCDD2) // Light Red for Eraser Preview
+                                                    com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.NEON -> Color.White // Neon Core Preview
+                                                    else -> Color(uiState.currentDrawColor)
+                                                },
+                                                style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                                    width = uiState.currentStrokeWidth / bitScale * bitScale, // == currentStrokeWidth
+                                                    cap = if (uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.HIGHLIGHTER) androidx.compose.ui.graphics.StrokeCap.Square else androidx.compose.ui.graphics.StrokeCap.Round,
+                                                    join = androidx.compose.ui.graphics.StrokeJoin.Round
+                                                )
+                                            )
+                                            
+                                            // Optional: Add Glow for Neon Preview
+                                            if (uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.NEON) {
+                                                drawPath(
+                                                    path = pathObj,
+                                                    color = Color(uiState.currentDrawColor).copy(alpha = 0.5f),
+                                                    style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                                        width = (uiState.currentStrokeWidth * 2f),
+                                                        cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                                                        join = androidx.compose.ui.graphics.StrokeJoin.Round
+                                                    )
+                                                )
+                                            }
+                                        }
+                                    }
+
+
+                                }
+                            }
                             } else {
                                 Text("No Image Loaded", color = Color.Gray)
                             }
@@ -426,6 +689,19 @@ fun PhotoEditorScreen(
                             }
                         }
         
+                        // Shape Layers
+                        uiState.shapeLayers.forEach { layer ->
+                            key(layer.id) {
+                                com.moshitech.workmate.feature.imagestudio.components.ShapeBoxComposable(
+                                    layer = layer,
+                                    isSelected = layer.id == uiState.selectedShapeLayerId,
+                                    onSelect = { viewModel.selectShapeLayer(it) },
+                                    onTransform = { id, pan, zoom, rot -> viewModel.updateShapeLayerTransform(id, pan, zoom, rot) },
+                                    onDelete = { viewModel.deleteShapeLayer(it) }
+                                )
+                            }
+                        }
+
                         // Sticker Layers
                         uiState.stickerLayers.forEach { layer ->
                            key(layer.id) {
@@ -445,8 +721,6 @@ fun PhotoEditorScreen(
                             Button(
                                 onClick = { viewModel.createTextBoxAtCenter() },
                                 modifier = Modifier
-                                    .align(Alignment.TopCenter)
-                                    .padding(top = 24.dp)
                                     .height(40.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = Color(0xFF007AFF) // iOS Blue
@@ -473,13 +747,15 @@ fun PhotoEditorScreen(
                 } // End Canvas Box
 
                 // 2. Resizable Toolbar Panel (The area user wants to adjust)
-                var panelHeight by remember { mutableStateOf(220.dp) }
+                // Increased default height to accommodate Draw tools (300dp)
+                var panelHeight by remember { mutableStateOf(300.dp) }
                 
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(panelHeight)
                         .background(Color(0xFF0D121F))
+                        .clipToBounds() // Prevent content from bleeding into Bottom Navigation
                 ) {
                     // Drag Handle (Grip)
                     Box(
@@ -513,6 +789,8 @@ fun PhotoEditorScreen(
                     Box(modifier = Modifier
                         .fillMaxSize()
                         .background(Color(0xFF0D121F))
+                        .background(Color(0xFF0D121F))
+                        // REMOVED verticalScroll(rememberScrollState()) here to avoid conflict with Lazy lists in tabs
                     ) {
                          when (currentTab) {
                             EditorTab.CROP -> {
@@ -525,7 +803,8 @@ fun PhotoEditorScreen(
                                     }) { Text("Crop Image") }
                                 }
                             }
-                            EditorTab.ADJUST -> AdjustTab(
+                            EditorTab.ADJUST -> Box(Modifier.fillMaxSize()) {
+                                AdjustTab(
                                 brightness = uiState.brightness,
                                 contrast = uiState.contrast,
                                 saturation = uiState.saturation,
@@ -540,6 +819,7 @@ fun PhotoEditorScreen(
                                 onTintChange = viewModel::setTint,
                                 onReset = viewModel::resetAdjustments
                             )
+                            }
                             EditorTab.FILTERS -> {
                                 com.moshitech.workmate.feature.imagestudio.components.FiltersTab(
                                     activeFilterId = uiState.activeFilterId,
@@ -576,280 +856,102 @@ fun PhotoEditorScreen(
                                     }
                                 }
                             }
-                            EditorTab.DRAW -> {
-                                    Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.SpaceEvenly) {
-                                        // Tool selector
-                                        Text("Tool:", color = Color.White, style = MaterialTheme.typography.bodySmall)
-                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                            listOf(
-                                                com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.FREEHAND to "Pen",
-                                                com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.LINE to "Line",
-                                                com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.RECTANGLE to "Rect",
-                                                com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.CIRCLE to "Circle"
-                                            ).forEach { (tool, label) ->
-                                                TextButton(
-                                                    onClick = { viewModel.selectDrawTool(tool) },
-                                                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                                                        containerColor = if (uiState.selectedDrawTool == tool) MaterialTheme.colorScheme.primary else Color.Transparent
-                                                    )
-                                                ) {
-                                                    Text(label, color = Color.White, fontSize = 12.sp)
-                                                }
-                                            }
-                                        }
-                                        
-                                        Text("Color:", color = Color.White, style = MaterialTheme.typography.bodySmall)
-                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                            listOf(Color.Red to android.graphics.Color.RED, Color.Blue to android.graphics.Color.BLUE, Color.Green to android.graphics.Color.GREEN, Color.Yellow to android.graphics.Color.YELLOW, Color.Black to android.graphics.Color.BLACK, Color.White to android.graphics.Color.WHITE).forEach { (c, i) ->
-                                                Box(Modifier.size(30.dp).background(c, androidx.compose.foundation.shape.CircleShape).border(if (uiState.currentDrawColor == i) 3.dp else 1.dp, if (uiState.currentDrawColor == i) MaterialTheme.colorScheme.primary else Color.Gray, androidx.compose.foundation.shape.CircleShape).clickable { viewModel.updateDrawColor(i) })
-                                            }
-                                        }
-                                        Text("Size: ${uiState.currentStrokeWidth.toInt()}px", color = Color.White, style = MaterialTheme.typography.bodySmall)
-                                        Slider(uiState.currentStrokeWidth, { viewModel.updateStrokeWidth(it) }, valueRange = 1f..50f, modifier = Modifier.height(20.dp))
+                            EditorTab.SHAPES -> {
+                                // Shapes now handled in Draw tab
+                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text("Switching to Shapes...", color = Color.White)
+                                    LaunchedEffect(Unit) {
+                                        viewModel.setDrawMode(com.moshitech.workmate.feature.imagestudio.viewmodel.DrawMode.SHAPES)
+                                        currentTab = EditorTab.DRAW
                                     }
-                            }
-                            EditorTab.ROTATE -> {
-                                Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.SpaceEvenly) {
-                                    // Quick rotation
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                        TextButton(onClick = { viewModel.rotate90CCW() }) { Text("↺ CCW") }
-                                        TextButton(onClick = { viewModel.rotate90CW() }) { Text("↻ CW") }
-                                    }
-                                    // Flip
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                        TextButton(onClick = { viewModel.flipHorizontal() }) { Text("⇄ Horiz") }
-                                        TextButton(onClick = { viewModel.flipVertical() }) { Text("⇅ Vert") }
-                                    }
-                                    // Slider
-                                    Slider(
-                                        value = uiState.rotationAngle,
-                                        onValueChange = { viewModel.setRotationAngle(it) },
-                                        valueRange = 0f..360f
-                                    )
                                 }
                             }
+                            EditorTab.DRAW -> {
+                                com.moshitech.workmate.feature.imagestudio.components.DrawAndShapesToolbar(uiState, viewModel)
+                            }
+                            // EditorTab.SHAPES merged into DRAW
+                            EditorTab.ROTATE -> {
+                                Column(
+                                    modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 16.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(24.dp)
+                                ) {
+                                    // Icons Area
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceAround,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // Left Rotate
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { viewModel.rotate90CCW() }) {
+                                            Icon(Icons.Default.RotateLeft, "Left", tint = Color.White, modifier = Modifier.size(28.dp))
+                                            Spacer(Modifier.height(4.dp))
+                                            Text("Left", color = Color.Gray, fontSize = 12.sp)
+                                        }
+
+                                        // Right Rotate
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { viewModel.rotate90CW() }) {
+                                            Icon(Icons.Default.RotateRight, "Right", tint = Color.White, modifier = Modifier.size(28.dp))
+                                            Spacer(Modifier.height(4.dp))
+                                            Text("Right", color = Color.Gray, fontSize = 12.sp)
+                                        }
+
+                                        // Flip
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { viewModel.flipHorizontal() }) {
+                                            Icon(Icons.Default.SwapHoriz, "Flip", tint = Color.White, modifier = Modifier.size(28.dp))
+                                            Spacer(Modifier.height(4.dp))
+                                            Text("Flip", color = Color.Gray, fontSize = 12.sp)
+                                        }
+                                    }
+
+                                    // Slider Area
+                                    Column(Modifier.fillMaxWidth()) {
+                                        Slider(
+                                            value = uiState.rotationAngle,
+                                            onValueChange = { viewModel.setRotationAngle(it) },
+                                            valueRange = 0f..360f,
+                                            colors = SliderDefaults.colors(
+                                                thumbColor = Color(0xFF007AFF),
+                                                activeTrackColor = Color(0xFF007AFF),
+                                                inactiveTrackColor = Color(0xFF2C2C2E)
+                                            ),
+                                            thumb = {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(20.dp)
+                                                        .background(Color.White, CircleShape)
+                                                        .padding(4.dp)
+                                                        .background(Color(0xFF007AFF), CircleShape)
+                                                )
+                                            },
+                                            track = { sliderState ->
+                                                SliderDefaults.Track(
+                                                    colors = SliderDefaults.colors(
+                                                        activeTrackColor = Color(0xFF007AFF),
+                                                        inactiveTrackColor = Color(0xFF2C2C2E)
+                                                    ),
+                                                    sliderState = sliderState,
+                                                    modifier = Modifier.height(4.dp)
+                                                )
+                                            }
+                                        )
+                                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                            Text("${uiState.rotationAngle.toInt()}°", color = Color.Gray, fontSize = 12.sp)
+                                        }
+                                    }
+                                }
+                            }
+
                         }
                     }
                 } // End Resizable Panel
 
-                // 3. FIXED Bottom Navigation (Pinned to bottom, outside resizable panel)
-                com.moshitech.workmate.feature.imagestudio.components.PhotoEditorBottomNav(
-                    selectedTool = when (currentTab) {
-                        EditorTab.CROP -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.CROP
-                        EditorTab.FILTERS -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.FILTERS
-                        EditorTab.STICKERS -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.STICKERS
-                        EditorTab.ROTATE -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.ROTATE
-                        EditorTab.ADJUST -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.ADJUST
-                        EditorTab.TEXT -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.TEXT
-                        EditorTab.DRAW -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.DRAW
-                    },
-                    onToolSelected = { tool ->
-                        if (tool == com.moshitech.workmate.feature.imagestudio.components.EditorTool.CROP) {
-                            // Do NOT switch tab, just launch
-                            if (imageUri != null) {
-                                val options = CropImageContractOptions(uri = imageUri, cropImageOptions = CropImageOptions())
-                                cropImageLauncher.launch(options)
-                            }
-                        } else {
-                            currentTab = when (tool) {
-                                com.moshitech.workmate.feature.imagestudio.components.EditorTool.FILTERS -> EditorTab.FILTERS
-                                com.moshitech.workmate.feature.imagestudio.components.EditorTool.STICKERS -> EditorTab.STICKERS
-                                com.moshitech.workmate.feature.imagestudio.components.EditorTool.ROTATE -> EditorTab.ROTATE
-                                com.moshitech.workmate.feature.imagestudio.components.EditorTool.ADJUST -> EditorTab.ADJUST
-                                com.moshitech.workmate.feature.imagestudio.components.EditorTool.TEXT -> EditorTab.TEXT
-                                com.moshitech.workmate.feature.imagestudio.components.EditorTool.DRAW -> EditorTab.DRAW
-                                else -> currentTab
-                            }
-                        }
-                    }
-                )
-                
-
-                
-                // Drawing Canvas
-                if (currentTab == EditorTab.DRAW) {
-                    var currentPath by remember { mutableStateOf<MutableList<androidx.compose.ui.geometry.Offset>>(mutableListOf()) }
-                    var shapeStart by remember { mutableStateOf<Offset?>(null) }
-                    var shapeCurrent by remember { mutableStateOf<Offset?>(null) }
-                    
-                    Canvas(Modifier.fillMaxSize().pointerInput(uiState.selectedDrawTool) {
-                        detectDragGestures(
-                            onDragStart = { offset -> 
-                                when (uiState.selectedDrawTool) {
-                                    com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.FREEHAND -> currentPath.add(offset)
-                                    else -> { shapeStart = offset; shapeCurrent = offset }
-                                }
-                            },
-                            onDrag = { change, _ -> 
-                                change.consume()
-                                when (uiState.selectedDrawTool) {
-                                    com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.FREEHAND -> currentPath.add(change.position)
-                                    else -> shapeCurrent = change.position
-                                }
-                            },
-                            onDragEnd = {
-                                when (uiState.selectedDrawTool) {
-                                    com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.FREEHAND -> {
-                                        if (currentPath.isNotEmpty()) {
-                                            viewModel.addDrawPath(com.moshitech.workmate.feature.imagestudio.viewmodel.DrawPath(
-                                                points = currentPath.toList(),
-                                                color = uiState.currentDrawColor,
-                                                strokeWidth = uiState.currentStrokeWidth,
-                                                isEraser = uiState.isEraserMode
-                                            ))
-                                            currentPath = mutableListOf()
-                                        }
-                                    }
-                                    com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.LINE -> {
-                                        if (shapeStart != null && shapeCurrent != null) {
-                                            viewModel.addShape(com.moshitech.workmate.feature.imagestudio.viewmodel.Shape.Line(
-                                                start = shapeStart!!,
-                                                end = shapeCurrent!!,
-                                                color = uiState.currentDrawColor,
-                                                strokeWidth = uiState.currentStrokeWidth
-                                            ))
-                                        }
-                                    }
-                                    com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.RECTANGLE -> {
-                                        if (shapeStart != null && shapeCurrent != null) {
-                                            val topLeft = Offset(
-                                                kotlin.math.min(shapeStart!!.x, shapeCurrent!!.x),
-                                                kotlin.math.min(shapeStart!!.y, shapeCurrent!!.y)
-                                            )
-                                            val size = androidx.compose.ui.geometry.Size(
-                                                kotlin.math.abs(shapeCurrent!!.x - shapeStart!!.x),
-                                                kotlin.math.abs(shapeCurrent!!.y - shapeStart!!.y)
-                                            )
-                                            viewModel.addShape(com.moshitech.workmate.feature.imagestudio.viewmodel.Shape.Rectangle(
-                                                topLeft = topLeft,
-                                                size = size,
-                                                color = uiState.currentDrawColor,
-                                                strokeWidth = uiState.currentStrokeWidth
-                                            ))
-                                        }
-                                    }
-                                    com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.CIRCLE -> {
-                                        if (shapeStart != null && shapeCurrent != null) {
-                                            val radius = kotlin.math.sqrt(
-                                                (shapeCurrent!!.x - shapeStart!!.x) * (shapeCurrent!!.x - shapeStart!!.x) +
-                                                (shapeCurrent!!.y - shapeStart!!.y) * (shapeCurrent!!.y - shapeStart!!.y)
-                                            )
-                                            viewModel.addShape(com.moshitech.workmate.feature.imagestudio.viewmodel.Shape.Circle(
-                                                center = shapeStart!!,
-                                                radius = radius,
-                                                color = uiState.currentDrawColor,
-                                                strokeWidth = uiState.currentStrokeWidth
-                                            ))
-                                        }
-                                    }
-                                }
-                                shapeStart = null
-                                shapeCurrent = null
-                            }
-                        )
-                    }) {
-                        // Render existing paths
-                        uiState.drawPaths.forEach { p ->
-                            val path = androidx.compose.ui.graphics.Path()
-                            p.points.forEachIndexed { i, o -> if (i == 0) path.moveTo(o.x, o.y) else path.lineTo(o.x, o.y) }
-                            drawPath(path, Color(p.color), style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                width = p.strokeWidth,
-                                cap = androidx.compose.ui.graphics.StrokeCap.Round,
-                                join = androidx.compose.ui.graphics.StrokeJoin.Round
-                            ))
-                        }
-                        
-                        // Render existing shapes
-                        uiState.shapes.forEach { shape ->
-                            when (shape) {
-                                is com.moshitech.workmate.feature.imagestudio.viewmodel.Shape.Line -> {
-                                    drawLine(
-                                        color = Color(shape.color),
-                                        start = shape.start,
-                                        end = shape.end,
-                                        strokeWidth = shape.strokeWidth,
-                                        cap = androidx.compose.ui.graphics.StrokeCap.Round
-                                    )
-                                }
-                                is com.moshitech.workmate.feature.imagestudio.viewmodel.Shape.Rectangle -> {
-                                    drawRect(
-                                        color = Color(shape.color),
-                                        topLeft = shape.topLeft,
-                                        size = shape.size,
-                                        style = if (shape.filled) androidx.compose.ui.graphics.drawscope.Fill 
-                                               else androidx.compose.ui.graphics.drawscope.Stroke(width = shape.strokeWidth)
-                                    )
-                                }
-                                is com.moshitech.workmate.feature.imagestudio.viewmodel.Shape.Circle -> {
-                                    drawCircle(
-                                        color = Color(shape.color),
-                                        center = shape.center,
-                                        radius = shape.radius,
-                                        style = if (shape.filled) androidx.compose.ui.graphics.drawscope.Fill 
-                                               else androidx.compose.ui.graphics.drawscope.Stroke(width = shape.strokeWidth)
-                                    )
-                                }
-                            }
-                        }
-                        
-                        // Render current path (freehand preview)
-                        if (currentPath.isNotEmpty()) {
-                            val path = androidx.compose.ui.graphics.Path()
-                            currentPath.forEachIndexed { i, o -> if (i == 0) path.moveTo(o.x, o.y) else path.lineTo(o.x, o.y) }
-                            drawPath(path, Color(uiState.currentDrawColor), style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                width = uiState.currentStrokeWidth,
-                                cap = androidx.compose.ui.graphics.StrokeCap.Round,
-                                join = androidx.compose.ui.graphics.StrokeJoin.Round
-                            ))
-                        }
-                        
-                        // Render shape preview
-                        if (shapeStart != null && shapeCurrent != null) {
-                            when (uiState.selectedDrawTool) {
-                                com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.LINE -> {
-                                    drawLine(
-                                        color = Color(uiState.currentDrawColor),
-                                        start = shapeStart!!,
-                                        end = shapeCurrent!!,
-                                        strokeWidth = uiState.currentStrokeWidth,
-                                        cap = androidx.compose.ui.graphics.StrokeCap.Round
-                                    )
-                                }
-                                com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.RECTANGLE -> {
-                                    val topLeft = Offset(
-                                        kotlin.math.min(shapeStart!!.x, shapeCurrent!!.x),
-                                        kotlin.math.min(shapeStart!!.y, shapeCurrent!!.y)
-                                    )
-                                    val size = androidx.compose.ui.geometry.Size(
-                                        kotlin.math.abs(shapeCurrent!!.x - shapeStart!!.x),
-                                        kotlin.math.abs(shapeCurrent!!.y - shapeStart!!.y)
-                                    )
-                                    drawRect(
-                                        color = Color(uiState.currentDrawColor),
-                                        topLeft = topLeft,
-                                        size = size,
-                                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = uiState.currentStrokeWidth)
-                                    )
-                                }
-                                com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.CIRCLE -> {
-                                    val radius = kotlin.math.sqrt(
-                                        (shapeCurrent!!.x - shapeStart!!.x) * (shapeCurrent!!.x - shapeStart!!.x) +
-                                        (shapeCurrent!!.y - shapeStart!!.y) * (shapeCurrent!!.y - shapeStart!!.y)
-                                    )
-                                    drawCircle(
-                                        color = Color(uiState.currentDrawColor),
-                                        center = shapeStart!!,
-                                        radius = radius,
-                                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = uiState.currentStrokeWidth)
-                                    )
-                                }
-                                else -> {}
-                            }
-                        }
-                    }
-                }
-            }
-        }
+                } // End Resizable Panel Content
+            } // End Scaffold Content Column (Panel + Image)
+            
+            // NOTE: The BottomBar is handled by the Inner Scaffold above.
+            // The redundant code block for Drawing Canvas was removed here.
+        } // End Inner Scaffold Block
         
         // Save Dialog - inside Scaffold where uiState is accessible
         if (uiState.showSaveDialog) {
