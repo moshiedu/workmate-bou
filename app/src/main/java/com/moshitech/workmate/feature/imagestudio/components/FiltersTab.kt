@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.asImageBitmap
 import com.moshitech.workmate.feature.imagestudio.util.MonetizationManager
 
 data class FilterItem(
@@ -40,6 +41,7 @@ data class FilterItem(
 @Composable
 fun FiltersTab(
     activeFilterId: String?,
+    previewBitmap: android.graphics.Bitmap?,
     onFilterSelected: (String, FloatArray) -> Unit,
     onClearFilter: () -> Unit
 ) {
@@ -54,7 +56,8 @@ fun FiltersTab(
         item {
             FilterPreviewItem(
                 name = "None",
-                color = Color.Gray,
+                matrix = null,
+                previewBitmap = previewBitmap,
                 isSelected = activeFilterId == null,
                 isLocked = false,
                 onClick = onClearFilter
@@ -65,7 +68,8 @@ fun FiltersTab(
             val isLocked = MonetizationManager.isFilterLocked(filter.id)
             FilterPreviewItem(
                 name = filter.name,
-                color = filter.colorOverlay,
+                matrix = filter.matrix,
+                previewBitmap = previewBitmap,
                 isSelected = activeFilterId == filter.id,
                 isLocked = isLocked,
                 onClick = { onFilterSelected(filter.id, filter.matrix) }
@@ -77,7 +81,8 @@ fun FiltersTab(
 @Composable
 fun FilterPreviewItem(
     name: String,
-    color: Color,
+    matrix: FloatArray?,
+    previewBitmap: android.graphics.Bitmap?,
     isSelected: Boolean,
     isLocked: Boolean,
     onClick: () -> Unit
@@ -90,7 +95,6 @@ fun FilterPreviewItem(
             modifier = Modifier
                 .size(60.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(color)
                 .border(
                     width = if (isSelected) 3.dp else 0.dp,
                     color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
@@ -98,6 +102,18 @@ fun FilterPreviewItem(
                 ),
             contentAlignment = Alignment.Center
         ) {
+            if (previewBitmap != null) {
+               androidx.compose.foundation.Image(
+                    bitmap = previewBitmap.asImageBitmap(),
+                    contentDescription = name,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                    colorFilter = if (matrix != null) androidx.compose.ui.graphics.ColorFilter.colorMatrix(androidx.compose.ui.graphics.ColorMatrix(matrix)) else null
+                )
+            } else {
+                 Box(Modifier.fillMaxSize().background(Color.Gray)) // Fallback
+            }
+
             if (isLocked) {
                 Box(
                     modifier = Modifier
@@ -122,7 +138,6 @@ fun FilterPreviewItem(
         )
     }
 }
-
 fun getFilterPresets(): List<FilterItem> {
     return listOf(
         FilterItem("bw", "B&W", createBWMatrix(), Color.Gray),

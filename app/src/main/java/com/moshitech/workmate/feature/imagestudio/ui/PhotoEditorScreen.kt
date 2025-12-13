@@ -543,6 +543,7 @@ fun PhotoEditorScreen(
                             EditorTab.FILTERS -> {
                                 com.moshitech.workmate.feature.imagestudio.components.FiltersTab(
                                     activeFilterId = uiState.activeFilterId,
+                                    previewBitmap = uiState.originalBitmap,
                                     onFilterSelected = viewModel::applyFilter,
                                     onClearFilter = viewModel::clearFilter
                                 )
@@ -644,7 +645,7 @@ fun PhotoEditorScreen(
                     },
                     onToolSelected = { tool ->
                         if (tool == com.moshitech.workmate.feature.imagestudio.components.EditorTool.CROP) {
-                            currentTab = EditorTab.CROP
+                            // Do NOT switch tab, just launch
                             if (imageUri != null) {
                                 val options = CropImageContractOptions(uri = imageUri, cropImageOptions = CropImageOptions())
                                 cropImageLauncher.launch(options)
