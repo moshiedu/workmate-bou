@@ -26,6 +26,7 @@ data class EditorState(
     val activeFilterId: String? = null,
     val activeFilterMatrix: FloatArray? = null,
     val textLayers: List<TextLayer> = emptyList(),
+    val stickerLayers: List<StickerLayer> = emptyList(),
     val drawPaths: List<DrawPath> = emptyList(),
     val shapes: List<Shape> = emptyList()
 )
@@ -40,8 +41,10 @@ data class TextLayer(
     val scale: Float = 1f,
     val rotation: Float = 0f,
     val color: Int = android.graphics.Color.WHITE,
+    val isGradient: Boolean = false,
+    val gradientColors: List<Int> = listOf(android.graphics.Color.BLUE, android.graphics.Color.MAGENTA),
+    val gradientAngle: Float = 0f,
     val fontSize: Float = 24f,
-    val fontFamily: String = "default",
     val isBold: Boolean = false,
     val isItalic: Boolean = false,
     val isUnderline: Boolean = false,
@@ -65,10 +68,44 @@ data class TextLayer(
     val backgroundColor: Int = android.graphics.Color.TRANSPARENT,
     val backgroundOpacity: Float = 1f,
     val backgroundPadding: Float = 16f,
+    val backgroundCornerRadius: Float = 4f,
     val showBackground: Boolean = false,
     val layerOpacity: Float = 1f,
+    val textBlur: Float = 0f,
+    val rotationX: Float = 0f,
+    val rotationY: Float = 0f,
+    val curvature: Float = 0f,
+    val isNeon: Boolean = false,
+    val isGlitch: Boolean = false,
+    val blendMode: LayerBlendMode = LayerBlendMode.NORMAL,
+    val reflectionOpacity: Float = 0f,
+    val reflectionOffset: Float = 0f,
+    val isLocked: Boolean = false,
+    val fontFamily: AppFont = AppFont.DEFAULT,
+    val textureUri: String? = null
+)
+
+data class StickerLayer(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val resId: Int = 0, // Resource ID for local drawables
+    val uri: String? = null, // URI for external images if needed later
+    val text: String? = null, // Logic for Emoji stickers
+    val x: Float,
+    val y: Float,
+    val scale: Float = 1f,
+    val rotation: Float = 0f,
+    val isFlipped: Boolean = false,
     val isLocked: Boolean = false
 )
+
+enum class AppFont {
+    DEFAULT, SERIF, SANS_SERIF, MONOSPACE, CURSIVE,
+    LOBSTER, BANGERS, OSWALD, PLAYFAIR
+}
+
+enum class LayerBlendMode {
+    NORMAL, OVERLAY, SCREEN, MULTIPLY, ADD, DIFFERENCE
+}
 
 enum class TextAlignment {
     LEFT, CENTER, RIGHT, JUSTIFY
@@ -145,6 +182,7 @@ data class PhotoEditorUiState(
     val textLayers: List<TextLayer> = emptyList(),
     val showTextDialog: Boolean = false,
     val editingTextId: String? = null,
+    val stickerLayers: List<StickerLayer> = emptyList(),
     val drawPaths: List<DrawPath> = emptyList(),
     val shapes: List<Shape> = emptyList(),
     val currentDrawColor: Int = android.graphics.Color.RED,
@@ -157,6 +195,7 @@ data class PhotoEditorUiState(
     val tint: Float = 0f,          // -1 to 1
     val selectedTextLayerId: String? = null,
     val editingTextLayerId: String? = null,
+    val selectedStickerLayerId: String? = null,
     val showFloatingToolbar: Boolean = false
 )
 
@@ -209,21 +248,34 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
         scheduleApply(saveHistory = true)
     }
     
-    fun updateHue(value: Float) {
-        _uiState.update { it.copy(hue = value) }
-        scheduleApply(saveHistory = true)
-    }
-    
-    fun updateTemperature(value: Float) {
-        _uiState.update { it.copy(temperature = value) }
-        scheduleApply(saveHistory = true)
-    }
-    
-    fun updateTint(value: Float) {
-        _uiState.update { it.copy(tint = value) }
+    fun setHue(hue: Float) {
+        _uiState.update { it.copy(hue = hue) }
         scheduleApply(saveHistory = true)
     }
 
+    fun setTemperature(temp: Float) {
+        _uiState.update { it.copy(temperature = temp) }
+        scheduleApply(saveHistory = true)
+    }
+
+    fun setTint(tint: Float) {
+        _uiState.update { it.copy(tint = tint) }
+        scheduleApply(saveHistory = true)
+    }
+    
+    fun resetAdjustments() {
+        _uiState.update { it.copy(
+            brightness = 0f,
+            contrast = 1f,
+            saturation = 1f,
+            hue = 0f,
+            temperature = 0f,
+            tint = 0f
+        ) }
+        scheduleApply(saveHistory = true)
+    }
+
+    // Filter Logic
     fun applyFilter(id: String, matrix: FloatArray) {
         if (MonetizationManager.isFilterLocked(id)) {
             _uiState.update { it.copy(message = "This filter is a Pro feature") }
@@ -323,9 +375,13 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
         textLayers.forEach { layer ->
             // Create typeface based on font family and style
             val baseTypeface = when (layer.fontFamily) {
-                "serif" -> android.graphics.Typeface.SERIF
-                "monospace" -> android.graphics.Typeface.MONOSPACE
-                "cursive" -> android.graphics.Typeface.create("cursive", android.graphics.Typeface.NORMAL)
+                AppFont.SERIF -> android.graphics.Typeface.SERIF
+                AppFont.MONOSPACE -> android.graphics.Typeface.MONOSPACE
+                AppFont.CURSIVE -> android.graphics.Typeface.create("cursive", android.graphics.Typeface.NORMAL)
+                AppFont.LOBSTER -> androidx.core.content.res.ResourcesCompat.getFont(getApplication(), com.moshitech.workmate.R.font.lobster)
+                AppFont.BANGERS -> androidx.core.content.res.ResourcesCompat.getFont(getApplication(), com.moshitech.workmate.R.font.bangers)
+                AppFont.OSWALD -> androidx.core.content.res.ResourcesCompat.getFont(getApplication(), com.moshitech.workmate.R.font.oswald_medium)
+                AppFont.PLAYFAIR -> androidx.core.content.res.ResourcesCompat.getFont(getApplication(), com.moshitech.workmate.R.font.playfair_display)
                 else -> android.graphics.Typeface.DEFAULT
             }
             
@@ -609,7 +665,7 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
         y: Float = 100f,
         color: Int = android.graphics.Color.WHITE,
         fontSize: Float = 20f,
-        fontFamily: String = "default",
+        fontFamily: AppFont = AppFont.DEFAULT,
         isBold: Boolean = false,
         isItalic: Boolean = false,
         alignment: TextAlignment = TextAlignment.LEFT,
@@ -870,6 +926,74 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
         saveToHistory()
     }
     
+
+
+    // Sticker Methods
+    fun addSticker(resId: Int = 0, text: String? = null) {
+        val newSticker = StickerLayer(
+            resId = resId,
+            text = text,
+            x = 400f, // Center-ish
+            y = 400f // Center-ish
+        )
+        _uiState.update { it.copy(
+            stickerLayers = it.stickerLayers + newSticker,
+            selectedStickerLayerId = newSticker.id,
+            selectedTextLayerId = null // Deselect text
+        ) }
+        saveToHistory()
+    }
+
+    fun removeSticker(id: String) {
+        _uiState.update { it.copy(
+            stickerLayers = it.stickerLayers.filter { layer -> layer.id != id },
+            selectedStickerLayerId = null
+        ) }
+        saveToHistory()
+    }
+
+    fun selectSticker(id: String) {
+        _uiState.update { it.copy(
+            selectedStickerLayerId = id,
+            selectedTextLayerId = null, // Deselect text
+            editingTextLayerId = null,
+            showFloatingToolbar = false // Stickers might use different toolbar or gestures
+        ) }
+    }
+    
+    fun deselectSticker() {
+        _uiState.update { it.copy(selectedStickerLayerId = null) }
+    }
+
+    fun updateStickerTransform(id: String, pan: androidx.compose.ui.geometry.Offset, zoom: Float, rotation: Float) {
+        _uiState.update { state ->
+            state.copy(
+                stickerLayers = state.stickerLayers.map { layer ->
+                    if (layer.id == id && !layer.isLocked) {
+                        layer.copy(
+                            x = layer.x + pan.x,
+                            y = layer.y + pan.y,
+                            scale = (layer.scale * zoom).coerceIn(0.1f, 10f),
+                            rotation = layer.rotation + rotation
+                        )
+                    } else layer
+                }
+            )
+        }
+    }
+
+    fun flipSticker(id: String) {
+        _uiState.update { state ->
+            state.copy(
+                stickerLayers = state.stickerLayers.map { layer ->
+                    if (layer.id == id && !layer.isLocked) {
+                        layer.copy(isFlipped = !layer.isFlipped)
+                    } else layer
+                }
+            )
+        }
+    }
+
     // Simplified update for properties
     fun updateTextProperty(id: String, update: (TextLayer) -> TextLayer) {
         _uiState.update {
@@ -888,7 +1012,7 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
         text: String,
         color: Int,
         fontSize: Float,
-        fontFamily: String,
+        fontFamily: AppFont,
         isBold: Boolean,
         isItalic: Boolean,
         alignment: TextAlignment,

@@ -87,12 +87,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.key
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.canhub.cropper.CropImageContract
@@ -103,7 +110,7 @@ import com.moshitech.workmate.feature.imagestudio.viewmodel.PhotoEditorViewModel
 
 
 enum class EditorTab {
-    CROP, ADJUST, FILTERS, ROTATE, TEXT, DRAW
+    CROP, ADJUST, FILTERS, STICKERS, ROTATE, TEXT, DRAW
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -119,6 +126,17 @@ fun PhotoEditorScreen(
     var showImageSourceDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // Eyedropper State (Lifted for Toolbar access)
+    var eyedropperCallback by remember { mutableStateOf<((Color) -> Unit)?>(null) }
+    val isEyedropperActive = eyedropperCallback != null
+    
+    // Reset zoom when entering eyedropper mode for accurate picking
+    LaunchedEffect(isEyedropperActive) {
+        if (isEyedropperActive) {
+            viewModel.clearMessage() // Clear any previous messages
+        }
+    }
+
     // Load image on start
     LaunchedEffect(imageUri) {
         if (imageUri != null) {
@@ -126,7 +144,18 @@ fun PhotoEditorScreen(
         }
     }
     
-    // Camera capture launcher
+    // Texture Picker for Text
+    val texturePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            uiState.selectedTextLayerId?.let { id ->
+                viewModel.updateTextProperty(id) { it.copy(textureUri = uri.toString()) }
+            }
+        }
+    }
+    
+    // Camera & Gallery Launchers
     val cameraImageUri = remember { mutableStateOf<Uri?>(null) }
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
@@ -170,6 +199,8 @@ fun PhotoEditorScreen(
                 viewModel.loadImage(it) 
             }
         }
+        // Always switch back to a content view (e.g. TEXT/Default) to avoid staying on the "Crop Button" screen
+        currentTab = EditorTab.TEXT 
     }
 
     AdContainer(modifier = Modifier.fillMaxSize()) {
@@ -243,30 +274,255 @@ fun PhotoEditorScreen(
                     }
                 }
             },
-            bottomBar = {
-                Column(modifier = Modifier.background(Color(0xFF0D121F))) {
-                    // Tool Content Area
-                    Box(modifier = Modifier
+            // Removed standard bottomBar to implement resizable layout manually
+        ) { padding ->
+            // Main Content Column
+            Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                
+                // 1. Image Canvas Area (Flexible Weight)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
                         .fillMaxWidth()
-                        .padding(bottom = 8.dp) // Add some spacing above nav
+                        .background(Color(0xFF0D121F))
+                        .clipToBounds()
+                ) {
+                    // Canvas Content (Moved from original content lambda)
+                    // Zoom and Pan state
+                    var scale by remember { mutableStateOf(1f) }
+                    var offset by remember { mutableStateOf(Offset.Zero) }
+             
+                    // Reset zoom when entering eyedropper mode for accurate picking
+                    LaunchedEffect(isEyedropperActive) {
+                        if (isEyedropperActive) {
+                            scale = 1f
+                            offset = Offset.Zero
+                        }
+                    }
+             
+                    val transformableState = rememberTransformableState { zoomChange, panChange, _ ->
+                        if (!isEyedropperActive) {
+                            scale = (scale * zoomChange).coerceIn(1f, 5f)
+                     
+                            // Only allow panning when zoomed in
+                            if (scale > 1f) {
+                                offset = offset + panChange
+                            }
+                        }
+                    }
+             
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onTap = { viewModel.exitTextEditMode() },
+                                    onDoubleTap = {
+                                        scale = 1f
+                                        offset = Offset.Zero
+                                    }
+                                )
+                            },
+                        contentAlignment = Alignment.Center
                     ) {
-                        when (currentTab) {
+                        if (uiState.isLoading) {
+                            CircularProgressIndicator(color = Color.White)
+                        } else {
+                            val bitmapToShow = if (showOriginal) uiState.originalBitmap else uiState.previewBitmap
+                            if (bitmapToShow != null) {
+                                Image(
+                                    bitmap = bitmapToShow.asImageBitmap(),
+                                    contentDescription = "Preview",
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .transformable(state = transformableState)
+                                        .graphicsLayer(
+                                            scaleX = scale,
+                                            scaleY = scale,
+                                            translationX = offset.x,
+                                            translationY = offset.y
+                                        ),
+                                    contentScale = ContentScale.Fit
+                                )
+                            } else {
+                                Text("No Image Loaded", color = Color.Gray)
+                            }
+                        }
+                 
+                        // Eyedropper Overlay
+                        if (isEyedropperActive && uiState.previewBitmap != null) {
+                           Box(
+                               modifier = Modifier
+                                   .matchParentSize()
+                                   .pointerInput(Unit) {
+                                       detectTapGestures { tapOffset ->
+                                           val bitmap = uiState.previewBitmap
+                                           if (bitmap != null) {
+                                               // Assuming ContentScale.Fit logic (simplified for brevity, ideal implementation matches Image scale)
+                                               // For robust eyedropper, we need exact mapping which is complex with Fit/Fill.
+                                               // Using simplified mapping or requiring Zoom=1 for picking.
+                                               if (scale == 1f) {
+                                                   // Basic mapping attempt
+                                                    val viewWidth = size.width
+                                                    val viewHeight = size.height.toFloat()
+                                                    val bmpWidth = bitmap.width.toFloat()
+                                                    val bmpHeight = bitmap.height.toFloat()
+                                                    
+                                                    val scaleFactor = minOf(viewWidth / bmpWidth, viewHeight / bmpHeight)
+                                                    val scaledWidth = bmpWidth * scaleFactor
+                                                    val scaledHeight = bmpHeight * scaleFactor
+                                                    
+                                                    val offsetX = (viewWidth - scaledWidth) / 2f
+                                                    val offsetY = (viewHeight - scaledHeight) / 2f
+                                                    
+                                                    val bitmapX = ((tapOffset.x - offsetX) / scaleFactor).toInt()
+                                                    val bitmapY = ((tapOffset.y - offsetY) / scaleFactor).toInt()
+                                                    
+                                                    if (bitmapX in 0 until bitmap.width && bitmapY in 0 until bitmap.height) {
+                                                         val pixel = bitmap.getPixel(bitmapX, bitmapY)
+                                                         val color = Color(pixel)
+                                                         eyedropperCallback?.invoke(color)
+                                                         eyedropperCallback = null
+                                                    }
+                                               }
+                                           }
+                                       }
+                                   }
+                           ) {
+                               Box(
+                                   modifier = Modifier.align(Alignment.Center).background(Color.Black.copy(0.7f), RoundedCornerShape(8.dp)).padding(16.dp)
+                               ) { Text("Tap image to pick color", color = Color.White) }
+                           }
+                        }
+                 
+                        // Compare Label
+                        if (showOriginal) {
+                            Box(modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp).background(Color.Black.copy(0.6f), RoundedCornerShape(4.dp)).padding(8.dp, 4.dp)) {
+                                Text("Original", color = Color.White)
+                            }
+                        }
+                 
+                        // Zoom indicator
+                        if (scale > 1f) {
+                            Box(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp).background(Color.Black.copy(0.6f), RoundedCornerShape(4.dp)).padding(8.dp, 4.dp)) {
+                                Text("${(scale * 100).toInt()}%", color = Color.White)
+                            }
+                        }
+                 
+                        // Text Layers
+                        uiState.textLayers.forEach { textLayer ->
+                            key(textLayer.id) {
+                                com.moshitech.workmate.feature.imagestudio.components.TextBoxComposable(
+                                    layer = textLayer,
+                                    isSelected = textLayer.id == uiState.selectedTextLayerId,
+                                    isEditing = textLayer.id == uiState.editingTextLayerId,
+                                    onSelect = { viewModel.selectTextLayer(it) },
+                                    onEdit = { viewModel.enterTextEditMode(it) },
+                                    onTransform = { id, pan, zoom, rotation -> viewModel.updateTextLayerTransform(id, pan, zoom, rotation) },
+                                    onTextChange = { id, text -> viewModel.updateTextInline(id, text) },
+                                    onDuplicate = { viewModel.duplicateTextLayer(it) },
+                                    onDelete = { viewModel.removeTextLayer(it) },
+                                )
+                            }
+                        }
+        
+                        // Sticker Layers
+                        uiState.stickerLayers.forEach { layer ->
+                           key(layer.id) {
+                               com.moshitech.workmate.feature.imagestudio.components.StickerBoxComposable(
+                                   layer = layer,
+                                   isSelected = layer.id == uiState.selectedStickerLayerId,
+                                   onSelect = { viewModel.selectSticker(it) },
+                                   onTransform = { id, pan, zoom, rot -> viewModel.updateStickerTransform(id, pan, zoom, rot) },
+                                   onDelete = { viewModel.removeSticker(it) },
+                                   onFlip = { viewModel.flipSticker(it) } 
+                               )
+                           }
+                        }
+
+                        // ADD NEW TEXT Pill Button (Overlay on Image Canvas)
+                        if (currentTab == EditorTab.TEXT) {
+                            Button(
+                                onClick = { viewModel.createTextBoxAtCenter() },
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .padding(top = 24.dp)
+                                    .height(40.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF007AFF) // iOS Blue
+                                ),
+                                shape = RoundedCornerShape(50), // Pill Shape
+                                contentPadding = PaddingValues(horizontal = 16.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Add,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "Add New Text",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
+                    }
+                } // End Canvas Box
+
+                // 2. Resizable Toolbar Panel (The area user wants to adjust)
+                var panelHeight by remember { mutableStateOf(220.dp) }
+                
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(panelHeight)
+                        .background(Color(0xFF0D121F))
+                ) {
+                    // Drag Handle (Grip)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(24.dp)
+                            .background(Color(0xFF1E1E1E)) // Grip color
+                            .pointerInput(Unit) {
+                                detectDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    // Inverted logic: Dragging UP increases height (y is negative)
+                                    // But wait, change.position is relative. dragAmount.y < 0 means UP.
+                                    // If we drag UP, we want panel to GROW.
+                                    // So newHeight = currentHeight - dragAmount.y
+                                    val newHeight = (panelHeight - dragAmount.y.dp).coerceIn(150.dp, 600.dp)
+                                    panelHeight = newHeight
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        // Visual Grip Pill
+                        Box(
+                            modifier = Modifier
+                                .width(40.dp)
+                                .height(4.dp)
+                                .background(Color.Gray, RoundedCornerShape(2.dp))
+                        )
+                    }
+
+                    // Tool Content Area (Scrollable contents go here)
+                    Box(modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0xFF0D121F))
+                    ) {
+                         when (currentTab) {
                             EditorTab.CROP -> {
-                                // Crop is an action, not a persistent tab content usually, 
-                                // but we can put a "Launch Cropper" button here
                                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                     androidx.compose.material3.Button(onClick = {
-                                        val uri = imageUri // Ideally current bitmap saved to temp file
-                                        // Creating a temp file from bitmap to crop is complex here without saving first.
-                                        // For simplicity, we re-crop the original URI or need to save current state.
-                                        // Let's assume we crop the original loaded URI for now or prompt user.
                                         if (imageUri != null) {
                                             val options = CropImageContractOptions(uri = imageUri, cropImageOptions = CropImageOptions())
                                             cropImageLauncher.launch(options)
                                         }
-                                    }) {
-                                        Text("Open Cropper Implementation")
-                                    }
+                                    }) { Text("Crop Image") }
                                 }
                             }
                             EditorTab.ADJUST -> AdjustTab(
@@ -279,9 +535,10 @@ fun PhotoEditorScreen(
                                 onBrightnessChange = viewModel::updateBrightness,
                                 onContrastChange = viewModel::updateContrast,
                                 onSaturationChange = viewModel::updateSaturation,
-                                onHueChange = viewModel::updateHue,
-                                onTemperatureChange = viewModel::updateTemperature,
-                                onTintChange = viewModel::updateTint
+                                onHueChange = viewModel::setHue,
+                                onTemperatureChange = viewModel::setTemperature,
+                                onTintChange = viewModel::setTint,
+                                onReset = viewModel::resetAdjustments
                             )
                             EditorTab.FILTERS -> {
                                 com.moshitech.workmate.feature.imagestudio.components.FiltersTab(
@@ -290,256 +547,123 @@ fun PhotoEditorScreen(
                                     onClearFilter = viewModel::clearFilter
                                 )
                             }
+                            EditorTab.STICKERS -> {
+                                com.moshitech.workmate.feature.imagestudio.components.StickersTab(
+                                    onStickerSelected = { emoji -> viewModel.addSticker(text = emoji) }
+                                )
+                            }
                             EditorTab.TEXT -> {
-                                // Text Editor Toolbar
+                                // Text Editor Toolbar Content
                                 if (uiState.selectedTextLayerId != null) {
                                     val selectedLayer = uiState.textLayers.find { it.id == uiState.selectedTextLayerId }
                                     selectedLayer?.let { layer ->
-                                        com.moshitech.workmate.feature.imagestudio.components.TextEditorToolbar(
-                                            layer = layer,
-                                            visible = true,
-                                            onUpdate = { updatedLayer ->
-                                                viewModel.updateTextProperty(layer.id) { updatedLayer }
-                                            }
-                                        )
+                                        // This component needs to fill the panel to be useful in this new layout
+                                        Box(Modifier.fillMaxSize()) {
+                                            com.moshitech.workmate.feature.imagestudio.components.TextEditorToolbar(
+                                                layer = layer,
+                                                visible = true,
+                                                onUpdate = { updated -> viewModel.updateTextProperty(layer.id) { updated } },
+                                                onRequestEyedropper = { callback -> eyedropperCallback = callback },
+                                                onRequestTexturePick = { texturePickerLauncher.launch("image/*") },
+                                                modifier = Modifier.fillMaxSize() // Force fill
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Text("Select or Add Text to Edit", color = Color.Gray)
                                     }
                                 }
                             }
                             EditorTab.DRAW -> {
-                                Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.SpaceEvenly) {
-                                    // Tool selector
-                                    Text("Tool:", color = Color.White, style = MaterialTheme.typography.bodySmall)
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                        listOf(
-                                            com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.FREEHAND to "Pen",
-                                            com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.LINE to "Line",
-                                            com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.RECTANGLE to "Rect",
-                                            com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.CIRCLE to "Circle"
-                                        ).forEach { (tool, label) ->
-                                            TextButton(
-                                                onClick = { viewModel.selectDrawTool(tool) },
-                                                colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                                                    containerColor = if (uiState.selectedDrawTool == tool) MaterialTheme.colorScheme.primary else Color.Transparent
-                                                )
-                                            ) {
-                                                Text(label, color = Color.White, fontSize = 12.sp)
+                                    Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.SpaceEvenly) {
+                                        // Tool selector
+                                        Text("Tool:", color = Color.White, style = MaterialTheme.typography.bodySmall)
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                            listOf(
+                                                com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.FREEHAND to "Pen",
+                                                com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.LINE to "Line",
+                                                com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.RECTANGLE to "Rect",
+                                                com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.CIRCLE to "Circle"
+                                            ).forEach { (tool, label) ->
+                                                TextButton(
+                                                    onClick = { viewModel.selectDrawTool(tool) },
+                                                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                                                        containerColor = if (uiState.selectedDrawTool == tool) MaterialTheme.colorScheme.primary else Color.Transparent
+                                                    )
+                                                ) {
+                                                    Text(label, color = Color.White, fontSize = 12.sp)
+                                                }
                                             }
                                         }
-                                    }
-                                    
-                                    Text("Color:", color = Color.White, style = MaterialTheme.typography.bodySmall)
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                        listOf(Color.Red to android.graphics.Color.RED, Color.Blue to android.graphics.Color.BLUE, Color.Green to android.graphics.Color.GREEN, Color.Yellow to android.graphics.Color.YELLOW, Color.Black to android.graphics.Color.BLACK, Color.White to android.graphics.Color.WHITE).forEach { (c, i) ->
-                                            Box(Modifier.size(30.dp).background(c, androidx.compose.foundation.shape.CircleShape).border(if (uiState.currentDrawColor == i) 3.dp else 1.dp, if (uiState.currentDrawColor == i) MaterialTheme.colorScheme.primary else Color.Gray, androidx.compose.foundation.shape.CircleShape).clickable { viewModel.updateDrawColor(i) })
+                                        
+                                        Text("Color:", color = Color.White, style = MaterialTheme.typography.bodySmall)
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                            listOf(Color.Red to android.graphics.Color.RED, Color.Blue to android.graphics.Color.BLUE, Color.Green to android.graphics.Color.GREEN, Color.Yellow to android.graphics.Color.YELLOW, Color.Black to android.graphics.Color.BLACK, Color.White to android.graphics.Color.WHITE).forEach { (c, i) ->
+                                                Box(Modifier.size(30.dp).background(c, androidx.compose.foundation.shape.CircleShape).border(if (uiState.currentDrawColor == i) 3.dp else 1.dp, if (uiState.currentDrawColor == i) MaterialTheme.colorScheme.primary else Color.Gray, androidx.compose.foundation.shape.CircleShape).clickable { viewModel.updateDrawColor(i) })
+                                            }
                                         }
+                                        Text("Size: ${uiState.currentStrokeWidth.toInt()}px", color = Color.White, style = MaterialTheme.typography.bodySmall)
+                                        Slider(uiState.currentStrokeWidth, { viewModel.updateStrokeWidth(it) }, valueRange = 1f..50f, modifier = Modifier.height(20.dp))
                                     }
-                                    Text("Size: ${uiState.currentStrokeWidth.toInt()}px", color = Color.White, style = MaterialTheme.typography.bodySmall)
-                                    Slider(uiState.currentStrokeWidth, { viewModel.updateStrokeWidth(it) }, valueRange = 1f..50f, modifier = Modifier.height(20.dp))
-                                }
                             }
                             EditorTab.ROTATE -> {
                                 Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.SpaceEvenly) {
-                                    // Quick rotation buttons
-                                    Text("Quick Rotate:", color = Color.White, style = MaterialTheme.typography.bodySmall)
+                                    // Quick rotation
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                        TextButton(onClick = { viewModel.rotate90CCW() }) {
-                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                Text("↺", fontSize = 24.sp)
-                                                Text("90° CCW", fontSize = 10.sp)
-                                            }
-                                        }
-                                        TextButton(onClick = { viewModel.rotate90CW() }) {
-                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                Text("↻", fontSize = 24.sp)
-                                                Text("90° CW", fontSize = 10.sp)
-                                            }
-                                        }
+                                        TextButton(onClick = { viewModel.rotate90CCW() }) { Text("↺ CCW") }
+                                        TextButton(onClick = { viewModel.rotate90CW() }) { Text("↻ CW") }
                                     }
-                                    
-                                    // Flip buttons
-                                    Text("Flip:", color = Color.White, style = MaterialTheme.typography.bodySmall)
+                                    // Flip
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                        TextButton(onClick = { viewModel.flipHorizontal() }) {
-                                            Text("⇄ Horizontal")
-                                        }
-                                        TextButton(onClick = { viewModel.flipVertical() }) {
-                                            Text("⇅ Vertical")
-                                        }
+                                        TextButton(onClick = { viewModel.flipHorizontal() }) { Text("⇄ Horiz") }
+                                        TextButton(onClick = { viewModel.flipVertical() }) { Text("⇅ Vert") }
                                     }
-                                    
-                                    // Free rotation slider
-                                    Text("Angle: ${uiState.rotationAngle.toInt()}°", color = Color.White, style = MaterialTheme.typography.bodySmall)
+                                    // Slider
                                     Slider(
                                         value = uiState.rotationAngle,
                                         onValueChange = { viewModel.setRotationAngle(it) },
-                                        valueRange = 0f..360f,
-                                        modifier = Modifier.height(20.dp)
+                                        valueRange = 0f..360f
                                     )
                                 }
                             }
                         }
                     }
+                } // End Resizable Panel
 
-
-                    // Pixel-Perfect Bottom Navigation
-                    com.moshitech.workmate.feature.imagestudio.components.PhotoEditorBottomNav(
-                        selectedTool = when (currentTab) {
-                            EditorTab.CROP -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.CROP
-                            EditorTab.FILTERS -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.FILTERS
-                            EditorTab.ROTATE -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.ROTATE
-                            EditorTab.ADJUST -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.ADJUST
-                            EditorTab.TEXT -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.TEXT
-                            EditorTab.DRAW -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.DRAW
-                        },
-                        onToolSelected = { tool ->
+                // 3. FIXED Bottom Navigation (Pinned to bottom, outside resizable panel)
+                com.moshitech.workmate.feature.imagestudio.components.PhotoEditorBottomNav(
+                    selectedTool = when (currentTab) {
+                        EditorTab.CROP -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.CROP
+                        EditorTab.FILTERS -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.FILTERS
+                        EditorTab.STICKERS -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.STICKERS
+                        EditorTab.ROTATE -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.ROTATE
+                        EditorTab.ADJUST -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.ADJUST
+                        EditorTab.TEXT -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.TEXT
+                        EditorTab.DRAW -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.DRAW
+                    },
+                    onToolSelected = { tool ->
+                        if (tool == com.moshitech.workmate.feature.imagestudio.components.EditorTool.CROP) {
+                            currentTab = EditorTab.CROP
+                            if (imageUri != null) {
+                                val options = CropImageContractOptions(uri = imageUri, cropImageOptions = CropImageOptions())
+                                cropImageLauncher.launch(options)
+                            }
+                        } else {
                             currentTab = when (tool) {
-                                com.moshitech.workmate.feature.imagestudio.components.EditorTool.CROP -> EditorTab.CROP
                                 com.moshitech.workmate.feature.imagestudio.components.EditorTool.FILTERS -> EditorTab.FILTERS
+                                com.moshitech.workmate.feature.imagestudio.components.EditorTool.STICKERS -> EditorTab.STICKERS
                                 com.moshitech.workmate.feature.imagestudio.components.EditorTool.ROTATE -> EditorTab.ROTATE
                                 com.moshitech.workmate.feature.imagestudio.components.EditorTool.ADJUST -> EditorTab.ADJUST
                                 com.moshitech.workmate.feature.imagestudio.components.EditorTool.TEXT -> EditorTab.TEXT
                                 com.moshitech.workmate.feature.imagestudio.components.EditorTool.DRAW -> EditorTab.DRAW
+                                else -> currentTab
                             }
                         }
-                    )
-                }
-            }
-        ) { padding ->
-            // Zoom and Pan state
-            var scale by remember { mutableStateOf(1f) }
-            var offset by remember { mutableStateOf(Offset.Zero) }
-            
-            val transformableState = rememberTransformableState { zoomChange, panChange, _ ->
-                scale = (scale * zoomChange).coerceIn(1f, 5f)
-                
-                // Only allow panning when zoomed in
-                if (scale > 1f) {
-                    offset = offset + panChange
-                }
-            }
-            
-            Box(
-                modifier = Modifier
-                    .padding(padding)
-                    .fillMaxSize()
-                .background(Color(0xFF0D121F)) // Deep dark blue/black
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onTap = { viewModel.exitTextEditMode() },
-                            onDoubleTap = {
-                                // Double tap to reset zoom
-                                scale = 1f
-                                offset = Offset.Zero
-                            }
-                        )
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                if (uiState.isLoading) {
-                    CircularProgressIndicator(color = Color.White)
-                } else {
-                    val bitmapToShow = if (showOriginal) uiState.originalBitmap else uiState.previewBitmap
-                    if (bitmapToShow != null) {
-                        Image(
-                            bitmap = bitmapToShow.asImageBitmap(),
-                            contentDescription = "Preview",
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .transformable(state = transformableState)
-                                .graphicsLayer(
-                                    scaleX = scale,
-                                    scaleY = scale,
-                                    translationX = offset.x,
-                                    translationY = offset.y
-                                ),
-                            contentScale = ContentScale.FillWidth
-                        )
-                    } else {
-                        Text("No Image Loaded", color = Color.Gray)
                     }
-                }
+                )
                 
-                // Compare Label
-                if (showOriginal) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(top = 16.dp)
-                            .background(Color.Black.copy(alpha = 0.6f), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text("Original", color = Color.White)
-                    }
-                }
-                
-                // Zoom indicator
-                if (scale > 1f) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 140.dp)
-                            .background(Color.Black.copy(alpha = 0.6f), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text("${(scale * 100).toInt()}%", color = Color.White)
-                    }
-                }
-                
-                // Text Layers
-                uiState.textLayers.forEach { textLayer ->
-                    key(textLayer.id) {
-                        com.moshitech.workmate.feature.imagestudio.components.TextBoxComposable(
-                            layer = textLayer,
-                        isSelected = textLayer.id == uiState.selectedTextLayerId,
-                        isEditing = textLayer.id == uiState.editingTextLayerId,
-                        onSelect = { viewModel.selectTextLayer(it) },
-                        onEdit = { viewModel.enterTextEditMode(it) },
-                        onTransform = { id, pan, zoom, rotation -> 
-                            viewModel.updateTextLayerTransform(id, pan, zoom, rotation) 
-                        },
-                        onTextChange = { id, text -> viewModel.updateTextInline(id, text) },
-                        onDuplicate = { viewModel.duplicateTextLayer(it) },
-                        onDelete = { viewModel.removeTextLayer(it) },
-                    )
-                    }
-                }
-                
-                
-                // Bottom Text Editor Toolbar
-                // Floating Toolbar Removed - Moved to Bottom Bar
 
-                
-                
-                
-                // ADD NEW TEXT Pill Button
-                if (currentTab == EditorTab.TEXT) {
-                    Button(
-                        onClick = { viewModel.createTextBoxAtCenter() },
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(top = 24.dp)
-                            .height(40.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF007AFF) // iOS Blue
-                        ),
-                        shape = RoundedCornerShape(50), // Pill Shape
-                        contentPadding = PaddingValues(horizontal = 16.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Add,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            "Add New Text",
-                            color = Color.White,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp
-                        )
-                    }
-                }
                 
                 // Drawing Canvas
                 if (currentTab == EditorTab.DRAW) {
@@ -826,7 +950,7 @@ fun PhotoEditorScreen(
             var textInput by remember { mutableStateOf(editingLayer?.text ?: "") }
             var selectedColor by remember { mutableStateOf(editingLayer?.color ?: android.graphics.Color.WHITE) }
             var fontSize by remember { mutableStateOf(editingLayer?.fontSize ?: 24f) }
-            var fontFamily by remember { mutableStateOf(editingLayer?.fontFamily ?: "default") }
+            var fontFamily by remember { mutableStateOf(editingLayer?.fontFamily ?: com.moshitech.workmate.feature.imagestudio.viewmodel.AppFont.DEFAULT) }
             var isBold by remember { mutableStateOf(editingLayer?.isBold ?: false) }
             var isItalic by remember { mutableStateOf(editingLayer?.isItalic ?: false) }
             var alignment by remember { mutableStateOf(editingLayer?.alignment ?: com.moshitech.workmate.feature.imagestudio.viewmodel.TextAlignment.LEFT) }
@@ -858,14 +982,14 @@ fun PhotoEditorScreen(
                         // Font Family Selection
                         Text("Font:", style = MaterialTheme.typography.bodyMedium)
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            listOf("default", "serif", "monospace", "cursive").forEach { font ->
+                            com.moshitech.workmate.feature.imagestudio.viewmodel.AppFont.values().forEach { font ->
                                 androidx.compose.material3.FilterChip(
                                     selected = fontFamily == font,
                                     onClick = { fontFamily = font },
-                                    label = { Text(font.capitalize(java.util.Locale.ROOT)) }
+                                    label = { Text(font.name.lowercase().replace("_", " ").capitalize(java.util.Locale.ROOT)) }
                                 )
                             }
                         }
@@ -992,6 +1116,7 @@ fun PhotoEditorScreen(
                                         hasOutline = hasOutline,
                                         outlineColor = outlineColor,
                                         hasShadow = hasShadow
+
                                     )
                                 } else {
                                     viewModel.addTextLayer(
@@ -1038,82 +1163,158 @@ fun AdjustTab(
     onSaturationChange: (Float) -> Unit,
     onHueChange: (Float) -> Unit,
     onTemperatureChange: (Float) -> Unit,
-    onTintChange: (Float) -> Unit
+    onTintChange: (Float) -> Unit,
+    onReset: () -> Unit // New Callback
 ) {
-    Column {
-        // Brightness
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Brightness", color = Color.White, modifier = Modifier.width(80.dp), style = MaterialTheme.typography.bodySmall)
-            Slider(
-                value = brightness,
-                onValueChange = onBrightnessChange,
-                valueRange = -1f..1f,
-                modifier = Modifier.weight(1f),
-                colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp) // Reduced Gap 
+    ) {
+        // Header with Title and Reset
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Adjustments",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                modifier = Modifier.padding(start = 8.dp)
             )
-        }
-        
-        // Contrast
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Contrast", color = Color.White, modifier = Modifier.width(80.dp), style = MaterialTheme.typography.bodySmall)
-            Slider(
-                value = contrast,
-                onValueChange = onContrastChange,
-                valueRange = 0f..2f,
-                modifier = Modifier.weight(1f),
-                colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
-            )
+            
+            TextButton(onClick = onReset) {
+                Text("Reset Default", color = Color(0xFF007AFF), fontSize = 14.sp)
+            }
         }
 
-        // Saturation
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Saturation", color = Color.White, modifier = Modifier.width(80.dp), style = MaterialTheme.typography.bodySmall)
-            Slider(
-                value = saturation,
-                onValueChange = onSaturationChange,
-                valueRange = 0f..2f,
-                modifier = Modifier.weight(1f),
-                colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
-            )
+        // Helper functions
+        fun formatPercent(value: Float): String {
+             val intVal = (value * 100).toInt()
+             return if (intVal > 0) "+$intVal" else "$intVal"
         }
         
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        // Hue
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Hue", color = Color.White, modifier = Modifier.width(80.dp), style = MaterialTheme.typography.bodySmall)
-            Slider(
-                value = hue,
-                onValueChange = onHueChange,
-                valueRange = -180f..180f,
-                modifier = Modifier.weight(1f),
-                colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
-            )
+        fun formatFactor(value: Float): String {
+            val intVal = ((value - 1f) * 100).toInt()
+            return if (intVal > 0) "+$intVal" else "$intVal"
         }
+
+        CompactSlider(
+            label = "Brightness",
+            value = brightness,
+            onValueChange = onBrightnessChange,
+            range = -1f..1f,
+            displayValue = formatPercent(brightness)
+        )
+
+        CompactSlider(
+            label = "Contrast",
+            value = contrast,
+            onValueChange = onContrastChange,
+            range = 0f..2f,
+            displayValue = formatFactor(contrast)
+        )
+
+        CompactSlider(
+            label = "Saturation",
+            value = saturation,
+            onValueChange = onSaturationChange,
+            range = 0f..2f,
+            displayValue = formatFactor(saturation)
+        )
+
+        CompactSlider(
+            label = "Hue",
+            value = hue,
+            onValueChange = onHueChange,
+            range = -180f..180f,
+            displayValue = "${hue.toInt()}°"
+        )
         
-        // Temperature
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Temperature", color = Color.White, modifier = Modifier.width(80.dp), style = MaterialTheme.typography.bodySmall)
-            Slider(
-                value = temperature,
-                onValueChange = onTemperatureChange,
-                valueRange = -1f..1f,
-                modifier = Modifier.weight(1f),
-                colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
-            )
-        }
+        CompactSlider(
+            label = "Temp",
+            value = temperature,
+            onValueChange = onTemperatureChange,
+            range = -1f..1f,
+            displayValue = formatPercent(temperature)
+        )
         
-        // Tint
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Tint", color = Color.White, modifier = Modifier.width(80.dp), style = MaterialTheme.typography.bodySmall)
-            Slider(
-                value = tint,
-                onValueChange = onTintChange,
-                valueRange = -1f..1f,
-                modifier = Modifier.weight(1f),
-                colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
-            )
-        }
+        CompactSlider(
+            label = "Tint",
+            value = tint,
+            onValueChange = onTintChange,
+            range = -1f..1f,
+            displayValue = formatPercent(tint)
+        )
+        
+        Spacer(modifier = Modifier.height(32.dp))
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CompactSlider(
+    label: String,
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    range: ClosedFloatingPointRange<Float>,
+    displayValue: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            color = Color(0xFFE0E0E0),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.width(70.dp)
+        )
+        
+        // Custom Slider with Thin Track and Custom Thumb
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = range,
+            modifier = Modifier.weight(1f),
+            colors = SliderDefaults.colors(
+                activeTrackColor = Color(0xFF007AFF),
+                inactiveTrackColor = Color(0xFF2C2C2E)
+            ),
+            thumb = {
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .background(Color.White, CircleShape)
+                        .padding(6.dp) 
+                        .background(Color(0xFF007AFF), CircleShape)
+                )
+            },
+            track = { sliderState ->
+                SliderDefaults.Track(
+                    colors = SliderDefaults.colors(
+                        activeTrackColor = Color(0xFF007AFF),
+                        inactiveTrackColor = Color(0xFF2C2C2E)
+                    ),
+                    sliderState = sliderState,
+                    modifier = Modifier.height(4.dp) // Thinner Track (Default is often thicker)
+                )
+            }
+        )
+        
+        Text(
+            text = displayValue,
+            color = Color(0xFFB0B0B0),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.width(42.dp),
+            textAlign = TextAlign.End
+        )
     }
 }
 

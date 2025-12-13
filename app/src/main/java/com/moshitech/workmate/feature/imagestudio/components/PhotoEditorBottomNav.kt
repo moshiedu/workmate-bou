@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 enum class EditorTool {
-    CROP, FILTERS, ROTATE, ADJUST, TEXT, DRAW
+    CROP, FILTERS, STICKERS, ROTATE, ADJUST, TEXT, DRAW
 }
 
 @Composable
@@ -57,6 +57,15 @@ fun PhotoEditorBottomNav(
                 isSelected = selectedTool == EditorTool.FILTERS,
                 onClick = { onToolSelected(EditorTool.FILTERS) }
             )
+
+            // Stickers
+            BottomNavItem(
+                icon = Icons.Outlined.EmojiEmotions,
+                label = "Stickers",
+                isSelected = selectedTool == EditorTool.STICKERS,
+                onClick = { onToolSelected(EditorTool.STICKERS) }
+            )
+
             
             // Rotate
             BottomNavItem(
@@ -105,43 +114,34 @@ fun BottomNavItem(
     Column(
         modifier = Modifier
             .clickable(onClick = onClick)
-            .padding(horizontal = 4.dp, vertical = 4.dp),
+            .padding(horizontal = 4.dp, vertical = 2.dp), // Reduced padding
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp) // More space between icon and text
+        verticalArrangement = Arrangement.spacedBy(4.dp) // Tighter spacing
     ) {
-        // Icon with blue rounded square background if selected
-        Box(
-            modifier = Modifier
-                .size(48.dp) // Larger square
-                .background(
-                    if (isSelected) Color(0xFF007AFF) else Color.Transparent,
-                    RoundedCornerShape(16.dp) // Softer corners
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            if (customLabel != null) {
-                // Show "T" text instead of icon
-                Text(
-                    text = customLabel,
-                    color = if (isSelected) Color.White else Color.Gray,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            } else {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = label,
-                    tint = if (isSelected) Color.White else Color.Gray,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
+        val contentColor = if (isSelected) Color(0xFF007AFF) else Color.Gray
+        
+        // Icon
+        if (customLabel != null) {
+            Text(
+                text = customLabel,
+                color = contentColor,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold
+            )
+        } else {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = contentColor,
+                modifier = Modifier.size(24.dp)
+            )
         }
         
         // Label
         Text(
             text = label,
-            color = if (isSelected) Color(0xFF007AFF) else Color.Gray,
-            fontSize = 12.sp, // Slightly larger label
+            color = contentColor,
+            fontSize = 10.sp, // Compact Label
             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
         )
     }

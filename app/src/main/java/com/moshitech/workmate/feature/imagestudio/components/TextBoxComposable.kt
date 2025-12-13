@@ -38,12 +38,34 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.LinearGradientShader
+import androidx.compose.ui.graphics.Shader
+import androidx.compose.ui.geometry.Size
+import kotlin.math.*
 import androidx.compose.ui.unit.sp
+import android.graphics.Typeface
+import android.graphics.Paint
+import android.graphics.Path
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import com.moshitech.workmate.feature.imagestudio.viewmodel.TextAlignment
 import com.moshitech.workmate.feature.imagestudio.viewmodel.TextLayer
+import kotlinx.coroutines.invoke
+import androidx.core.net.toUri
+import com.moshitech.workmate.feature.imagestudio.viewmodel.AppFont
 
 @Composable
 fun TextBoxComposable(
@@ -67,7 +89,30 @@ fun TextBoxComposable(
                 scaleX = layer.scale
                 scaleY = layer.scale
                 rotationZ = layer.rotation
+                rotationX = layer.rotationX
+                rotationY = layer.rotationY
+                cameraDistance = 8 * density
+                
+                // Blend Mode Application
+                val composeBlendMode = when(layer.blendMode) {
+                    com.moshitech.workmate.feature.imagestudio.viewmodel.LayerBlendMode.NORMAL -> androidx.compose.ui.graphics.BlendMode.SrcOver
+                    com.moshitech.workmate.feature.imagestudio.viewmodel.LayerBlendMode.OVERLAY -> androidx.compose.ui.graphics.BlendMode.Overlay
+                    com.moshitech.workmate.feature.imagestudio.viewmodel.LayerBlendMode.SCREEN -> androidx.compose.ui.graphics.BlendMode.Screen
+                    com.moshitech.workmate.feature.imagestudio.viewmodel.LayerBlendMode.MULTIPLY -> androidx.compose.ui.graphics.BlendMode.Multiply
+                    com.moshitech.workmate.feature.imagestudio.viewmodel.LayerBlendMode.ADD -> androidx.compose.ui.graphics.BlendMode.Plus
+                    com.moshitech.workmate.feature.imagestudio.viewmodel.LayerBlendMode.DIFFERENCE -> androidx.compose.ui.graphics.BlendMode.Difference
+                }
+                this.blendMode = composeBlendMode
+                
+                // Required for BlendMode to work correctly with transparency
+                if (layer.blendMode != com.moshitech.workmate.feature.imagestudio.viewmodel.LayerBlendMode.NORMAL) {
+                    compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen
+                }
             }
+            .then(
+                if (layer.textBlur > 0f) Modifier.blur(layer.textBlur.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)
+                else Modifier
+            )
             // General Drag/Pinch/Rotate on the text body
             .pointerInput(layer.id, layer.isLocked, isEditing) {
                 if (!layer.isLocked && !isEditing) {
@@ -86,106 +131,302 @@ fun TextBoxComposable(
                 )
             }
     ) {
-        // Content with Dashed Border
-        Box(
-            modifier = Modifier
-                .width(IntrinsicSize.Max)
-                .height(IntrinsicSize.Min)
-                .padding(12.dp) // Space for handles to not overlap too much
-                .drawBehind {
-                    if (isSelected) {
-                        val stroke = 2.dp.toPx() / layer.scale
-                        val pathEffect = PathEffect.dashPathEffect(floatArrayOf(20f, 15f), 0f)
-                        drawRoundRect(
-                            color = Color.White,
-                            cornerRadius = CornerRadius(4.dp.toPx()),
-                            style = Stroke(width = stroke, pathEffect = pathEffect)
-                        )
-                    }
-                }
-                .background(
-                    if (layer.showBackground) Color(layer.backgroundColor)
-                    else Color.Transparent,
-                    RoundedCornerShape(4.dp)
-                )
-                .padding(layer.backgroundPadding.dp)
-        ) {
-            // ... (Text content logic remains same, just context)
-            // Text Display
-            val displayText = buildAnnotatedString {
-                if (layer.text.isEmpty() && !isEditing) {
-                    append("Your Text Here")
-                } else if (layer.isAllCaps) {
-                    append(layer.text.uppercase())
-                } else if (layer.isSmallCaps) {
-                    val upperCaseText = layer.text.uppercase()
-                    layer.text.forEachIndexed { index, char ->
-                        if (char.isLowerCase()) {
-                            withStyle(SpanStyle(fontSize = (layer.fontSize * 0.7f).sp)) {
-                                append(upperCaseText[index])
-                            }
-                        } else {
-                            append(upperCaseText[index])
+        // Content with Reflection capability
+        val textContent: @Composable (showBorder: Boolean) -> Unit = { showBorder ->
+            Box(
+                modifier = Modifier
+                    .width(IntrinsicSize.Max)
+                    .height(IntrinsicSize.Min)
+                    .padding(12.dp) // Space for handles to not overlap too much
+                    .drawBehind {
+                        if (showBorder) {
+                            val stroke = 2.dp.toPx() / layer.scale
+                            val pathEffect = PathEffect.dashPathEffect(floatArrayOf(20f, 15f), 0f)
+                            drawRoundRect(
+                                color = Color.White,
+                                cornerRadius = CornerRadius(4.dp.toPx()),
+                                style = Stroke(width = stroke, pathEffect = pathEffect)
+                            )
                         }
                     }
-                } else {
-                    append(layer.text)
-                }
-            }
-            
-            val textStyle = TextStyle(
-                color = Color(layer.color),
-                fontSize = layer.fontSize.sp,
-                fontWeight = if (layer.isBold) FontWeight.Bold else FontWeight.Normal,
-                fontStyle = if (layer.isItalic) FontStyle.Italic else FontStyle.Normal,
-                textDecoration = when {
-                    layer.isUnderline && layer.isStrikethrough -> TextDecoration.combine(
-                        listOf(TextDecoration.Underline, TextDecoration.LineThrough)
+                    .background(
+                        if (layer.showBackground) Color(layer.backgroundColor)
+                        else Color.Transparent,
+                        RoundedCornerShape(layer.backgroundCornerRadius.dp)
                     )
-                    layer.isUnderline -> TextDecoration.Underline
-                    layer.isStrikethrough -> TextDecoration.LineThrough
-                    else -> TextDecoration.None
-                },
-                textAlign = when (layer.alignment) {
-                    TextAlignment.LEFT -> TextAlign.Left
-                    TextAlignment.CENTER -> TextAlign.Center
-                    TextAlignment.RIGHT -> TextAlign.Right
-                    TextAlignment.JUSTIFY -> TextAlign.Justify
-                },
-                letterSpacing = layer.letterSpacing.sp,
-                lineHeight = (layer.fontSize * layer.lineHeight).sp,
-                shadow = if (layer.hasShadow) Shadow(
-                    color = Color(layer.shadowColor),
-                    offset = Offset(layer.shadowOffsetX, layer.shadowOffsetY),
-                    blurRadius = layer.shadowBlur
-                ) else null // Basic shadow support
-            )
-
-            if (isEditing) {
-                val focusRequester = remember { FocusRequester() }
+                    .padding(layer.backgroundPadding.dp)
+            ) {
+                val context = androidx.compose.ui.platform.LocalContext.current
+                var textureBrush by remember(layer.textureUri) { mutableStateOf<Brush?>(null) }
                 
-                LaunchedEffect(Unit) {
-                    focusRequester.requestFocus()
+                LaunchedEffect(layer.textureUri) {
+                    if (layer.textureUri != null) {
+                        try {
+                            kotlinx.coroutines.Dispatchers.IO.invoke {
+                                val uri = layer.textureUri.toUri()
+                                val inputStream = context.contentResolver.openInputStream(uri)
+                                val bitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
+                                val imageShader = androidx.compose.ui.graphics.ImageShader(
+                                    bitmap.asImageBitmap(), 
+                                    androidx.compose.ui.graphics.TileMode.Mirror, 
+                                    androidx.compose.ui.graphics.TileMode.Mirror
+                                )
+                                textureBrush = ShaderBrush(imageShader)
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            textureBrush = null
+                        }
+                    } else {
+                        textureBrush = null
+                    }
                 }
 
-                BasicTextField(
-                    value = layer.text,
-                    onValueChange = { onTextChange(layer.id, it) },
-                    textStyle = textStyle,
-                    modifier = Modifier
-                        .defaultMinSize(minWidth = 50.dp)
-                        .focusRequester(focusRequester),
-                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Color.White)
+                // Pre-calculate Brush
+                val gradientBrush = if (layer.isGradient) {
+                    createGradientBrush(
+                        layer.gradientColors.map { Color(it) }, 
+                        layer.gradientAngle
+                    )
+                } else null
+                
+                // Priority: Texture > Gradient
+                val finalBrush = textureBrush ?: gradientBrush
+
+                // Text Display Logic (For Non-Editing State)
+                val displayText = buildAnnotatedString {
+                    if (finalBrush != null && !layer.isNeon) {
+                        pushStyle(SpanStyle(brush = finalBrush))
+                    }
+                    
+                    if (layer.text.isEmpty() && !isEditing) {
+                        append("Your Text Here")
+                    } else if (layer.isAllCaps) {
+                        append(layer.text.uppercase())
+                    } else if (layer.isSmallCaps) {
+                        val upperCaseText = layer.text.uppercase()
+                        layer.text.forEachIndexed { index, char ->
+                            if (char.isLowerCase()) {
+                                withStyle(SpanStyle(fontSize = (layer.fontSize * 0.7f).sp)) {
+                                    append(upperCaseText[index])
+                                }
+                            } else {
+                                append(upperCaseText[index])
+                            }
+                        }
+                    } else {
+                        append(layer.text)
+                    }
+                    
+                    if (finalBrush != null && !layer.isNeon) {
+                        pop()
+                    }
+                }
+
+                // TextStyle (Neon & Glitch aware)
+                val baseColor = if (layer.isGradient) Color.Unspecified else Color(layer.color)
+                
+                // Neon Logic: White core, Colored Glow.
+                // If Texture/Gradient is active, we can't easily show it in BasicTextField without 'brush' support in TextStyle.
+                // So for Editing, we fallback to Solid Color if Brush is active? Or Unspecified?
+                // If we use Unspecified, text is invisible.
+                // So if Editing AND Brush Active, we might show a placeholder color (e.g. Black/White or primary color)?
+                // Let's use baseColor (or Black if Unspecified?) for editing if brush is active.
+                
+                val useBrush = finalBrush != null
+                val finalColor = if (layer.isNeon) Color.White 
+                                 else if (useBrush && !isEditing) Color.Unspecified // When non-editing, AnnotatedString handles brush. 
+                                 else if (useBrush && isEditing) Color.Black // Fallback for editing? Or layer.color?
+                                 else baseColor
+                                 
+                // Actually, wait. 'displayText' is used in the `else` block (isEditing = false).
+                // `BasicTextField` uses `layer.text` and `textStyle`.
+                // If isEditing is true, we are in BasicTextField.
+                // If we can't pass brush to textStyle, we show solid color.
+                // So `finalColor` should be `baseColor` (or White for Neon).
+                // If Gradient/Texture is on, using `baseColor` is fine for editing.
+                
+                val effectiveColor = if (layer.isNeon) Color.White 
+                                     else if (useBrush && isEditing) Color.Black // Show simplified black text while editing texture? Or maybe just layer.color?
+                                     else if (useBrush) Color.Unspecified // Handled by SpanStyle
+                                     else baseColor
+
+                val finalShadow = if (layer.isNeon) {
+                    Shadow(color = Color(layer.color), blurRadius = 30f, offset = Offset.Zero)
+                } else if (layer.hasShadow) {
+                    Shadow(
+                        color = Color(layer.shadowColor),
+                        offset = Offset(layer.shadowOffsetX, layer.shadowOffsetY),
+                        blurRadius = layer.shadowBlur
+                    )
+                } else null
+
+                val textStyle = TextStyle(
+                    // Removed 'brush' parameter as it caused compilation error on older Compose versions
+                    color = effectiveColor, 
+                    fontSize = layer.fontSize.sp,
+                    fontFamily = when(layer.fontFamily) {
+                        AppFont.DEFAULT -> androidx.compose.ui.text.font.FontFamily.Default
+                        AppFont.SERIF -> androidx.compose.ui.text.font.FontFamily.Serif
+                        AppFont.SANS_SERIF -> androidx.compose.ui.text.font.FontFamily.SansSerif
+                        AppFont.MONOSPACE -> androidx.compose.ui.text.font.FontFamily.Monospace
+                        AppFont.CURSIVE -> androidx.compose.ui.text.font.FontFamily.Cursive
+                        AppFont.LOBSTER -> androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font(com.moshitech.workmate.R.font.lobster))
+                        AppFont.BANGERS -> androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font(com.moshitech.workmate.R.font.bangers))
+                        AppFont.OSWALD -> androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font(com.moshitech.workmate.R.font.oswald_medium))
+                        AppFont.PLAYFAIR -> androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font(com.moshitech.workmate.R.font.playfair_display))
+                        else -> androidx.compose.ui.text.font.FontFamily.Default
+                    },
+                    fontWeight = if (layer.isBold) FontWeight.Bold else FontWeight.Normal,
+                    fontStyle = if (layer.isItalic) FontStyle.Italic else FontStyle.Normal,
+                    textDecoration = when {
+                        layer.isUnderline && layer.isStrikethrough -> TextDecoration.combine(
+                            listOf(TextDecoration.Underline, TextDecoration.LineThrough)
+                        )
+                        layer.isUnderline -> TextDecoration.Underline
+                        layer.isStrikethrough -> TextDecoration.LineThrough
+                        else -> TextDecoration.None
+                    },
+                    textAlign = when (layer.alignment) {
+                        TextAlignment.LEFT -> TextAlign.Left
+                        TextAlignment.CENTER -> TextAlign.Center
+                        TextAlignment.RIGHT -> TextAlign.Right
+                        TextAlignment.JUSTIFY -> TextAlign.Justify
+                    },
+                    letterSpacing = layer.letterSpacing.sp,
+                    lineHeight = (layer.fontSize * layer.lineHeight).sp,
+                    shadow = finalShadow
                 )
-            } else {
-                Text(
-                    text = displayText,
-                    style = textStyle,
-                    modifier = Modifier.defaultMinSize(minWidth = 50.dp)
-                        .graphicsLayer { alpha = layer.layerOpacity }
-                )
+
+                if (isEditing) {
+                    val focusRequester = remember { FocusRequester() }
+                    LaunchedEffect(Unit) {
+                        focusRequester.requestFocus()
+                    }
+
+                    BasicTextField(
+                        value = layer.text,
+                        onValueChange = { onTextChange(layer.id, it) },
+                        textStyle = textStyle,
+                        modifier = Modifier
+                            .defaultMinSize(minWidth = 50.dp)
+                            .focusRequester(focusRequester),
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(Color.White)
+                    )
+                } else {
+                    val density = LocalDensity.current
+                    Box(modifier = Modifier.graphicsLayer { alpha = layer.layerOpacity }) {
+                        
+                        // Detect if we need to render Glitch layers
+                        // We render them BEHIND the main text
+                        
+                        if (abs(layer.curvature) > 0f) {
+                             // --- CURVED MODE ---
+                             
+                             // 1. Glitch Layers (Curved)
+                             if (layer.isGlitch) {
+                                 val glitchOffset = 2.dp
+                                 // Red Shift
+                                 Box(modifier = Modifier.offset(x = -glitchOffset, y = -glitchOffset)) {
+                                     CurvedTextRenderer(
+                                         text = displayText.text,
+                                         layer = layer.copy(color = Color.Red.toArgb(), isNeon = false, layerOpacity = 0.7f),
+                                         density = density
+                                     )
+                                 }
+                                 // Cyan Shift
+                                 Box(modifier = Modifier.offset(x = glitchOffset, y = glitchOffset)) {
+                                     CurvedTextRenderer(
+                                         text = displayText.text,
+                                         layer = layer.copy(color = Color.Cyan.toArgb(), isNeon = false, layerOpacity = 0.7f),
+                                         density = density
+                                     )
+                                 }
+                             }
+
+                             // 2. Invisible Layout Reserver
+                             Text(
+                                text = displayText,
+                                style = textStyle.copy(color = Color.Transparent, shadow = null),
+                                modifier = Modifier.defaultMinSize(minWidth = 50.dp).alpha(0f)
+                             )
+                             
+                             // 3. Main Curved Render
+                             CurvedTextRenderer(
+                                 text = displayText.text,
+                                 layer = layer, // Passes current Neon/Color state
+                                 density = density
+                             )
+                        } else {
+                            // --- STRAIGHT MODE ---
+                            
+                            // 1. Glitch Layers (Straight)
+                            if (layer.isGlitch) {
+                                 val glitchOffset = 2.dp
+                                 // Red Shift
+                                 Text(
+                                     text = displayText,
+                                     style = textStyle.copy(color = Color.Red.copy(alpha = 0.7f), shadow = null),
+                                     modifier = Modifier.offset(x = -glitchOffset, y = -glitchOffset)
+                                 )
+                                 // Cyan Shift
+                                 Text(
+                                     text = displayText,
+                                     style = textStyle.copy(color = Color.Cyan.copy(alpha = 0.7f), shadow = null),
+                                     modifier = Modifier.offset(x = glitchOffset, y = glitchOffset)
+                                 )
+                            }
+                            
+                            if (layer.outlineWidth > 0f) {
+                                // Outline Layer
+                                Text(
+                                    text = displayText,
+                                    style = textStyle.copy(
+                                        color = Color(layer.outlineColor),
+                                        drawStyle = Stroke(
+                                            width = with(density) { layer.outlineWidth.dp.toPx() },
+                                            join = StrokeJoin.Round
+                                        )
+                                    ),
+                                    modifier = Modifier.defaultMinSize(minWidth = 50.dp)
+                                )
+                                // Fill Layer
+                                Text(
+                                    text = displayText,
+                                    style = textStyle.copy(shadow = null),
+                                    modifier = Modifier.defaultMinSize(minWidth = 50.dp)
+                                )
+                            } else {
+                                Text(
+                                    text = displayText,
+                                    style = textStyle,
+                                    modifier = Modifier.defaultMinSize(minWidth = 50.dp)
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
+        
+        // Reflection Render (Behind)
+        if (!isEditing && layer.reflectionOpacity > 0f) {
+            Box(
+                modifier = Modifier
+                     .graphicsLayer {
+                         rotationX = 180f // Flip vertically
+                         // Subtract padding gap (12dp top + 12dp bottom = 24dp, using 22dp for safety)
+                         translationY = size.height - 22.dp.toPx() + layer.reflectionOffset.dp.toPx()
+                         alpha = layer.reflectionOpacity
+                         cameraDistance = 8 * density 
+                     }
+            ) {
+                textContent(false) // No selection border in reflection
+            }
+        }
+
+        // Main Render
+        textContent(isSelected)
 
         // Overlay Handles
         if (isSelected && !layer.isLocked) {
@@ -269,6 +510,198 @@ fun TextBoxComposable(
                         }
                     }
             )
+        }
+    }
+}
+
+fun createGradientBrush(colors: List<Color>, angle: Float): Brush {
+    return object : ShaderBrush() {
+        override fun createShader(size: Size): Shader {
+            val center = Offset(size.width / 2, size.height / 2)
+            val angleRad = (angle * PI / 180).toFloat()
+            val r = sqrt(size.width.pow(2) + size.height.pow(2)) / 2
+            val start = Offset(
+                center.x - r * cos(angleRad),
+                center.y - r * sin(angleRad)
+            )
+            val end = Offset(
+                center.x + r * cos(angleRad),
+                center.y + r * sin(angleRad)
+            )
+            return LinearGradientShader(
+                from = start,
+                to = end,
+                colors = colors,
+                tileMode = androidx.compose.ui.graphics.TileMode.Clamp
+            )
+        }
+    }
+}
+
+@Composable
+fun CurvedTextRenderer(
+    text: String,
+    layer: TextLayer,
+    density: androidx.compose.ui.unit.Density
+) {
+    if (text.isEmpty()) return
+
+    val paint = remember { Paint() }
+    val path = remember { Path() }
+    val strokePaint = remember { Paint() } // For outline
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val fontSizePx = with(density) { layer.fontSize.sp.toPx() }
+        
+        // 1. Configure Main Paint
+        paint.reset()
+        paint.textSize = fontSizePx
+        paint.isAntiAlias = true
+        paint.textAlign = Paint.Align.LEFT // Use Layout alignment logic (Rule 6)
+        
+        // Native Paint LetterSpacing
+        if (layer.letterSpacing != 0f) {
+           paint.letterSpacing = layer.letterSpacing / layer.fontSize
+        }
+
+        // Typeface
+        var style = Typeface.NORMAL
+        if (layer.isBold && layer.isItalic) style = Typeface.BOLD_ITALIC
+        else if (layer.isBold) style = Typeface.BOLD
+        else if (layer.isItalic) style = Typeface.ITALIC
+        
+        paint.typeface = Typeface.create(Typeface.DEFAULT, style)
+        paint.isUnderlineText = layer.isUnderline
+        paint.isStrikeThruText = layer.isStrikethrough
+        
+        // Shadow
+        if (layer.hasShadow) {
+            paint.setShadowLayer(
+                layer.shadowBlur,
+                layer.shadowOffsetX,
+                layer.shadowOffsetY,
+                layer.shadowColor
+            )
+        }
+
+        // Color / Gradient
+        if (layer.isGradient) {
+             val shader = android.graphics.LinearGradient(
+                 0f, 0f, size.width, size.height, 
+                 layer.gradientColors.toIntArray(),
+                 null,
+                 android.graphics.Shader.TileMode.CLAMP
+             )
+             paint.shader = shader
+        } else {
+             paint.color = layer.color
+             paint.shader = null
+        }
+        
+        // 2. Configure Outline Paint
+        val hasOutline = layer.outlineWidth > 0f
+        if (hasOutline) {
+            strokePaint.set(paint)
+            strokePaint.style = Paint.Style.STROKE
+            strokePaint.strokeWidth = with(density) { layer.outlineWidth.dp.toPx() }
+            strokePaint.color = layer.outlineColor
+            strokePaint.shader = null
+            strokePaint.setShadowLayer(0f, 0f, 0f, 0)
+            strokePaint.strokeJoin = Paint.Join.ROUND
+        }
+
+        // Rule 1: Measure text first (always)
+        val textWidth = paint.measureText(text)
+        val fm = paint.fontMetrics
+        
+        // Rule 2: Clamp curvature
+        val angleDeg = layer.curvature.coerceIn(-180f, 180f)
+
+        // Fallback for straight text (Small curvature)
+        if (abs(angleDeg) < 5f) {
+             val centerY = size.height / 2
+             
+             // Simple centering for straight text
+             val xPos = when(layer.alignment) {
+                 TextAlignment.LEFT -> 0f
+                 TextAlignment.CENTER -> (size.width - textWidth) / 2f
+                 TextAlignment.RIGHT -> size.width - textWidth
+                 else -> (size.width - textWidth) / 2f
+             }
+             
+             // Vertically center based on metrics
+             val vOffsetCenter = centerY - (fm.ascent + fm.descent) / 2f
+             
+             drawIntoCanvas { canvas ->
+                 if (hasOutline) canvas.nativeCanvas.drawText(text, xPos, vOffsetCenter, strokePaint)
+                 canvas.nativeCanvas.drawText(text, xPos, vOffsetCenter, paint)
+             }
+             
+        } else {
+             // Rule 3: Use stable radius formula
+             val angleRad = Math.toRadians(abs(angleDeg).toDouble())
+             val radius = (textWidth / angleRad).toFloat()
+             
+             val centerX = size.width / 2
+             val centerY = size.height / 2
+             
+             // Dynamic Oval Centering (Fix for "Flying Text" bug)
+             // We shift the oval center so the Arc Vertex touches the View Center (centerY)
+             
+             val oval = android.graphics.RectF()
+             
+             val startAngle: Float
+             
+             if (angleDeg > 0) {
+                 // Arch (Curve UP). Vertex is at Top (-90).
+                 // We want Top of Oval to be at centerY.
+                 // Oval Center = centerY + radius
+                 val circleCenterY = centerY + radius
+                 oval.set(
+                     centerX - radius,
+                     circleCenterY - radius,
+                     centerX + radius,
+                     circleCenterY + radius
+                 )
+                 startAngle = -90f - angleDeg / 2
+             } else {
+                 // Smile (Curve DOWN). Vertex is at Bottom (90).
+                 // We want Bottom of Oval to be at centerY.
+                 // Oval Center = centerY - radius
+                 val circleCenterY = centerY - radius
+                 oval.set(
+                     centerX - radius,
+                     circleCenterY - radius,
+                     centerX + radius,
+                     circleCenterY + radius
+                 )
+                 startAngle = 90f - abs(angleDeg) / 2
+             }
+                 
+             path.reset()
+             path.addArc(oval, startAngle, angleDeg)
+             
+             // Rule 6: Correct horizontal alignment
+             val pathLength = (2 * PI * radius * (abs(angleDeg) / 360f)).toFloat()
+             
+             val hOffset = when (layer.alignment) {
+                 TextAlignment.LEFT -> 0f
+                 TextAlignment.CENTER -> (pathLength - textWidth) / 2f
+                 TextAlignment.RIGHT -> pathLength - textWidth
+                 else -> (pathLength - textWidth) / 2f
+             }
+             
+             // Rule 7: Proper vertical offset using font metrics
+             // Center the text vertically on the path
+             val vOffset = -(fm.ascent + fm.descent) / 2f
+             
+             // Rule 8: Draw order
+             drawIntoCanvas { canvas ->
+                 if (hasOutline) {
+                     canvas.nativeCanvas.drawTextOnPath(text, path, hOffset, vOffset, strokePaint)
+                 }
+                 canvas.nativeCanvas.drawTextOnPath(text, path, hOffset, vOffset, paint)
+             }
         }
     }
 }
