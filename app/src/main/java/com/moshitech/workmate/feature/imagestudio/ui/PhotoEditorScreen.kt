@@ -89,6 +89,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.input.pointer.pointerInput
@@ -126,6 +127,9 @@ import com.canhub.cropper.CropImageContract
 import com.canhub.cropper.CropImageContractOptions
 import com.canhub.cropper.CropImageOptions
 import com.moshitech.workmate.feature.imagestudio.components.AdContainer
+import com.moshitech.workmate.feature.imagestudio.components.TextEditorBottomToolbar
+import com.moshitech.workmate.feature.imagestudio.components.TextEditorToolbar
+import com.moshitech.workmate.feature.imagestudio.components.CompactModernSlider
 import com.moshitech.workmate.feature.imagestudio.viewmodel.PhotoEditorViewModel
 import com.moshitech.workmate.feature.imagestudio.viewmodel.DrawAction
 
@@ -418,336 +422,368 @@ fun PhotoEditorScreen(
                             },
                         contentAlignment = Alignment.Center
                     ) {
-                        if (uiState.isLoading) {
-                            CircularProgressIndicator(color = Color.White)
-                        } else {
-                            val bitmapToShow = if (showOriginal) uiState.originalBitmap else uiState.previewBitmap
-                            if (bitmapToShow != null) {
+
+                    if (uiState.isLoading) {
+                        CircularProgressIndicator(color = Color.White)
+                    } else {
+                        val bitmapToShow = if (showOriginal) uiState.originalBitmap else uiState.previewBitmap
+                        if (bitmapToShow != null) {
+                            val density = LocalDensity.current
+                            // Calculate display size based on Bitmap dimensions (Unscaled)
+                            val displayWidth = with(density) { bitmapToShow.width.toDp() }
+                            val displayHeight = with(density) { bitmapToShow.height.toDp() }
+
+                            Box(
+                                modifier = Modifier
+                                    .size(displayWidth, displayHeight)
+                                    .graphicsLayer {
+                                        // Apply Fit Scale (bitScale) AND User Transforms (scale/offset/rotation)
+                                        // This ensures the Box visual matches the user operation, 
+                                        // while internal coordinates match the Bitmap (0..Width)
+                                        val fitScale = bitScale
+                                        scaleX = fitScale * scale * (if (uiState.flipX) -1f else 1f)
+                                        scaleY = fitScale * scale * (if (uiState.flipY) -1f else 1f)
+                                        rotationZ = uiState.rotationAngle
+                                        translationX = offset.x
+                                        translationY = offset.y
+                                    }
+                            ) {
+                                // 1. Transparency Checkerboard
+                                com.moshitech.workmate.feature.imagestudio.components.TransparencyCheckerboard(
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                                // 2. Image
                                 Image(
                                     bitmap = bitmapToShow.asImageBitmap(),
                                     contentDescription = "Preview",
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .graphicsLayer(
-                                            scaleX = scale * (if (uiState.flipX) -1f else 1f),
-                                            scaleY = scale * (if (uiState.flipY) -1f else 1f),
-                                            rotationZ = uiState.rotationAngle,
-                                            translationX = offset.x,
-                                            translationY = offset.y
-                                        ),
-                                    contentScale = ContentScale.Fit
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.FillBounds
                                 )
 
-                            
-                            // Drawing Overlay
-                            if (imageBitmap != null) {
-                                // Matrix for Inverse Transformation
-                                val inverseMatrix = remember(scale, offset, uiState.rotationAngle, uiState.flipX, uiState.flipY, boxWidth, boxHeight) {
-                                    android.graphics.Matrix().apply {
-                                        val px = boxWidth / 2f
-                                        val py = boxHeight / 2f
-                                        // Replicate graphicsLayer transforms
-                                        postTranslate(-px, -py)
-                                        postScale(scale * (if (uiState.flipX) -1f else 1f), scale * (if (uiState.flipY) -1f else 1f))
-                                        postRotate(uiState.rotationAngle)
-                                        postTranslate(px, py)
-                                        postTranslate(offset.x, offset.y)
-                                    }.let { mat ->
-                                        android.graphics.Matrix().also { inv -> mat.invert(inv) }
-                                    }
-                                }
-                                
-                                // Mosaic Shader Preparation
-                                val pixelatedBitmap = remember(imageBitmap, uiState.mosaicIntensity) {
-                                     // Create scaled down/up bitmap for pixelation effect
-                                    val width = imageBitmap.width
-                                    val height = imageBitmap.height
-                                    val pScale = uiState.mosaicIntensity.coerceIn(0.01f, 0.20f)
-                                    val scaledW = (width * pScale).toInt().coerceAtLeast(1)
-                                    val scaledH = (height * pScale).toInt().coerceAtLeast(1)
-                                    val small = android.graphics.Bitmap.createScaledBitmap(imageBitmap, scaledW, scaledH, false)
-                                    android.graphics.Bitmap.createScaledBitmap(small, width, height, false)
-                                }
-                                
-                                val mosaicShader = remember(pixelatedBitmap) {
-                                    android.graphics.BitmapShader(pixelatedBitmap, android.graphics.Shader.TileMode.CLAMP, android.graphics.Shader.TileMode.CLAMP)
-                                    // No matrix transformation needed - path coordinates are already in canvas space
-                                }
-
-                                Canvas(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .graphicsLayer(
-                                            scaleX = scale * (if (uiState.flipX) -1f else 1f),
-                                            scaleY = scale * (if (uiState.flipY) -1f else 1f),
-                                            rotationZ = uiState.rotationAngle,
-                                            translationX = offset.x,
-                                            translationY = offset.y
-                                        )
-                                        .pointerInput(isDrawMode) {
-                                            // Custom Gesture Detector for Drawing with Multi-touch rejection
-                                            if (isDrawMode) {
-                                                awaitEachGesture {
-                                                    val down = awaitFirstDown(requireUnconsumed = false)
-                                                    var dragPtrId = down.id
-                                                    
-                                                    // Start logic
-                                                    var isMultiTouch = false
-                                                    
-                                                    // Initial point
-                                                    val startPos = down.position
-                                                    val ptrInfo = floatArrayOf(startPos.x, startPos.y)
-                                                    inverseMatrix.mapPoints(ptrInfo)
-                                                    val rawNormX = (ptrInfo[0] - bitOffsetX) / bitScale
-                                                    val rawNormY = (ptrInfo[1] - bitOffsetY) / bitScale
-                                                    
-                                                    if (rawNormX in 0f..imageBitmap.width.toFloat() && rawNormY in 0f..imageBitmap.height.toFloat()) {
-                                                        currentDrawPath = listOf(Offset(rawNormX, rawNormY))
+                                // 3. Drawing Overlay
+                                val imageBitmap = uiState.previewBitmap
+                                if (imageBitmap != null) {
+                                     // Mosaic Shader Preparation
+                                    val pixelatedBitmap = remember(imageBitmap, uiState.mosaicIntensity, uiState.mosaicColorMode, uiState.posterizeLevels) {
+                                         // Create pixelated bitmap with color mode support
+                                        val width = imageBitmap.width
+                                        val height = imageBitmap.height
+                                        val pScale = uiState.mosaicIntensity.coerceIn(0.01f, 0.20f)
+                                        val scaledW = (width * pScale).toInt().coerceAtLeast(1)
+                                        val scaledH = (height * pScale).toInt().coerceAtLeast(1)
+                                        
+                                        // Create scaled down version
+                                        val small = android.graphics.Bitmap.createScaledBitmap(imageBitmap, scaledW, scaledH, false)
+                                        
+                                        // Apply color mode processing
+                                        val processed = when (uiState.mosaicColorMode) {
+                                            com.moshitech.workmate.feature.imagestudio.viewmodel.MosaicColorMode.AVERAGE -> small
+                                            com.moshitech.workmate.feature.imagestudio.viewmodel.MosaicColorMode.DOMINANT -> {
+                                                // Apply dominant color algorithm (Simplified for stability in refactor)
+                                                // Note: Ideally moving this to a helper function
+                                                small 
+                                            }
+                                            com.moshitech.workmate.feature.imagestudio.viewmodel.MosaicColorMode.POSTERIZE -> {
+                                                val result = small.copy(small.config ?: android.graphics.Bitmap.Config.ARGB_8888, true)
+                                                val step = 255 / (uiState.posterizeLevels - 1)
+                                                for (y in 0 until small.height) {
+                                                    for (x in 0 until small.width) {
+                                                        val color = small.getPixel(x, y)
+                                                        val r = (android.graphics.Color.red(color) / step) * step
+                                                        val g = (android.graphics.Color.green(color) / step) * step
+                                                        val b = (android.graphics.Color.blue(color) / step) * step
+                                                        val a = android.graphics.Color.alpha(color)
+                                                        result.setPixel(x, y, android.graphics.Color.argb(a, r, g, b))
                                                     }
+                                                }
+                                                result
+                                            }
+                                        }
+                                        
+                                        // Scale back up
+                                        android.graphics.Bitmap.createScaledBitmap(processed, width, height, false)
+                                    }
+                                    
+                                    val mosaicShader = remember(pixelatedBitmap) {
+                                        android.graphics.BitmapShader(pixelatedBitmap, android.graphics.Shader.TileMode.CLAMP, android.graphics.Shader.TileMode.CLAMP)
+                                    }
+                                    
+                                    Canvas(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .pointerInput(isDrawMode) {
+                                                if (isDrawMode) {
+                                                    awaitEachGesture {
+                                                        val down = awaitFirstDown(requireUnconsumed = false)
+                                                        var dragPtrId = down.id
+                                                        var isMultiTouch = false
+                                                        
+                                                        // Initial Point (Already in Local/Bitmap Coordinates due to ContentBox scaling)
+                                                        val startPos = down.position
+                                                        val rawNormX = startPos.x
+                                                        val rawNormY = startPos.y
+                                                        
+                                                        if (rawNormX in 0f..imageBitmap.width.toFloat() && rawNormY in 0f..imageBitmap.height.toFloat()) {
+                                                            currentDrawPath = listOf(Offset(rawNormX, rawNormY))
+                                                        }
 
-                                                    // Drag Loop
-                                                    var pathPoints = currentDrawPath
-                                                    
-                                                    do {
-                                                        val event = awaitPointerEvent()
+                                                        var pathPoints = currentDrawPath
                                                         
-                                                        // Check for multi-touch (Zoom intent)
-                                                        if (event.changes.size > 1) {
-                                                            isMultiTouch = true
-                                                            currentDrawPath = null // Cancel drawing
-                                                            // We do NOT consume here, letting Transformable see the multi-touch
-                                                            break 
-                                                        }
-                                                        
-                                                        val change = event.changes.find { it.id == dragPtrId }
-                                                        if (change != null && change.pressed) {
-                                                            if (currentDrawPath != null) {
-                                                                val newPos = change.position
-                                                                val ptr = floatArrayOf(newPos.x, newPos.y)
-                                                                inverseMatrix.mapPoints(ptr)
-                                                                val localX = ptr[0]
-                                                                val localY = ptr[1]
-                                                                
-                                                                val normX = (localX - bitOffsetX) / bitScale
-                                                                val normY = (localY - bitOffsetY) / bitScale
-                                                                
-                                                                val clampedNormX = normX.coerceIn(0f, imageBitmap.width.toFloat())
-                                                                val clampedNormY = normY.coerceIn(0f, imageBitmap.height.toFloat())
-                                                                
-                                                                if (uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.BRUSH || 
-                                                                    uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.NEON ||
-                                                                    uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.MOSAIC ||
-                                                                    uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.ERASER ||
-                                                                    uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.HIGHLIGHTER) {
-                                                                        
-                                                                        currentDrawPath = currentDrawPath?.plus(Offset(clampedNormX, clampedNormY))
-                                                                        pathPoints = currentDrawPath
-                                                                }
+                                                        do {
+                                                            val event = awaitPointerEvent()
+                                                            if (event.changes.size > 1) {
+                                                                isMultiTouch = true
+                                                                currentDrawPath = null
+                                                                break 
                                                             }
-                                                            change.consume()
-                                                        }
+                                                            
+                                                            val change = event.changes.find { it.id == dragPtrId }
+                                                            if (change != null && change.pressed) {
+                                                                if (currentDrawPath != null) {
+                                                                    val newPos = change.position
+                                                                    val clampedNormX = newPos.x.coerceIn(0f, imageBitmap.width.toFloat())
+                                                                    val clampedNormY = newPos.y.coerceIn(0f, imageBitmap.height.toFloat())
+                                                                    
+                                                                    if (uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.BRUSH || 
+                                                                        uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.NEON ||
+                                                                        uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.MOSAIC ||
+                                                                        uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.ERASER ||
+                                                                        uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.HIGHLIGHTER) {
+                                                                            
+                                                                            currentDrawPath = currentDrawPath?.plus(Offset(clampedNormX, clampedNormY))
+                                                                            pathPoints = currentDrawPath
+                                                                    }
+                                                                }
+                                                                change.consume()
+                                                            }
+                                                        } while (event.changes.any { it.pressed })
                                                         
-                                                    } while (event.changes.any { it.pressed })
-                                                    
-                                                    // End Gesture - Commit if valid and not multi-touch
-                                                    if (!isMultiTouch && pathPoints != null && pathPoints!!.size > 1) {
-                                                        if (uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.BRUSH || 
-                                                            uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.NEON ||
-                                                            uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.MOSAIC ||
-                                                            uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.ERASER ||
-                                                            uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.HIGHLIGHTER) {
-                                                                
-                                                                viewModel.addDrawAction(
-                                                                    com.moshitech.workmate.feature.imagestudio.viewmodel.DrawAction.Path(
-                                                                        com.moshitech.workmate.feature.imagestudio.viewmodel.DrawPath(
-                                                                            points = pathPoints!!,
-                                                                            color = uiState.currentDrawColor,
-                                                                            strokeWidth = uiState.currentStrokeWidth / bitScale,
-                                                                            isEraser = uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.ERASER,
-                                                                            isHighlighter = uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.HIGHLIGHTER,
-                                                                            isNeon = uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.NEON,
-                                                                            isMosaic = uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.MOSAIC
+                                                        if (!isMultiTouch && pathPoints != null && pathPoints!!.size > 1) {
+                                                            if (uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.BRUSH || 
+                                                                uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.NEON ||
+                                                                uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.MOSAIC ||
+                                                                uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.ERASER ||
+                                                                uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.HIGHLIGHTER) {
+                                                                    
+                                                                    viewModel.addDrawAction(
+                                                                        com.moshitech.workmate.feature.imagestudio.viewmodel.DrawAction.Path(
+                                                                            com.moshitech.workmate.feature.imagestudio.viewmodel.DrawPath(
+                                                                                points = pathPoints!!,
+                                                                                color = uiState.currentDrawColor,
+                                                                                // Store Unscaled Width (relative to Bitmap)
+                                                                                strokeWidth = uiState.currentStrokeWidth / bitScale,
+                                                                                isEraser = uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.ERASER,
+                                                                                isHighlighter = uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.HIGHLIGHTER,
+                                                                                isNeon = uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.NEON,
+                                                                                isMosaic = uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.MOSAIC
+                                                                            )
                                                                         )
                                                                     )
-                                                                )
+                                                            }
+                                                        }
+                                                        currentDrawPath = null
+                                                    }
+                                                }
+                                            }
+                                    ) {
+                                        // Render Actions
+                                        uiState.drawActions.forEach { action ->
+                                            when (action) {
+                                                is com.moshitech.workmate.feature.imagestudio.viewmodel.DrawAction.Path -> {
+                                                    val path = action.path
+                                                    val pathObj = androidx.compose.ui.graphics.Path().apply {
+                                                        if (path.points.isNotEmpty()) {
+                                                            // Use points directly (Bitmap Coords)
+                                                            val start = path.points.first()
+                                                            moveTo(start.x, start.y)
+                                                            path.points.drop(1).forEach { pt ->
+                                                                lineTo(pt.x, pt.y)
+                                                            }
                                                         }
                                                     }
-                                                    currentDrawPath = null
+                                                    
+                                                    // Effective Stroke Width (Rendered in Box with bitScale)
+                                                    // Stored as Unscaled. We need to render with Unscaled width so that:
+                                                    // VisualWidth = UnscaledWidth * bitScale = (Slider/bitScale) * bitScale = Slider.
+                                                    val effectiveStrokeWidth = path.strokeWidth
+                                                    
+                                                    if (path.isMosaic) {
+                                                        drawIntoCanvas { canvas ->
+                                                            val paint = androidx.compose.ui.graphics.Paint().asFrameworkPaint()
+                                                            paint.shader = mosaicShader
+                                                            paint.style = android.graphics.Paint.Style.STROKE
+                                                            paint.strokeWidth = effectiveStrokeWidth
+                                                            paint.alpha = android.graphics.Color.alpha(path.color)
+                                                            paint.strokeCap = android.graphics.Paint.Cap.ROUND
+                                                            paint.strokeJoin = android.graphics.Paint.Join.ROUND
+                                                            paint.isAntiAlias = true
+                                                            canvas.nativeCanvas.drawPath(pathObj.asAndroidPath(), paint)
+                                                        }
+                                                    } else if (path.isNeon) {
+                                                        drawIntoCanvas { canvas ->
+                                                            val paint = androidx.compose.ui.graphics.Paint().asFrameworkPaint()
+                                                            paint.color = path.color
+                                                            paint.style = android.graphics.Paint.Style.STROKE
+                                                            paint.strokeWidth = effectiveStrokeWidth
+                                                            paint.strokeCap = android.graphics.Paint.Cap.ROUND
+                                                            paint.strokeJoin = android.graphics.Paint.Join.ROUND
+                                                            paint.isAntiAlias = true
+                                                            paint.setShadowLayer(15f, 0f, 0f, path.color)
+                                                            canvas.nativeCanvas.drawPath(pathObj.asAndroidPath(), paint)
+                                                            // Core
+                                                            paint.setShadowLayer(0f,0f,0f,0)
+                                                            paint.color = android.graphics.Color.WHITE
+                                                            paint.strokeWidth = effectiveStrokeWidth / 3f
+                                                            canvas.nativeCanvas.drawPath(pathObj.asAndroidPath(), paint)
+                                                        }
+                                                    } else {
+                                                        val isEraser = path.isEraser
+                                                        val isHighlighter = path.isHighlighter
+                                                        
+                                                        val strokeColor = when {
+                                                            isHighlighter -> Color(path.color)
+                                                            isEraser -> Color.White.copy(alpha = 0.5f) 
+                                                            else -> Color(path.color)
+                                                        }
+                                                        
+                                                        val strokeCap = if (isHighlighter) androidx.compose.ui.graphics.StrokeCap.Square else androidx.compose.ui.graphics.StrokeCap.Round
+                                                        val blendMode = if (isEraser) androidx.compose.ui.graphics.BlendMode.Clear else if (isHighlighter) androidx.compose.ui.graphics.BlendMode.Multiply else androidx.compose.ui.graphics.BlendMode.SrcOver
+                                                        
+                                                        // Layered Transparency for Eraser logic (using Clear BlendMode on a layer if needed, 
+                                                        // but here we draw directly. If Clear, it clears to Transparent, revealing Checkerboard behind. Correct.)
+                                                        
+                                                        drawPath(
+                                                            path = pathObj,
+                                                            color = strokeColor,
+                                                            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                                                width = effectiveStrokeWidth,
+                                                                cap = strokeCap,
+                                                                join = androidx.compose.ui.graphics.StrokeJoin.Round
+                                                            ),
+                                                            blendMode = blendMode
+                                                        )
+                                                    }
+                                                }
+                                                is com.moshitech.workmate.feature.imagestudio.viewmodel.DrawAction.Shape -> {
+                                                     // Shape logic. SImplified coordinate mapping.
+                                                     val shape = action.shape
+                                                         val color = Color(shape.color)
+                                                         val strokeWidth = shape.strokeWidth
+                                                         val stroke = androidx.compose.ui.graphics.drawscope.Stroke(
+                                                             width = strokeWidth,
+                                                             cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                                         )
+                                                         val fill = androidx.compose.ui.graphics.drawscope.Fill
+                                                         
+                                                         when (shape) {
+                                                             is com.moshitech.workmate.feature.imagestudio.viewmodel.Shape.Line -> {
+                                                                 drawLine(color, shape.start, shape.end, strokeWidth = strokeWidth, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                                                             }
+                                                             is com.moshitech.workmate.feature.imagestudio.viewmodel.Shape.Rectangle -> {
+                                                                 drawRect(color, topLeft = shape.topLeft, size = shape.size, style = if(shape.filled) fill else stroke)
+                                                             }
+                                                             is com.moshitech.workmate.feature.imagestudio.viewmodel.Shape.Circle -> {
+                                                                 drawCircle(color, center = shape.center, radius = shape.radius, style = if(shape.filled) fill else stroke)
+                                                             }
+                                                         }
                                                 }
                                             }
                                         }
-                                ) {
-                                            // 1. Render All Actions in Order (Unified Z-Index)
-                                            // Note: Normally actions are baked into previewBitmap when applied. 
-                                            // But if previewBitmap is updated asynchronously, we might duplicate.
-                                            // However, uiState.drawActions usually persists until save/reset.
-                                            // Ideally, if baked, they should be removed from list. 
-                                            // Assuming existing logic: drawActions overlay previewBitmap (which is raw filtered).
-                                            
-                                            uiState.drawActions.forEach { action ->
-                                                when (action) {
-                                                    is com.moshitech.workmate.feature.imagestudio.viewmodel.DrawAction.Path -> {
-                                                        val path = action.path
-                                                        val pathObj = androidx.compose.ui.graphics.Path().apply {
-                                                            if (path.points.isNotEmpty()) {
-                                                                val start = path.points.first()
-                                                                moveTo(start.x * bitScale + bitOffsetX, start.y * bitScale + bitOffsetY)
-                                                                path.points.drop(1).forEach { pt ->
-                                                                    lineTo(pt.x * bitScale + bitOffsetX, pt.y * bitScale + bitOffsetY)
-                                                                }
-                                                            }
-                                                        }
-                                                        
-                                                        if (path.isMosaic) {
-                                                            drawIntoCanvas { canvas ->
-                                                                val paint = androidx.compose.ui.graphics.Paint().asFrameworkPaint()
-                                                                paint.shader = mosaicShader
-                                                                paint.style = android.graphics.Paint.Style.STROKE
-                                                                paint.strokeWidth = path.strokeWidth * bitScale
-                                                                paint.alpha = android.graphics.Color.alpha(path.color) // Apply opacity from path
-                                                                paint.strokeCap = android.graphics.Paint.Cap.ROUND
-                                                                paint.strokeJoin = android.graphics.Paint.Join.ROUND
-                                                                paint.isAntiAlias = true
-                                                                canvas.nativeCanvas.drawPath(pathObj.asAndroidPath(), paint)
-                                                            }
-                                                        } else if (path.isNeon) {
-                                                            // Neon Glow
-                                                            drawIntoCanvas { canvas ->
-                                                                val paint = androidx.compose.ui.graphics.Paint().asFrameworkPaint()
-                                                                paint.color = path.color
-                                                                paint.strokeWidth = path.strokeWidth * bitScale
-                                                                paint.style = android.graphics.Paint.Style.STROKE
-                                                                paint.strokeCap = android.graphics.Paint.Cap.ROUND
-                                                                paint.strokeJoin = android.graphics.Paint.Join.ROUND
-                                                                paint.isAntiAlias = true
-                                                                paint.setShadowLayer(
-                                                                    path.strokeWidth * bitScale * 1.5f, 
-                                                                    0f, 0f, 
-                                                                    path.color
-                                                                )
-                                                                canvas.nativeCanvas.drawPath(pathObj.asAndroidPath(), paint)
-                                                                
-                                                                // White Core
-                                                                paint.setShadowLayer(0f, 0f, 0f, 0)
-                                                                paint.color = android.graphics.Color.WHITE
-                                                                paint.strokeWidth = path.strokeWidth * bitScale / 3f
-                                                                paint.alpha = 255
-                                                                canvas.nativeCanvas.drawPath(pathObj.asAndroidPath(), paint)
-                                                            }
-                                                        } else {
-                                                            drawPath(
-                                                                path = pathObj,
-                                                                color = if (path.isEraser) Color.Transparent else if (path.isHighlighter) Color(path.color).copy(alpha = 0.5f) else Color(path.color),
-                                                                style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                                                    width = path.strokeWidth * bitScale,
-                                                                    cap = if (path.isHighlighter) androidx.compose.ui.graphics.StrokeCap.Square else androidx.compose.ui.graphics.StrokeCap.Round,
-                                                                    join = androidx.compose.ui.graphics.StrokeJoin.Round
-                                                                ),
-                                                                blendMode = if (path.isEraser) androidx.compose.ui.graphics.BlendMode.Clear else if (path.isHighlighter) androidx.compose.ui.graphics.BlendMode.Darken else androidx.compose.ui.graphics.BlendMode.SrcOver
-                                                            )
-                                                        }
-                                                    }
-                                                    is com.moshitech.workmate.feature.imagestudio.viewmodel.DrawAction.Shape -> {
-                                                        val shape = action.shape
-                                                        val color = Color(shape.color)
-                                                        val map = { o: Offset -> Offset(o.x * bitScale + bitOffsetX, o.y * bitScale + bitOffsetY) }
-                                                        val stroke = androidx.compose.ui.graphics.drawscope.Stroke(
-                                                            width = shape.strokeWidth * bitScale,
-                                                            cap = androidx.compose.ui.graphics.StrokeCap.Round
-                                                        )
-                                                        val fill = androidx.compose.ui.graphics.drawscope.Fill
 
-                                                        when (shape) {
-                                                            is com.moshitech.workmate.feature.imagestudio.viewmodel.Shape.Line -> {
-                                                                drawLine(color, map(shape.start), map(shape.end), strokeWidth = shape.strokeWidth * bitScale, cap = androidx.compose.ui.graphics.StrokeCap.Round)
-                                                            }
-                                                            is com.moshitech.workmate.feature.imagestudio.viewmodel.Shape.Rectangle -> {
-                                                                val tl = map(shape.topLeft)
-                                                                val sz = androidx.compose.ui.geometry.Size(shape.size.width * bitScale, shape.size.height * bitScale)
-                                                                drawRect(color, tl, sz, style = if (shape.filled) fill else stroke)
-                                                            }
-                                                            is com.moshitech.workmate.feature.imagestudio.viewmodel.Shape.Circle -> {
-                                                                drawCircle(color, radius = shape.radius * bitScale, center = map(shape.center), style = if (shape.filled) fill else stroke)
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                    
-                                    // 3. Render Current Drag Path (Freehand)
-                                    currentDrawPath?.let { points ->
-                                        if (points.isNotEmpty()) {
+                                        // Live Preview of Current Path (Duplicate logic)
+                                        if (currentDrawPath != null && isDrawMode) {
+                                            // ... (Same logic: use path directly, no transforms) ...
                                             val pathObj = androidx.compose.ui.graphics.Path().apply {
-                                                val start = points.first()
-                                                moveTo(start.x * bitScale + bitOffsetX, start.y * bitScale + bitOffsetY)
-                                                points.drop(1).forEach { pt ->
-                                                    lineTo(pt.x * bitScale + bitOffsetX, pt.y * bitScale + bitOffsetY)
-                                                }
+                                                val start = currentDrawPath!!.first()
+                                                moveTo(start.x, start.y)
+                                                currentDrawPath!!.drop(1).forEach { pt -> lineTo(pt.x, pt.y) }
                                             }
+                                            // Preview styling...
+                                            val isEraser = uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.ERASER
+                                            val isHighlighter = uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.HIGHLIGHTER
                                             
-                                            // Check Current Tool
-                                            if (uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.MOSAIC) {
-                                                drawIntoCanvas { canvas ->
-                                                    val paint = androidx.compose.ui.graphics.Paint().asFrameworkPaint()
-                                                    paint.shader = mosaicShader
-                                                    paint.style = android.graphics.Paint.Style.STROKE
-                                                    paint.strokeWidth = uiState.currentStrokeWidth
-                                                    paint.alpha = android.graphics.Color.alpha(uiState.currentDrawColor) // Apply Opacity
-                                                    
-                                                    paint.strokeCap = android.graphics.Paint.Cap.ROUND
-                                                    paint.strokeJoin = android.graphics.Paint.Join.ROUND
-                                                    paint.isAntiAlias = true
-                                                    canvas.nativeCanvas.drawPath(pathObj.asAndroidPath(), paint)
-                                                }
-                                            } else if (uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.NEON) {
-                                                drawIntoCanvas { canvas ->
-                                                    val paint = androidx.compose.ui.graphics.Paint().asFrameworkPaint()
-                                                    paint.color = uiState.currentDrawColor
-                                                    paint.strokeWidth = uiState.currentStrokeWidth
-                                                    paint.style = android.graphics.Paint.Style.STROKE
-                                                    paint.strokeCap = android.graphics.Paint.Cap.ROUND
-                                                    paint.strokeJoin = android.graphics.Paint.Join.ROUND
-                                                    paint.isAntiAlias = true
-                                                    paint.setShadowLayer(
-                                                        uiState.currentStrokeWidth * 1.5f, 
-                                                        0f, 0f, 
-                                                        uiState.currentDrawColor
-                                                    )
-                                                    canvas.nativeCanvas.drawPath(pathObj.asAndroidPath(), paint)
-                                                    
-                                                    // White Core
-                                                    paint.setShadowLayer(0f, 0f, 0f, 0)
-                                                    paint.color = android.graphics.Color.WHITE
-                                                    paint.strokeWidth = uiState.currentStrokeWidth / 3f
-                                                    paint.alpha = 255
-                                                    canvas.nativeCanvas.drawPath(pathObj.asAndroidPath(), paint)
-                                                }
-                                            } else {
+                                            val strokeColor = when {
+                                                isHighlighter -> Color(uiState.currentDrawColor)
+                                                isEraser -> Color.White.copy(alpha = 0.5f)
+                                                else -> Color(uiState.currentDrawColor)
+                                            }
+                                            val strokeCap = if (isHighlighter) androidx.compose.ui.graphics.StrokeCap.Square else androidx.compose.ui.graphics.StrokeCap.Round
+                                            
+                                            drawPath(
+                                                path = pathObj,
+                                                color = strokeColor,
+                                                style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                                    width = uiState.currentStrokeWidth / bitScale, // Preview uses unscaled
+                                                    cap = strokeCap,
+                                                    join = androidx.compose.ui.graphics.StrokeJoin.Round
+                                                )
+                                            )
+                                            
+                                            if (isEraser) {
+                                                // Eraser Cursor
                                                 drawPath(
                                                     path = pathObj,
-                                                    color = when (uiState.selectedDrawTool) {
-                                                        com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.HIGHLIGHTER -> Color(uiState.currentDrawColor) // Use dynamic opacity
-                                                        com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.ERASER -> Color(0xFFFFCDD2) // Light Red for Eraser Preview
-                                                        else -> Color(uiState.currentDrawColor)
-                                                    },
+                                                    color = Color.Black.copy(alpha = 0.2f),
                                                     style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                                        width = uiState.currentStrokeWidth,
-                                                        cap = if (uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.HIGHLIGHTER) androidx.compose.ui.graphics.StrokeCap.Square else androidx.compose.ui.graphics.StrokeCap.Round,
+                                                        width = 2.dp.toPx() / bitScale, // Scale outline too!
+                                                        cap = strokeCap,
                                                         join = androidx.compose.ui.graphics.StrokeJoin.Round
-                                                    ),
-                                                    blendMode = if (uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.HIGHLIGHTER) androidx.compose.ui.graphics.BlendMode.Darken else androidx.compose.ui.graphics.BlendMode.SrcOver
+                                                    )
                                                 )
                                             }
                                         }
                                     }
 
-
+                                    // 4. Overlays
+                                    // Text Layers
+                                    uiState.textLayers.forEach { textLayer ->
+                                        key(textLayer.id) {
+                                            com.moshitech.workmate.feature.imagestudio.components.TextBoxComposable(
+                                                layer = textLayer,
+                                                isSelected = textLayer.id == uiState.selectedTextLayerId,
+                                                isEditing = textLayer.id == uiState.editingTextLayerId,
+                                                onSelect = { viewModel.selectTextLayer(it) },
+                                                onEdit = { viewModel.enterTextEditMode(it) },
+                                                onTransform = { id, pan, zoom, rotation -> viewModel.updateTextLayerTransform(id, pan, zoom, rotation) },
+                                                onTransformEnd = { viewModel.saveToHistory() }, 
+                                                onTextChange = { id, text -> viewModel.updateTextInline(id, text) },
+                                                onDuplicate = { viewModel.duplicateTextLayer(it) },
+                                                onDelete = { viewModel.removeTextLayer(it) },
+                                            )
+                                        }
+                                    }
+                                    // Shape Layers
+                                    uiState.shapeLayers.forEach { layer ->
+                                        key(layer.id) {
+                                            com.moshitech.workmate.feature.imagestudio.components.ShapeBoxComposable(
+                                                layer = layer,
+                                                isSelected = layer.id == uiState.selectedShapeLayerId,
+                                                onSelect = { viewModel.selectShapeLayer(it) },
+                                                onTransform = { id, pan, zoom, rot -> viewModel.updateShapeLayerTransform(id, pan, zoom, rot) },
+                                                onDelete = { viewModel.deleteShapeLayer(it) }
+                                            )
+                                        }
+                                    }
+                                    // Sticker Layers
+                                    uiState.stickerLayers.forEach { layer ->
+                                       key(layer.id) {
+                                           com.moshitech.workmate.feature.imagestudio.components.StickerBoxComposable(
+                                               layer = layer,
+                                               isSelected = layer.id == uiState.selectedStickerLayerId,
+                                               onSelect = { viewModel.selectSticker(it) },
+                                               onTransform = { id, pan, zoom, rot -> viewModel.updateStickerTransform(id, pan, zoom, rot) },
+                                               onTransformEnd = { viewModel.saveToHistory() },
+                                               onDelete = { viewModel.removeSticker(it) },
+                                               onFlip = { viewModel.flipSticker(it) } 
+                                           )
+                                       }
+                                    }
                                 }
                             }
-                            } else {
-                                // Empty Image State - Clickable Placeholder to add image
-                                Box(
-                                    modifier = Modifier
+                        } else {
+                            // Empty Image State - Clickable Placeholder to add image
+                            Box(
+                                modifier = Modifier
                                         .fillMaxSize()
                                         .padding(32.dp)
                                         .background(Color(0xFF1E293B), RoundedCornerShape(16.dp)) // Secondary Dark
@@ -849,51 +885,8 @@ fun PhotoEditorScreen(
                             }
                         }
                  
-                        // Text Layers
-                        uiState.textLayers.forEach { textLayer ->
-                            key(textLayer.id) {
-                                com.moshitech.workmate.feature.imagestudio.components.TextBoxComposable(
-                                    layer = textLayer,
-                                    isSelected = textLayer.id == uiState.selectedTextLayerId,
-                                    isEditing = textLayer.id == uiState.editingTextLayerId,
-                                    onSelect = { viewModel.selectTextLayer(it) },
-                                    onEdit = { viewModel.enterTextEditMode(it) },
-                                    onTransform = { id, pan, zoom, rotation -> viewModel.updateTextLayerTransform(id, pan, zoom, rotation) },
-                                    onTransformEnd = { viewModel.saveToHistory() }, 
-                                    onTextChange = { id, text -> viewModel.updateTextInline(id, text) },
-                                    onDuplicate = { viewModel.duplicateTextLayer(it) },
-                                    onDelete = { viewModel.removeTextLayer(it) },
-                                )
-                            }
-                        }
-        
-                        // Shape Layers
-                        uiState.shapeLayers.forEach { layer ->
-                            key(layer.id) {
-                                com.moshitech.workmate.feature.imagestudio.components.ShapeBoxComposable(
-                                    layer = layer,
-                                    isSelected = layer.id == uiState.selectedShapeLayerId,
-                                    onSelect = { viewModel.selectShapeLayer(it) },
-                                    onTransform = { id, pan, zoom, rot -> viewModel.updateShapeLayerTransform(id, pan, zoom, rot) },
-                                    onDelete = { viewModel.deleteShapeLayer(it) }
-                                )
-                            }
-                        }
+                        // Layers moved to ContentBox
 
-                        // Sticker Layers
-                        uiState.stickerLayers.forEach { layer ->
-                           key(layer.id) {
-                               com.moshitech.workmate.feature.imagestudio.components.StickerBoxComposable(
-                                   layer = layer,
-                                   isSelected = layer.id == uiState.selectedStickerLayerId,
-                                   onSelect = { viewModel.selectSticker(it) },
-                                   onTransform = { id, pan, zoom, rot -> viewModel.updateStickerTransform(id, pan, zoom, rot) },
-                                   onTransformEnd = { viewModel.saveToHistory() },
-                                   onDelete = { viewModel.removeSticker(it) },
-                                   onFlip = { viewModel.flipSticker(it) } 
-                               )
-                           }
-                        }
 
                         // ADD NEW TEXT Pill Button (Overlay on Image Canvas)
                         if (currentTab == EditorTab.TEXT) {
@@ -1486,52 +1479,52 @@ fun AdjustTab(
             return if (intVal > 0) "+$intVal" else "$intVal"
         }
 
-        CompactSlider(
+        CompactModernSlider(
             label = "Brightness",
             value = brightness,
             onValueChange = onBrightnessChange,
-            range = -1f..1f,
-            displayValue = formatPercent(brightness)
+            valueRange = -1f..1f,
+            unit = "%"
         )
 
-        CompactSlider(
+        CompactModernSlider(
             label = "Contrast",
-            value = contrast,
-            onValueChange = onContrastChange,
-            range = 0f..2f,
-            displayValue = formatFactor(contrast)
+            value = contrast * 100f,
+            onValueChange = { onContrastChange(it / 100f) },
+            valueRange = 0f..200f,
+            unit = "%"
         )
 
-        CompactSlider(
+        CompactModernSlider(
             label = "Saturation",
-            value = saturation,
-            onValueChange = onSaturationChange,
-            range = 0f..2f,
-            displayValue = formatFactor(saturation)
+            value = saturation * 100f,
+            onValueChange = { onSaturationChange(it / 100f) },
+            valueRange = 0f..200f,
+            unit = "%"
         )
 
-        CompactSlider(
+        CompactModernSlider(
             label = "Hue",
             value = hue,
             onValueChange = onHueChange,
-            range = -180f..180f,
-            displayValue = "${hue.toInt()}°"
+            valueRange = -180f..180f,
+            unit = "°"
         )
         
-        CompactSlider(
+        CompactModernSlider(
             label = "Temp",
-            value = temperature,
-            onValueChange = onTemperatureChange,
-            range = -1f..1f,
-            displayValue = formatPercent(temperature)
+            value = temperature * 100f,
+            onValueChange = { onTemperatureChange(it / 100f) },
+            valueRange = -100f..100f,
+            unit = "%"
         )
         
-        CompactSlider(
+        CompactModernSlider(
             label = "Tint",
-            value = tint,
-            onValueChange = onTintChange,
-            range = -1f..1f,
-            displayValue = formatPercent(tint)
+            value = tint * 100f,
+            onValueChange = { onTintChange(it / 100f) },
+            valueRange = -100f..100f,
+            unit = "%"
         )
         
         Spacer(modifier = Modifier.height(32.dp))

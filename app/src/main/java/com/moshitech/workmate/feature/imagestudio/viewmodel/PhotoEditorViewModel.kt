@@ -233,6 +233,13 @@ enum class MosaicPattern(val displayName: String) {
     DIAMOND("Diamond")
 }
 
+// Mosaic color processing modes
+enum class MosaicColorMode(val displayName: String) {
+    AVERAGE("Average"),
+    DOMINANT("Dominant"),
+    POSTERIZE("Posterize")
+}
+
 // Mosaic preset for quick settings
 data class MosaicPreset(
     val name: String,
@@ -300,6 +307,8 @@ data class PhotoEditorUiState(
     val currentOpacity: Float = 1f, 
     val mosaicIntensity: Float = 0.05f, // Pixelation scale: 0.01 (1%) to 0.20 (20%)
     val mosaicPattern: MosaicPattern = MosaicPattern.SQUARE,
+    val mosaicColorMode: MosaicColorMode = MosaicColorMode.AVERAGE,
+    val posterizeLevels: Int = 4, // 2-8 color levels for posterize effect
 
     val rotationAngle: Float = 0f,
     val flipX: Boolean = false,
@@ -610,7 +619,7 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
                         if (drawPath.isEraser) {
                             xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
                         } else if (drawPath.isHighlighter) {
-                             xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DARKEN) 
+                             xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.MULTIPLY) 
                              // Alpha is already in `color` which is applied above (drawPath.color includes alpha).
                              // We don't need to force set alpha here if we use drawPath.color.
                              // Wait, `color` assignment above handles it.
@@ -685,7 +694,12 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
         return mutableBitmap
     }
     
-    private fun createPixelatedBitmap(bitmap: Bitmap, intensity: Float = 0.05f): Bitmap {
+    private fun createPixelatedBitmap(
+        bitmap: Bitmap, 
+        intensity: Float = 0.05f,
+        colorMode: MosaicColorMode = MosaicColorMode.AVERAGE,
+        posterizeLevels: Int = 4
+    ): Bitmap {
         val width = bitmap.width
         val height = bitmap.height
         val scale = intensity.coerceIn(0.01f, 0.20f) // Clamp between 1% and 20%
@@ -693,8 +707,110 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
         val scaledWidth = (width * scale).toInt().coerceAtLeast(1)
         val scaledHeight = (height * scale).toInt().coerceAtLeast(1)
         
-        val scaledBitmap = Bitmap.createScaledBitmap(bitmap, scaledWidth, scaledHeight, false)
-        return Bitmap.createScaledBitmap(scaledBitmap, width, height, false)
+        // Create scaled down version
+        val smallBitmap = Bitmap.createScaledBitmap(bitmap, scaledWidth, scaledHeight, false)
+        
+        // Apply color mode processing
+        val processedBitmap = when (colorMode) {
+            MosaicColorMode.AVERAGE -> smallBitmap // Already averaged by scaling
+            MosaicColorMode.DOMINANT -> applyDominantColor(smallBitmap, bitmap, scale)
+            MosaicColorMode.POSTERIZE -> applyPosterize(smallBitmap, posterizeLevels)
+        }
+        
+        // Scale back up to original size
+        val pixelatedBitmap = Bitmap.createScaledBitmap(processedBitmap, width, height, false)
+        
+        if (processedBitmap != smallBitmap) {
+            processedBitmap.recycle()
+        }
+        if (smallBitmap != bitmap) {
+            smallBitmap.recycle()
+        }
+        
+        return pixelatedBitmap
+    }
+    
+    // Apply dominant color algorithm
+    private fun applyDominantColor(smallBitmap: Bitmap, originalBitmap: Bitmap, scale: Float): Bitmap {
+        val result = smallBitmap.copy(smallBitmap.config ?: Bitmap.Config.ARGB_8888, true)
+        val blockSize = (1f / scale).toInt().coerceAtLeast(1)
+        
+        for (y in 0 until smallBitmap.height) {
+            for (x in 0 until smallBitmap.width) {
+                // Sample from original bitmap
+                val origX = (x * blockSize).coerceIn(0, originalBitmap.width - 1)
+                val origY = (y * blockSize).coerceIn(0, originalBitmap.height - 1)
+                
+                val dominantColor = getDominantColorInBlock(
+                    originalBitmap, 
+                    origX, 
+                    origY, 
+                    blockSize.coerceAtMost(originalBitmap.width - origX),
+                    blockSize.coerceAtMost(originalBitmap.height - origY)
+                )
+                result.setPixel(x, y, dominantColor)
+            }
+        }
+        return result
+    }
+    
+    // Get dominant color in a block
+    private fun getDominantColorInBlock(bitmap: Bitmap, startX: Int, startY: Int, width: Int, height: Int): Int {
+        val colorMap = mutableMapOf<Int, Int>()
+        val tolerance = 30 // Color similarity threshold
+        
+        for (dy in 0 until height step 2) { // Sample every 2 pixels for performance
+            for (dx in 0 until width step 2) {
+                val x = (startX + dx).coerceIn(0, bitmap.width - 1)
+                val y = (startY + dy).coerceIn(0, bitmap.height - 1)
+                val color = bitmap.getPixel(x, y)
+                
+                // Find similar color in map
+                val similarColor = colorMap.keys.find { existingColor ->
+                    colorDistance(existingColor, color) < tolerance
+                }
+                
+                if (similarColor != null) {
+                    colorMap[similarColor] = colorMap[similarColor]!! + 1
+                } else {
+                    colorMap[color] = 1
+                }
+            }
+        }
+        
+        return colorMap.maxByOrNull { it.value }?.key ?: android.graphics.Color.GRAY
+    }
+    
+    // Calculate color distance
+    private fun colorDistance(c1: Int, c2: Int): Int {
+        val r = android.graphics.Color.red(c1) - android.graphics.Color.red(c2)
+        val g = android.graphics.Color.green(c1) - android.graphics.Color.green(c2)
+        val b = android.graphics.Color.blue(c1) - android.graphics.Color.blue(c2)
+        return kotlin.math.sqrt((r * r + g * g + b * b).toDouble()).toInt()
+    }
+    
+    // Apply posterize effect
+    private fun applyPosterize(bitmap: Bitmap, levels: Int): Bitmap {
+        val result = bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, true)
+        val step = 255 / (levels - 1)
+        
+        for (y in 0 until bitmap.height) {
+            for (x in 0 until bitmap.width) {
+                val color = bitmap.getPixel(x, y)
+                val posterized = posterizeColor(color, step)
+                result.setPixel(x, y, posterized)
+            }
+        }
+        return result
+    }
+    
+    // Posterize a single color
+    private fun posterizeColor(color: Int, step: Int): Int {
+        val r = (android.graphics.Color.red(color) / step) * step
+        val g = (android.graphics.Color.green(color) / step) * step
+        val b = (android.graphics.Color.blue(color) / step) * step
+        val a = android.graphics.Color.alpha(color)
+        return android.graphics.Color.argb(a, r, g, b)
     }
 
 
@@ -749,12 +865,24 @@ fun applyMosaicPreset(preset: MosaicPreset) {
     }
 }
 
+// Update mosaic color mode
+fun updateMosaicColorMode(colorMode: MosaicColorMode) {
+    _uiState.update { it.copy(mosaicColorMode = colorMode) }
+}
+
+// Update posterize levels
+fun updatePosterizeLevels(levels: Int) {
+    _uiState.update { it.copy(posterizeLevels = levels.coerceIn(2, 8)) }
+}
+
 // Reset mosaic settings to defaults
 fun resetMosaicSettings() {
     _uiState.update { 
         it.copy(
             mosaicIntensity = 0.05f,
             mosaicPattern = MosaicPattern.SQUARE,
+            mosaicColorMode = MosaicColorMode.AVERAGE,
+            posterizeLevels = 4,
             currentStrokeWidth = 10f,
             currentOpacity = 1f
         )

@@ -17,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -146,8 +147,10 @@ fun PaintToolbar(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Color Palette (If not Eraser/Mosaic maybe?) - Mosaic might not need color
-        if (uiState.selectedDrawTool != DrawTool.ERASER && uiState.selectedDrawTool != DrawTool.MOSAIC) {
+        // Color Palette (If not Eraser/Mosaic/Highlighter)
+        if (uiState.selectedDrawTool != DrawTool.ERASER && 
+            uiState.selectedDrawTool != DrawTool.MOSAIC && 
+            uiState.selectedDrawTool != DrawTool.HIGHLIGHTER) {
             ColorPaletteRow(
                 selectedColor = uiState.currentDrawColor,
                 onColorSelected = { viewModel.updateDrawColor(it) }
@@ -169,17 +172,113 @@ fun PaintToolbar(
             
             Spacer(modifier = Modifier.height(8.dp))
             
-            // Opacity
-            CompactModernSlider(
-                value = uiState.currentOpacity * 100f,
-                onValueChange = { viewModel.updateOpacity(it / 100f) },
-                onValueChangeFinished = { viewModel.saveToHistory() },
-                valueRange = 0f..100f,
-                label = "Opacity",
-                unit = "%"
-            )
+            // Opacity (Hide for Eraser as it's a hard eraser)
+            if (uiState.selectedDrawTool != DrawTool.ERASER) {
+                CompactModernSlider(
+                    value = uiState.currentOpacity * 100f,
+                    onValueChange = { viewModel.updateOpacity(it / 100f) },
+                    onValueChangeFinished = { viewModel.saveToHistory() },
+                    valueRange = 0f..100f,
+                    label = "Opacity",
+                    unit = "%"
+                )
+            }
         }
         
+        // Highlighter Color Presets (only show when Highlighter tool is selected)
+        if (uiState.selectedDrawTool == DrawTool.HIGHLIGHTER) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text("Highlighter Colors", color = Color.Gray, fontSize = 12.sp)
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Define highlighter colors
+                    val highlighterColors = listOf(
+                        Color(0xFFFFEB3B) to "Yellow",
+                        Color(0xFFFF4081) to "Pink",
+                        Color(0xFF4CAF50) to "Green",
+                        Color(0xFF2196F3) to "Blue",
+                        Color(0xFFFF9800) to "Orange"
+                    )
+                    
+                    highlighterColors.forEach { (color, name) ->
+                        // Compare RGB values ignoring alpha to ensure selection works even if opacity changes
+                        val isSelected = (uiState.currentDrawColor and 0x00FFFFFF) == (color.toArgb() and 0x00FFFFFF)
+                        // Calculate luminance to determine best checkmark color (black for light backgrounds, white for dark)
+                        val luminance = (0.299 * color.red + 0.587 * color.green + 0.114 * color.blue)
+                        val checkmarkColor = if (luminance > 0.5) Color.Black else Color.White
+                        
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(40.dp)
+                                .shadow(
+                                    elevation = if (isSelected) 8.dp else 0.dp,
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                                .background(color, RoundedCornerShape(8.dp))
+                                .border(
+                                    width = if (isSelected) 3.dp else 1.dp,
+                                    color = if (isSelected) Color.White else Color.Gray.copy(alpha = 0.3f),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                                .clickable { 
+                                    viewModel.updateDrawColor(color.toArgb())
+                                    // Set opacity to 60% for realistic highlighting
+                                    viewModel.updateOpacity(0.6f)
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            // Show checkmark for selected color
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Selected",
+                                    tint = checkmarkColor,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Eraser Controls (only show when Eraser tool is selected)
+        if (uiState.selectedDrawTool == DrawTool.ERASER) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Size Presets
+                 Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Presets:", color = Color.Gray, fontSize = 12.sp)
+                    EraserSizePreset(label = "Small", size = 20f, current = uiState.currentStrokeWidth) { viewModel.updateStrokeWidth(20f) }
+                    EraserSizePreset(label = "Medium", size = 50f, current = uiState.currentStrokeWidth) { viewModel.updateStrokeWidth(50f) }
+                    EraserSizePreset(label = "Large", size = 80f, current = uiState.currentStrokeWidth) { viewModel.updateStrokeWidth(80f) }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Clear All Button
+                Button(
+                    onClick = { viewModel.clearAllDrawings() },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)), // Red color for destructive action
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = null, tint = Color.White)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Clear All Drawings", color = Color.White)
+                }
+            }
+        }
+
         // Mosaic Intensity Slider (only show when Mosaic tool is selected)
         if (uiState.selectedDrawTool == DrawTool.MOSAIC) {
             // Presets and Reset
@@ -280,6 +379,52 @@ fun PaintToolbar(
                         }
                     }
                 }
+            }
+            
+            // Color Mode Selector
+            Spacer(modifier = Modifier.height(8.dp))
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text("Color Mode", color = Color.Gray, fontSize = 12.sp)
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    com.moshitech.workmate.feature.imagestudio.viewmodel.MosaicColorMode.values().forEach { mode ->
+                        val isSelected = uiState.mosaicColorMode == mode
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(40.dp)
+                                .background(
+                                    color = if (isSelected) Color(0xFF007AFF) else Color(0xFF2C2C2E),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                                .clickable { viewModel.updateMosaicColorMode(mode) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = mode.displayName,
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            }
+            
+            // Posterize Levels Slider (only show when Posterize mode is selected)
+            if (uiState.mosaicColorMode == com.moshitech.workmate.feature.imagestudio.viewmodel.MosaicColorMode.POSTERIZE) {
+                Spacer(modifier = Modifier.height(8.dp))
+                CompactModernSlider(
+                    value = uiState.posterizeLevels.toFloat(),
+                    onValueChange = { viewModel.updatePosterizeLevels(it.toInt()) },
+                    valueRange = 2f..8f,
+                    label = "Color Levels",
+                    unit = ""
+                )
             }
         }
     }
@@ -469,17 +614,59 @@ fun ColorPaletteRow(
         
         colors.forEach { c ->
             val cInt = c.toArgb()
+            val isSelected = (selectedColor and 0x00FFFFFF) == (cInt and 0x00FFFFFF)
+            
+            // Calculate luminance for best checkmark contrast
+            val luminance = (0.299 * c.red + 0.587 * c.green + 0.114 * c.blue)
+            val checkmarkColor = if (luminance > 0.5) Color.Black else Color.White
+            
             Box(
                 modifier = Modifier
-                    .size(30.dp)
-                    .background(c, CircleShape)
-                    .border(
-                        width = if (selectedColor == cInt) 3.dp else 1.dp,
-                        color = if (selectedColor == cInt) Color(0xFF007AFF) else Color.Gray,
+                    .size(40.dp) // Increased size for better touch target
+                    .shadow(
+                        elevation = if (isSelected) 6.dp else 0.dp,
                         shape = CircleShape
                     )
-                    .clickable { onColorSelected(cInt) }
-            )
+                    .background(c, CircleShape)
+                    .border(
+                        width = if (isSelected) 3.dp else 1.dp,
+                        color = if (isSelected) Color.White else Color.Gray.copy(alpha = 0.3f),
+                        shape = CircleShape
+                    )
+                    .clickable { onColorSelected(cInt) },
+                contentAlignment = Alignment.Center
+            ) {
+                 if (isSelected) {
+                     Icon(
+                         imageVector = Icons.Default.Check,
+                         contentDescription = "Selected",
+                         tint = checkmarkColor,
+                         modifier = Modifier.size(24.dp)
+                     )
+                 }
+            }
         }
     }
+}
+
+@Composable
+fun EraserSizePreset(
+    label: String,
+    size: Float,
+    current: Float,
+    onClick: () -> Unit
+) {
+    val isSelected = current == size
+    FilterChip(
+        selected = isSelected,
+        onClick = onClick,
+        label = { Text(label) },
+        colors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = Color(0xFF007AFF),
+            selectedLabelColor = Color.White,
+            containerColor = Color(0xFF333333),
+            labelColor = Color.White
+        ),
+        border = null
+    )
 }
