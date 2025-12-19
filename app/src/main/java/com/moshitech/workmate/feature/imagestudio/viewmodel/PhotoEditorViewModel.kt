@@ -28,7 +28,48 @@ data class EditorState(
     val textLayers: List<TextLayer> = emptyList(),
     val stickerLayers: List<StickerLayer> = emptyList(),
     val drawActions: List<DrawAction> = emptyList()
-)
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as EditorState
+
+        if (brightness != other.brightness) return false
+        if (contrast != other.contrast) return false
+        if (saturation != other.saturation) return false
+        if (hue != other.hue) return false
+        if (temperature != other.temperature) return false
+        if (tint != other.tint) return false
+        if (rotationAngle != other.rotationAngle) return false
+        if (activeFilterId != other.activeFilterId) return false
+        if (activeFilterMatrix != null) {
+            if (other.activeFilterMatrix == null) return false
+            if (!activeFilterMatrix.contentEquals(other.activeFilterMatrix)) return false
+        } else if (other.activeFilterMatrix != null) return false
+        if (textLayers != other.textLayers) return false
+        if (stickerLayers != other.stickerLayers) return false
+        if (drawActions != other.drawActions) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = brightness.hashCode()
+        result = 31 * result + contrast.hashCode()
+        result = 31 * result + saturation.hashCode()
+        result = 31 * result + hue.hashCode()
+        result = 31 * result + temperature.hashCode()
+        result = 31 * result + tint.hashCode()
+        result = 31 * result + rotationAngle.hashCode()
+        result = 31 * result + (activeFilterId?.hashCode() ?: 0)
+        result = 31 * result + (activeFilterMatrix?.contentHashCode() ?: 0)
+        result = 31 * result + textLayers.hashCode()
+        result = 31 * result + stickerLayers.hashCode()
+        result = 31 * result + drawActions.hashCode()
+        return result
+    }
+}
 
 data class TextLayer(
     val id: String = java.util.UUID.randomUUID().toString(),
@@ -184,6 +225,30 @@ enum class ShapeType {
     RECTANGLE, CIRCLE, LINE, ARROW
 }
 
+// Mosaic pattern types
+enum class MosaicPattern(val displayName: String) {
+    SQUARE("Square"),
+    HEXAGONAL("Hexagonal"),
+    CIRCULAR("Circular"),
+    DIAMOND("Diamond")
+}
+
+// Mosaic preset for quick settings
+data class MosaicPreset(
+    val name: String,
+    val intensity: Float, // 0.01-0.20 scale
+    val strokeWidth: Float = 10f,
+    val opacity: Float = 1f
+) {
+    companion object {
+        val SUBTLE = MosaicPreset("Subtle", intensity = 0.15f, strokeWidth = 15f, opacity = 0.6f)
+        val MEDIUM = MosaicPreset("Medium", intensity = 0.08f, strokeWidth = 10f, opacity = 0.8f)
+        val HEAVY = MosaicPreset("Heavy", intensity = 0.03f, strokeWidth = 8f, opacity = 1.0f)
+        
+        val defaults = listOf(SUBTLE, MEDIUM, HEAVY)
+    }
+}
+
 data class ShapeLayer(
     val id: String = java.util.UUID.randomUUID().toString(),
     val type: ShapeType,
@@ -233,6 +298,8 @@ data class PhotoEditorUiState(
     val currentStrokeWidth: Float = 5f,
     val selectedDrawTool: DrawTool = DrawTool.BRUSH,
     val currentOpacity: Float = 1f, 
+    val mosaicIntensity: Float = 0.05f, // Pixelation scale: 0.01 (1%) to 0.20 (20%)
+    val mosaicPattern: MosaicPattern = MosaicPattern.SQUARE,
 
     val rotationAngle: Float = 0f,
     val flipX: Boolean = false,
@@ -504,6 +571,14 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
         val mutableBitmap = originalBitmap.copy(Bitmap.Config.ARGB_8888, true)
         val canvas = android.graphics.Canvas(mutableBitmap)
         
+        // Create a pixelated bitmap for Mosaic effect if needed
+        // Optimization: Only create if there's a Mosaic action
+        val hasMosaic = actions.any { it is DrawAction.Path && it.path.isMosaic }
+        val pixelatedBitmap = if (hasMosaic) createPixelatedBitmap(originalBitmap) else null
+        val mosaicShader = if (pixelatedBitmap != null) {
+            android.graphics.BitmapShader(pixelatedBitmap, android.graphics.Shader.TileMode.CLAMP, android.graphics.Shader.TileMode.CLAMP)
+        } else null
+
         actions.forEach { action ->
             val paint = android.graphics.Paint().apply {
                 isAntiAlias = true
@@ -513,22 +588,36 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
                 is DrawAction.Path -> {
                     val drawPath = action.path
                     paint.apply {
-                        color = if (drawPath.isEraser) android.graphics.Color.TRANSPARENT else drawPath.color
-                        strokeWidth = drawPath.strokeWidth
-                        style = android.graphics.Paint.Style.STROKE
-                        strokeCap = android.graphics.Paint.Cap.ROUND
-                        strokeJoin = android.graphics.Paint.Join.ROUND
+                        if (drawPath.isMosaic && mosaicShader != null) {
+                            shader = mosaicShader
+                            style = android.graphics.Paint.Style.STROKE
+                            strokeWidth = drawPath.strokeWidth
+                            strokeCap = android.graphics.Paint.Cap.ROUND
+                            strokeJoin = android.graphics.Paint.Join.ROUND
+                            alpha = android.graphics.Color.alpha(drawPath.color) // Apply transparency if mosaic has color (it usually doesn't, but path stores it)
+                            // Ideally Mosaic uses original pixels. Transparency on Mosaic means mixing original with... what?
+                            // Mixing Pixelated with Transparent (i.e. original/underlying).
+                            // If Paint alpha is 50%, it draws 50% pixelated over 100% original.
+                            // Effectively "fading in" the mosaic effect.
+                        } else {
+                            color = if (drawPath.isEraser) android.graphics.Color.TRANSPARENT else drawPath.color
+                            strokeWidth = drawPath.strokeWidth
+                            style = android.graphics.Paint.Style.STROKE
+                            strokeCap = android.graphics.Paint.Cap.ROUND
+                            strokeJoin = android.graphics.Paint.Join.ROUND
+                        }
                         
                         if (drawPath.isEraser) {
                             xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
                         } else if (drawPath.isHighlighter) {
-                             xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DARKEN) // or SC(Source Over) with alpha logic handled in color
-                             alpha = 128 // 50% Opacity for Highlighter
+                             xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DARKEN) 
+                             // Alpha is already in `color` which is applied above (drawPath.color includes alpha).
+                             // We don't need to force set alpha here if we use drawPath.color.
+                             // Wait, `color` assignment above handles it.
+                             // But checking above code: `color = drawPath.color`.
+                             // Remove explicit alpha override here.
                         } else if (drawPath.isNeon) {
-                             // Neon Glow
-                             setShadowLayer(12f, 0f, 0f, drawPath.color)
-                             // Main stroke is brighter or white? Often Neon is color with color glow.
-                             // Let's keep it simple: Color with Glow.
+                             setShadowLayer(drawPath.strokeWidth * 1.5f, 0f, 0f, drawPath.color)
                         }
                     }
 
@@ -539,21 +628,22 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
                     }
                     canvas.drawPath(path, paint)
                     
-                    // Enhancement: Draw a white core for Neon to make it pop
                     if (drawPath.isNeon) {
-                        paint.setShadowLayer(0f, 0f, 0f, 0) // Clear shadow
+                        paint.shader = null // Ensure no shader for core
+                        paint.setShadowLayer(0f, 0f, 0f, 0)
                         paint.color = android.graphics.Color.WHITE
-                        paint.strokeWidth = drawPath.strokeWidth / 3f // Thinner core
-                        paint.alpha = 200
+                        paint.strokeWidth = drawPath.strokeWidth / 3f 
+                        paint.alpha = 255 // Solid core
                         canvas.drawPath(path, paint)
                     }
                 }
                 is DrawAction.Shape -> {
+                    // Shape rendering remains same
                     val shape = action.shape
                     paint.apply {
                         color = shape.color
                         strokeWidth = shape.strokeWidth
-                        alpha = (android.graphics.Color.alpha(shape.color)) // Use color alpha
+                        alpha = (android.graphics.Color.alpha(shape.color)) 
                     }
                     
                     when (shape) {
@@ -594,6 +684,18 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
         
         return mutableBitmap
     }
+    
+    private fun createPixelatedBitmap(bitmap: Bitmap, intensity: Float = 0.05f): Bitmap {
+        val width = bitmap.width
+        val height = bitmap.height
+        val scale = intensity.coerceIn(0.01f, 0.20f) // Clamp between 1% and 20%
+        
+        val scaledWidth = (width * scale).toInt().coerceAtLeast(1)
+        val scaledHeight = (height * scale).toInt().coerceAtLeast(1)
+        
+        val scaledBitmap = Bitmap.createScaledBitmap(bitmap, scaledWidth, scaledHeight, false)
+        return Bitmap.createScaledBitmap(scaledBitmap, width, height, false)
+    }
 
 
     fun clearMessage() {
@@ -623,12 +725,48 @@ fun flipVertical() {
     saveToHistory()
 }
 
+// Mosaic intensity control (0-100 UI range mapped to 0.20-0.01 scale)
+// Higher intensity = MORE pixelation = SMALLER scale = BIGGER blocks
+fun updateMosaicIntensity(intensity: Float) {
+    _uiState.update { 
+        it.copy(mosaicIntensity = (0.20f - (intensity / 100f * 0.19f)).coerceIn(0.01f, 0.20f))
+    }
+}
+
+// Update mosaic pattern
+fun updateMosaicPattern(pattern: MosaicPattern) {
+    _uiState.update { it.copy(mosaicPattern = pattern) }
+}
+
+// Apply mosaic preset
+fun applyMosaicPreset(preset: MosaicPreset) {
+    _uiState.update { 
+        it.copy(
+            mosaicIntensity = preset.intensity,
+            currentStrokeWidth = preset.strokeWidth,
+            currentOpacity = preset.opacity
+        )
+    }
+}
+
+// Reset mosaic settings to defaults
+fun resetMosaicSettings() {
+    _uiState.update { 
+        it.copy(
+            mosaicIntensity = 0.05f,
+            mosaicPattern = MosaicPattern.SQUARE,
+            currentStrokeWidth = 10f,
+            currentOpacity = 1f
+        )
+    }
+}
+
 fun setRotationAngle(angle: Float) {
     _uiState.update { it.copy(rotationAngle = angle) }
 }
     
     // Undo/Redo Methods
-    private fun saveToHistory() {
+    fun saveToHistory() {
         val currentState = EditorState(
             brightness = _uiState.value.brightness,
             contrast = _uiState.value.contrast,
@@ -640,8 +778,17 @@ fun setRotationAngle(angle: Float) {
             activeFilterId = _uiState.value.activeFilterId,
             activeFilterMatrix = _uiState.value.activeFilterMatrix,
             textLayers = _uiState.value.textLayers,
+            stickerLayers = _uiState.value.stickerLayers, // Ensure stickerLayers are saved
             drawActions = _uiState.value.drawActions
         )
+
+        // Check if the new state is identical to the current history state
+        if (currentHistoryIndex >= 0 && currentHistoryIndex < historyStack.size) {
+            val lastState = historyStack[currentHistoryIndex]
+            if (currentState == lastState) {
+                return // Skip saving duplicate state
+            }
+        }
         
         // Remove any states after current index (when user made changes after undo)
         if (currentHistoryIndex < historyStack.size - 1) {
@@ -659,6 +806,65 @@ fun setRotationAngle(angle: Float) {
         }
         
         updateHistoryButtons()
+    }
+
+    // ... (Skipping intermediary methods)
+
+    fun updateDrawColor(color: Int, saveHistory: Boolean = true) {
+    _uiState.update { state -> 
+        // Apply current opacity to the selected color
+        val currentAlpha = (state.currentOpacity * 255).toInt().coerceIn(0, 255)
+        val newColor = androidx.core.graphics.ColorUtils.setAlphaComponent(color, currentAlpha)
+        
+        state.copy(
+            currentDrawColor = newColor,
+            shapeLayers = if (state.selectedShapeLayerId != null) {
+                state.shapeLayers.map { 
+                    if (it.id == state.selectedShapeLayerId && !it.isLocked) it.copy(color = newColor) else it
+                }
+            } else state.shapeLayers
+        ) 
+    }
+    if (saveHistory) saveToHistory()
+}
+
+    fun updateStrokeWidth(width: Float, saveHistory: Boolean = true) {
+        _uiState.update { state -> 
+            state.copy(
+                currentStrokeWidth = width,
+                shapeLayers = if (state.selectedShapeLayerId != null) {
+                    state.shapeLayers.map { 
+                        if (it.id == state.selectedShapeLayerId && !it.isLocked) it.copy(strokeWidth = width) else it
+                    }
+                } else state.shapeLayers
+            ) 
+        }
+        if (saveHistory) saveToHistory()
+    }
+
+    // ...
+
+    // Simplified update for properties
+    fun updateTextProperty(id: String, saveHistory: Boolean = true, update: (TextLayer) -> TextLayer) {
+        _uiState.update {
+            it.copy(
+                textLayers = it.textLayers.map { layer ->
+                    if (layer.id == id && !layer.isLocked) update(layer) else layer
+                }
+            )
+        }
+        if (saveHistory) saveToHistory()
+    }
+
+    // ...
+
+    fun updateShapeLayer(id: String, saveHistory: Boolean = true, update: (ShapeLayer) -> ShapeLayer) {
+        _uiState.update { state ->
+            state.copy(
+                shapeLayers = state.shapeLayers.map { if (it.id == id) update(it) else it }
+            )
+        }
+        if (saveHistory) saveToHistory()
     }
     
     fun undo() {
@@ -688,6 +894,18 @@ fun setRotationAngle(angle: Float) {
     }
     
     private fun restoreState(state: EditorState) {
+        val currentState = _uiState.value
+        // Check if bitmap generation is needed
+        val needsBitmapUpdate = currentState.brightness != state.brightness ||
+                                currentState.contrast != state.contrast ||
+                                currentState.saturation != state.saturation ||
+                                currentState.hue != state.hue ||
+                                currentState.temperature != state.temperature ||
+                                currentState.tint != state.tint ||
+                                currentState.activeFilterId != state.activeFilterId 
+                                // activeFilterMatrix usually changes with ID, checking ID + standard comparison is enough usually, 
+                                // but let's assume if ID is same matrix is likely same or irrelevant if ID null.
+        
         _uiState.update {
             it.copy(
                 brightness = state.brightness,
@@ -703,10 +921,15 @@ fun setRotationAngle(angle: Float) {
                 drawActions = state.drawActions,
                 // Reset dialogs
                 showTextDialog = false,
-                editingTextId = null
+                editingTextId = null,
+                // Important: If we don't update bitmap, ensure we keep the current valid one or if we do update, keep current until loaded? 
+                // But here we are just setting state vars.
             )
         }
-        scheduleApply(saveHistory = false)
+        
+        if (needsBitmapUpdate) {
+            scheduleApply(saveHistory = false)
+        }
     }
     
     private fun updateHistoryButtons() {
@@ -786,31 +1009,9 @@ fun setRotationAngle(angle: Float) {
     
 
     
-    fun updateDrawColor(color: Int) {
-        _uiState.update { state -> 
-            state.copy(
-                currentDrawColor = color,
-                shapeLayers = if (state.selectedShapeLayerId != null) {
-                    state.shapeLayers.map { 
-                        if (it.id == state.selectedShapeLayerId && !it.isLocked) it.copy(color = color) else it
-                    }
-                } else state.shapeLayers
-            ) 
-        }
-    }
 
-    fun updateStrokeWidth(width: Float) {
-        _uiState.update { state -> 
-            state.copy(
-                currentStrokeWidth = width,
-                shapeLayers = if (state.selectedShapeLayerId != null) {
-                    state.shapeLayers.map { 
-                        if (it.id == state.selectedShapeLayerId && !it.isLocked) it.copy(strokeWidth = width) else it
-                    }
-                } else state.shapeLayers
-            ) 
-        }
-    }
+
+
     
     fun selectDrawTool(tool: DrawTool) {
         _uiState.update { it.copy(selectedDrawTool = tool) }
@@ -827,6 +1028,7 @@ fun setRotationAngle(angle: Float) {
                 canRedo = false
             )
         }
+        saveToHistory()
     }
 
     // Deprecated: Migrating to addDrawAction
@@ -839,40 +1041,17 @@ fun setRotationAngle(angle: Float) {
         addDrawAction(DrawAction.Shape(shape))
     }
 
-    fun undoDrawAction() { // Renamed to avoid conflict with general undo()
-        val currentState = _uiState.value
-        if (currentState.drawActions.isNotEmpty()) {
-            val lastAction = currentState.drawActions.last()
-            _uiState.update {
-                it.copy(
-                    drawActions = it.drawActions.dropLast(1),
-                    redoStack = it.redoStack + lastAction,
-                    canUndo = it.drawActions.size > 1,
-                    canRedo = true
-                )
-            }
-        }
-    }
-
-    fun redoDrawAction() { // Renamed to avoid conflict with general redo()
-        val currentState = _uiState.value
-        if (currentState.redoStack.isNotEmpty()) {
-            val actionToRedo = currentState.redoStack.last()
-            _uiState.update {
-                it.copy(
-                    drawActions = it.drawActions + actionToRedo,
-                    redoStack = it.redoStack.dropLast(1),
-                    canUndo = true,
-                    canRedo = it.redoStack.size > 1
-                )
-            }
-        }
-    }
+    // Unified Undo/Redo handles drawing now.
+    // drawActions specific undo/redo removed to prevent state desync.
 
     // New Helpers
-    fun updateOpacity(opacity: Float) {
-        _uiState.update { it.copy(currentOpacity = opacity) }
+fun updateOpacity(opacity: Float) {
+    _uiState.update { state ->
+        val currentAlpha = (opacity * 255).toInt().coerceIn(0, 255)
+        val newColor = androidx.core.graphics.ColorUtils.setAlphaComponent(state.currentDrawColor, currentAlpha)
+        state.copy(currentOpacity = opacity, currentDrawColor = newColor)
     }
+}
 
     // Legacy Support (To be removed after UI update)
     // fun undoDrawPath() { ... } 
@@ -1138,16 +1317,7 @@ fun setRotationAngle(angle: Float) {
     }
 
     // Simplified update for properties
-    fun updateTextProperty(id: String, update: (TextLayer) -> TextLayer) {
-        _uiState.update {
-            it.copy(
-                textLayers = it.textLayers.map { layer ->
-                    if (layer.id == id && !layer.isLocked) update(layer) else layer
-                }
-            )
-        }
-        saveToHistory()
-    }
+
     
     // Backward compatibility shim if needed, or rely on updateTextProperty
     fun updateTextLayer(
@@ -1250,16 +1420,8 @@ fun setRotationAngle(angle: Float) {
         _uiState.update { it.copy(selectedShapeLayerId = null) }
     }
     
-    fun updateShapeLayer(id: String, update: (ShapeLayer) -> ShapeLayer) {
-        _uiState.update { state ->
-            state.copy(
-                shapeLayers = state.shapeLayers.map { if (it.id == id) update(it) else it }
-            )
-        }
-        // Debounce history saving locally if needed, or rely on distinct calls
-        // For sliders, we might usually wait, but here we save for simplicity
-        saveToHistory()
-    }
+
+
 
     fun updateShapeShadow(id: String, hasShadow: Boolean, color: Int, blur: Float, x: Float, y: Float) {
         updateShapeLayer(id) {

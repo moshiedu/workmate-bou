@@ -5,6 +5,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.layout.*
@@ -75,9 +77,10 @@ fun TextBoxComposable(
     onSelect: (String) -> Unit,
     onEdit: (String) -> Unit,
     onTransform: (String, Offset, Float, Float) -> Unit,
+    onTransformEnd: (String) -> Unit, // New callback for history
     onTextChange: (String, String) -> Unit,
-    onDuplicate: (String) -> Unit, // New callback
-    onDelete: (String) -> Unit,    // Explicit delete callback for handle
+    onDuplicate: (String) -> Unit, 
+    onDelete: (String) -> Unit,    
     modifier: Modifier = Modifier
 ) {
     // Apply transforms via graphicsLayer
@@ -113,11 +116,73 @@ fun TextBoxComposable(
                 if (layer.textBlur > 0f) Modifier.blur(layer.textBlur.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)
                 else Modifier
             )
-            // General Drag/Pinch/Rotate on the text body
+            // General Drag/Pinch/Rotate on the text body using custom detection for End event
             .pointerInput(layer.id, layer.isLocked, isEditing) {
                 if (!layer.isLocked && !isEditing) {
-                    detectTransformGestures { _, pan, zoom, rotation ->
-                        onTransform(layer.id, pan, zoom, rotation)
+                    awaitEachGesture {
+                        var zoom = 1f
+                        var pan = Offset.Zero
+                        var rotation = 0f
+                        
+                        awaitFirstDown(requireUnconsumed = false)
+                        var pastTouchSlop = false
+                        
+                        var canceled = false
+                        while (!canceled) {
+                            val event = awaitPointerEvent()
+                            canceled = event.changes.any { change: androidx.compose.ui.input.pointer.PointerInputChange -> change.isConsumed }
+                            
+                            if (!canceled) {
+                                val zoomChange = event.calculateZoom()
+                                val rotationChange = event.calculateRotation()
+                                val panChange = event.calculatePan()
+                                
+                                if (!pastTouchSlop) {
+                                    zoom *= zoomChange
+                                    rotation += rotationChange
+                                    pan += panChange
+                                    
+                                    val centroidSize = event.calculateCentroidSize(useCurrent = false)
+                                    val zoomMotion = abs(1 - zoom) * centroidSize
+                                    val rotationMotion = abs(rotation * PI.toFloat() * centroidSize / 180f)
+                                    val panMotion = pan.getDistance()
+                                    
+                                    if (zoomMotion > viewConfiguration.touchSlop ||
+                                        rotationMotion > viewConfiguration.touchSlop ||
+                                        panMotion > viewConfiguration.touchSlop
+                                    ) {
+                                        pastTouchSlop = true
+                                    }
+                                }
+                                
+                                if (pastTouchSlop) {
+                                    if (zoomChange != 1f || rotationChange != 0f || panChange != Offset.Zero) {
+                                        onTransform(layer.id, panChange, zoomChange, rotationChange)
+                                    }
+                                    event.changes.forEach { change: androidx.compose.ui.input.pointer.PointerInputChange ->
+                                        if (change.previousPosition != change.position) { 
+                                            // change.consume() // removed
+                                        } 
+                                    }
+                                }
+                            }
+                            
+                            
+                            var stillPressed = false
+                            val changes: List<androidx.compose.ui.input.pointer.PointerInputChange> = event.changes
+                            for (i in 0 until changes.size) {
+                                if (changes[i].pressed) {
+                                    stillPressed = true
+                                    break
+                                }
+                            }
+                            if (!stillPressed) break
+                        }
+                        
+                        // Gesture Ended
+                        if (pastTouchSlop) {
+                            onTransformEnd(layer.id)
+                        }
                     }
                 }
             }
@@ -131,6 +196,10 @@ fun TextBoxComposable(
                 )
             }
     ) {
+        // ... (Content remains same, using elided block to skip unchanged parts if possible, but replace tool needs context)
+        // Since I need to replace the whole file content or a large chunk to be safe with indentation and context.
+        // I will include the inner content but I need to be careful about not deleting the helper functions below.
+        
         // Content with Reflection capability
         val textContent: @Composable (showBorder: Boolean) -> Unit = { showBorder ->
             Box(
@@ -226,29 +295,10 @@ fun TextBoxComposable(
                 // TextStyle (Neon & Glitch aware)
                 val baseColor = if (layer.isGradient) Color.Unspecified else Color(layer.color)
                 
-                // Neon Logic: White core, Colored Glow.
-                // If Texture/Gradient is active, we can't easily show it in BasicTextField without 'brush' support in TextStyle.
-                // So for Editing, we fallback to Solid Color if Brush is active? Or Unspecified?
-                // If we use Unspecified, text is invisible.
-                // So if Editing AND Brush Active, we might show a placeholder color (e.g. Black/White or primary color)?
-                // Let's use baseColor (or Black if Unspecified?) for editing if brush is active.
-                
                 val useBrush = finalBrush != null
-                val finalColor = if (layer.isNeon) Color.White 
-                                 else if (useBrush && !isEditing) Color.Unspecified // When non-editing, AnnotatedString handles brush. 
-                                 else if (useBrush && isEditing) Color.Black // Fallback for editing? Or layer.color?
-                                 else baseColor
-                                 
-                // Actually, wait. 'displayText' is used in the `else` block (isEditing = false).
-                // `BasicTextField` uses `layer.text` and `textStyle`.
-                // If isEditing is true, we are in BasicTextField.
-                // If we can't pass brush to textStyle, we show solid color.
-                // So `finalColor` should be `baseColor` (or White for Neon).
-                // If Gradient/Texture is on, using `baseColor` is fine for editing.
-                
                 val effectiveColor = if (layer.isNeon) Color.White 
-                                     else if (useBrush && isEditing) Color.Black // Show simplified black text while editing texture? Or maybe just layer.color?
-                                     else if (useBrush) Color.Unspecified // Handled by SpanStyle
+                                     else if (useBrush && isEditing) Color.Black 
+                                     else if (useBrush) Color.Unspecified 
                                      else baseColor
 
                 val finalShadow = if (layer.isNeon) {
@@ -262,7 +312,6 @@ fun TextBoxComposable(
                 } else null
 
                 val textStyle = TextStyle(
-                    // Removed 'brush' parameter as it caused compilation error on older Compose versions
                     color = effectiveColor, 
                     fontSize = layer.fontSize.sp,
                     fontFamily = when(layer.fontFamily) {
@@ -317,16 +366,10 @@ fun TextBoxComposable(
                     val density = LocalDensity.current
                     Box(modifier = Modifier.graphicsLayer { alpha = layer.layerOpacity }) {
                         
-                        // Detect if we need to render Glitch layers
-                        // We render them BEHIND the main text
-                        
                         if (abs(layer.curvature) > 0f) {
                              // --- CURVED MODE ---
-                             
-                             // 1. Glitch Layers (Curved)
                              if (layer.isGlitch) {
                                  val glitchOffset = 2.dp
-                                 // Red Shift
                                  Box(modifier = Modifier.offset(x = -glitchOffset, y = -glitchOffset)) {
                                      CurvedTextRenderer(
                                          text = displayText.text,
@@ -334,7 +377,6 @@ fun TextBoxComposable(
                                          density = density
                                      )
                                  }
-                                 // Cyan Shift
                                  Box(modifier = Modifier.offset(x = glitchOffset, y = glitchOffset)) {
                                      CurvedTextRenderer(
                                          text = displayText.text,
@@ -344,32 +386,26 @@ fun TextBoxComposable(
                                  }
                              }
 
-                             // 2. Invisible Layout Reserver
                              Text(
                                 text = displayText,
                                 style = textStyle.copy(color = Color.Transparent, shadow = null),
                                 modifier = Modifier.defaultMinSize(minWidth = 50.dp).alpha(0f)
                              )
                              
-                             // 3. Main Curved Render
                              CurvedTextRenderer(
                                  text = displayText.text,
-                                 layer = layer, // Passes current Neon/Color state
+                                 layer = layer,
                                  density = density
                              )
                         } else {
                             // --- STRAIGHT MODE ---
-                            
-                            // 1. Glitch Layers (Straight)
                             if (layer.isGlitch) {
                                  val glitchOffset = 2.dp
-                                 // Red Shift
                                  Text(
                                      text = displayText,
                                      style = textStyle.copy(color = Color.Red.copy(alpha = 0.7f), shadow = null),
                                      modifier = Modifier.offset(x = -glitchOffset, y = -glitchOffset)
                                  )
-                                 // Cyan Shift
                                  Text(
                                      text = displayText,
                                      style = textStyle.copy(color = Color.Cyan.copy(alpha = 0.7f), shadow = null),
@@ -378,7 +414,6 @@ fun TextBoxComposable(
                             }
                             
                             if (layer.outlineWidth > 0f) {
-                                // Outline Layer
                                 Text(
                                     text = displayText,
                                     style = textStyle.copy(
@@ -390,7 +425,6 @@ fun TextBoxComposable(
                                     ),
                                     modifier = Modifier.defaultMinSize(minWidth = 50.dp)
                                 )
-                                // Fill Layer
                                 Text(
                                     text = displayText,
                                     style = textStyle.copy(shadow = null),
@@ -415,13 +449,12 @@ fun TextBoxComposable(
                 modifier = Modifier
                      .graphicsLayer {
                          rotationX = 180f // Flip vertically
-                         // Subtract padding gap (12dp top + 12dp bottom = 24dp, using 22dp for safety)
                          translationY = size.height - 22.dp.toPx() + layer.reflectionOffset.dp.toPx()
                          alpha = layer.reflectionOpacity
                          cameraDistance = 8 * density 
                      }
             ) {
-                textContent(false) // No selection border in reflection
+                textContent(false)
             }
         }
 
@@ -431,7 +464,7 @@ fun TextBoxComposable(
         // Overlay Handles
         if (isSelected && !layer.isLocked) {
             val handleSize = 24.dp
-            val handleOffset = 12.dp // Matches padding
+            val handleOffset = 12.dp 
 
             // Top Left: Copy & Delete
             Row(
@@ -476,7 +509,9 @@ fun TextBoxComposable(
                     .size(handleSize)
                     .background(Color(0xFF007AFF), CircleShape)
                     .pointerInput(Unit) {
-                        detectDragGestures { change, dragAmount ->
+                        detectDragGestures(
+                             onDragEnd = { onTransformEnd(layer.id) }
+                        ) { change, dragAmount ->
                             change.consume()
                             // Simple rotation: drag right/down rotates clockwise
                             val degrees = (dragAmount.x + dragAmount.y) * 0.2f
@@ -502,7 +537,9 @@ fun TextBoxComposable(
                     .background(Color.White, CircleShape)
                     .border(2.dp, Color(0xFF007AFF), CircleShape)
                     .pointerInput(Unit) {
-                        detectDragGestures { change, dragAmount ->
+                        detectDragGestures(
+                            onDragEnd = { onTransformEnd(layer.id) }
+                        ) { change, dragAmount ->
                             change.consume()
                             // Simple scale: drag right/down increases size
                             val scaleChange = 1f + (dragAmount.x + dragAmount.y) / 200f
@@ -704,4 +741,57 @@ fun CurvedTextRenderer(
              }
         }
     }
+}
+
+// Helper extension for gesture calculation
+fun androidx.compose.ui.input.pointer.PointerEvent.calculateCentroidSize(useCurrent: Boolean = true): Float {
+    val positions = changes.map { if (useCurrent) it.position else it.previousPosition }
+    if (positions.isEmpty()) return 0f
+    
+    // Calculate Centroid
+    var centroidX = 0f
+    var centroidY = 0f
+    positions.forEach {
+        centroidX += it.x
+        centroidY += it.y
+    }
+    centroidX /= positions.size
+    centroidY /= positions.size
+    
+    // Calculate average distance from centroid
+    var sumDistance = 0f
+    positions.forEach {
+        val dx = it.x - centroidX
+        val dy = it.y - centroidY
+        sumDistance += sqrt(dx*dx + dy*dy)
+    }
+    return sumDistance / positions.size
+}
+
+fun androidx.compose.ui.input.pointer.PointerEvent.calculateZoom(): Float {
+    val currentCentroidSize = calculateCentroidSize(useCurrent = true)
+    val previousCentroidSize = calculateCentroidSize(useCurrent = false)
+    if (previousCentroidSize == 0f) return 1f
+    return currentCentroidSize / previousCentroidSize
+}
+
+fun androidx.compose.ui.input.pointer.PointerEvent.calculateRotation(): Float {
+    if (changes.size < 2) return 0f
+    val current = changes.map { it.position }
+    val previous = changes.map { it.previousPosition }
+    
+    val currentAngle = atan2(current[1].y - current[0].y, current[1].x - current[0].x)
+    val previousAngle = atan2(previous[1].y - previous[0].y, previous[1].x - previous[0].x)
+    
+    return (currentAngle - previousAngle) * 180f / PI.toFloat()
+}
+
+fun androidx.compose.ui.input.pointer.PointerEvent.calculatePan(): androidx.compose.ui.geometry.Offset {
+    val current = changes.map { it.position }
+    val previous = changes.map { it.previousPosition }
+    
+    val currentCentroid = current.fold(androidx.compose.ui.geometry.Offset.Zero) { acc, offset -> acc + offset } / current.size.toFloat()
+    val previousCentroid = previous.fold(androidx.compose.ui.geometry.Offset.Zero) { acc, offset -> acc + offset } / previous.size.toFloat()
+    
+    return currentCentroid - previousCentroid
 }

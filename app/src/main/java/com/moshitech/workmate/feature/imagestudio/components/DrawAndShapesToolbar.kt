@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -100,7 +101,12 @@ fun PaintToolbar(
     uiState: PhotoEditorUiState,
     viewModel: PhotoEditorViewModel
 ) {
-    Column(modifier = Modifier.padding(16.dp)) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp)
+    ) {
         // Tool Icons
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -150,30 +156,130 @@ fun PaintToolbar(
         }
 
         // Sliders & Style
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-             // Size
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Size", color = Color.Gray, fontSize = 12.sp)
-                Slider(
-                    value = uiState.currentStrokeWidth,
-                    onValueChange = { viewModel.updateStrokeWidth(it) },
-                    valueRange = 1f..50f,
-                    colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color(0xFF007AFF))
-                )
-            }
-            Spacer(modifier = Modifier.width(16.dp))
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // Size
+            CompactModernSlider(
+                value = uiState.currentStrokeWidth,
+                onValueChange = { viewModel.updateStrokeWidth(it) },
+                onValueChangeFinished = { viewModel.saveToHistory() },
+                valueRange = 1f..100f,
+                label = "Size",
+                unit = ""
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
             // Opacity
-             Column(modifier = Modifier.weight(1f)) {
-                Text("Opacity", color = Color.Gray, fontSize = 12.sp)
-                Slider(
-                    value = uiState.currentOpacity,
-                    onValueChange = { viewModel.updateOpacity(it) },
-                    valueRange = 0f..1f,
-                    colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color(0xFF007AFF))
-                )
+            CompactModernSlider(
+                value = uiState.currentOpacity * 100f,
+                onValueChange = { viewModel.updateOpacity(it / 100f) },
+                onValueChangeFinished = { viewModel.saveToHistory() },
+                valueRange = 0f..100f,
+                label = "Opacity",
+                unit = "%"
+            )
+        }
+        
+        // Mosaic Intensity Slider (only show when Mosaic tool is selected)
+        if (uiState.selectedDrawTool == DrawTool.MOSAIC) {
+            // Presets and Reset
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Presets", color = Color.Gray, fontSize = 12.sp)
+                IconButton(
+                    onClick = { viewModel.resetMosaicSettings() },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.RestartAlt,
+                        contentDescription = "Reset",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+            
+            // Preset Chips
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                com.moshitech.workmate.feature.imagestudio.viewmodel.MosaicPreset.defaults.forEach { preset ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(36.dp)
+                            .background(
+                                color = Color(0xFF2C2C2E),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .clickable { viewModel.applyMosaicPreset(preset) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = preset.name,
+                            color = Color.White,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            CompactModernSlider(
+                value = ((0.20f - uiState.mosaicIntensity) / 0.19f * 100f).coerceIn(0f, 100f),
+                onValueChange = { viewModel.updateMosaicIntensity(it) },
+                valueRange = 0f..100f,
+                label = "Pixelation",
+                unit = "%"
+            )
+            
+            // Pattern Selector
+            Spacer(modifier = Modifier.height(8.dp))
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text("Pattern", color = Color.Gray, fontSize = 12.sp)
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    com.moshitech.workmate.feature.imagestudio.viewmodel.MosaicPattern.values().forEach { pattern ->
+                        val isSelected = uiState.mosaicPattern == pattern
+                        val isEnabled = pattern == com.moshitech.workmate.feature.imagestudio.viewmodel.MosaicPattern.SQUARE
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(40.dp)
+                                .background(
+                                    color = when {
+                                        isSelected -> Color(0xFF007AFF)
+                                        !isEnabled -> Color(0xFF1C1C1E)
+                                        else -> Color(0xFF2C2C2E)
+                                    },
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                                .clickable(enabled = isEnabled) { 
+                                    if (isEnabled) viewModel.updateMosaicPattern(pattern) 
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (!isEnabled && pattern != com.moshitech.workmate.feature.imagestudio.viewmodel.MosaicPattern.SQUARE) 
+                                    "${pattern.displayName}\n(Soon)" 
+                                else 
+                                    pattern.displayName,
+                                color = if (isEnabled) Color.White else Color.Gray,
+                                fontSize = 10.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -189,7 +295,12 @@ fun ShapesToolbar(
         ShapePropertiesPanel(uiState, viewModel)
     } else {
         // Add Shape Grid
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp)
+        ) {
             Text("Add Shape", color = Color.White, modifier = Modifier.padding(bottom = 8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),

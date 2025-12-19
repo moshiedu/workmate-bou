@@ -53,7 +53,8 @@ enum class TextToolTab {
 fun TextEditorToolbar(
     layer: TextLayer,
     visible: Boolean,
-    onUpdate: (TextLayer) -> Unit,
+    onUpdate: (TextLayer, Boolean) -> Unit,
+    onSave: () -> Unit,
     onRequestEyedropper: ((Color) -> Unit) -> Unit,
     onRequestTexturePick: () -> Unit,
     modifier: Modifier = Modifier
@@ -124,15 +125,18 @@ fun TextEditorToolbar(
                 contentAlignment = Alignment.TopCenter
             ) {
                 when (selectedTab) {
-                    TextToolTab.FONT -> FontTabContent(layer, onUpdate)
-                    TextToolTab.STYLE -> StyleTabContent(layer, onUpdate)
-                    TextToolTab.COLOR -> ColorTabContent(
-                        layer = layer,
-                        onUpdate = onUpdate,
-                        onRequestEyedropper = onRequestEyedropper,
-                        onRequestTexturePick = onRequestTexturePick
-                    )
-                    TextToolTab.EFFECTS -> EffectsTabContent(layer, onUpdate)
+                    TextToolTab.FONT -> FontTabContent(layer, onUpdate, onSave)
+                    TextToolTab.STYLE -> StyleTabContent(layer, { l -> onUpdate(l, true) }) // Style buttons are single-click
+                    TextToolTab.COLOR -> {
+            ColorTabContent(
+                layer = layer,
+                onUpdate = { l, save -> onUpdate(l, save) },
+                onSave = onSave,
+                onRequestEyedropper = onRequestEyedropper,
+                onRequestTexturePick = onRequestTexturePick
+            )
+        }
+                    TextToolTab.EFFECTS -> EffectsTabContent(layer, onUpdate, onSave)
                 }
             }
         }
@@ -140,7 +144,7 @@ fun TextEditorToolbar(
 }
 
 @Composable
-fun FontTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
+fun FontTabContent(layer: TextLayer, onUpdate: (TextLayer, Boolean) -> Unit, onSave: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(16.dp) // Gap between sections
@@ -170,7 +174,7 @@ fun FontTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
                 Column(
                     modifier = Modifier
                          .width(80.dp)
-                         .clickable { onUpdate(layer.copy(fontFamily = font)) },
+                         .clickable { onUpdate(layer.copy(fontFamily = font), true) },
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Box(
@@ -213,16 +217,14 @@ fun FontTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
                 Text("Font Size", color = Color.White, fontSize = 14.sp)
                 Text("${layer.fontSize.toInt()}pt", color = Color(0xFF007AFF), fontSize = 14.sp, fontWeight = FontWeight.Medium)
             }
-            Slider(
-                value = layer.fontSize,
-                onValueChange = { onUpdate(layer.copy(fontSize = it)) },
-                valueRange = 10f..72f,
-                colors = SliderDefaults.colors(
-                    thumbColor = Color(0xFF007AFF),
-                    activeTrackColor = Color(0xFF007AFF),
-                    inactiveTrackColor = Color(0xFF3A3A3C)
-                )
-            )
+        CompactModernSlider(
+            value = layer.fontSize,
+            onValueChange = { onUpdate(layer.copy(fontSize = it), false) },
+            onValueChangeFinished = onSave,
+            valueRange = 10f..200f,
+            label = "Size",
+            unit = ""
+        )
         }
         
         // Letter Spacing
@@ -235,16 +237,14 @@ fun FontTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
                 Text("Letter Spacing", color = Color.White, fontSize = 14.sp)
                 Text("${layer.letterSpacing.toInt()}", color = Color(0xFF007AFF), fontSize = 14.sp, fontWeight = FontWeight.Medium)
             }
-            Slider(
-                value = layer.letterSpacing,
-                onValueChange = { onUpdate(layer.copy(letterSpacing = it)) },
-                valueRange = -5f..10f,
-                colors = SliderDefaults.colors(
-                    thumbColor = Color(0xFF007AFF),
-                    activeTrackColor = Color(0xFF007AFF),
-                    inactiveTrackColor = Color(0xFF3A3A3C)
-                )
-            )
+        CompactModernSlider(
+            value = layer.letterSpacing,
+            onValueChange = { onUpdate(layer.copy(letterSpacing = it), false) },
+            onValueChangeFinished = onSave,
+            valueRange = -5f..20f,
+            label = "Letter Spacing",
+            unit = ""
+        )
         }
         
         // Line Height
@@ -257,16 +257,14 @@ fun FontTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
                 Text("Line Height", color = Color.White, fontSize = 14.sp)
                 Text(String.format("%.1f", layer.lineHeight), color = Color(0xFF007AFF), fontSize = 14.sp, fontWeight = FontWeight.Medium)
             }
-            Slider(
-                value = layer.lineHeight,
-                onValueChange = { onUpdate(layer.copy(lineHeight = it)) },
-                valueRange = 0.5f..2.5f,
-                colors = SliderDefaults.colors(
-                    thumbColor = Color(0xFF007AFF),
-                    activeTrackColor = Color(0xFF007AFF),
-                    inactiveTrackColor = Color(0xFF3A3A3C)
-                )
-            )
+        CompactModernSlider(
+            value = layer.lineHeight,
+            onValueChange = { onUpdate(layer.copy(lineHeight = it), false) },
+            onValueChangeFinished = onSave,
+            valueRange = 0.5f..3f,
+            label = "Line Height",
+            unit = "x"
+        )
         }
     }
 }
@@ -464,7 +462,8 @@ fun CapsButton(
 @Composable
 fun ColorTabContent(
     layer: TextLayer,
-    onUpdate: (TextLayer) -> Unit,
+    onUpdate: (TextLayer, Boolean) -> Unit,
+    onSave: () -> Unit,
     onRequestEyedropper: ((Color) -> Unit) -> Unit,
     onRequestTexturePick: () -> Unit
 ) {
@@ -476,36 +475,28 @@ fun ColorTabContent(
         if (layer.isGradient) {
             if (editingGradientStart) layer.gradientColors[0] else layer.gradientColors[1]
         } else layer.color
-    } else layer.backgroundColor
+        if (layer.isGradient) layer.gradientColors[if(editingGradientStart) 0 else 1] else layer.color
+    } else {
+        layer.backgroundColor
+    }
     
     val currentColor = Color(activeColorInt)
     
-    // Base Color Logic (preserves RGB even if Alpha is 0 for sliders)
-    var baseColor by remember { mutableStateOf(if (currentColor.alpha > 0f) currentColor else Color.White) }
+    val baseColor = if (colorMode == ColorMode.TEXT && layer.isGradient) {
+         Color(activeColorInt)
+    } else currentColor
 
-    // Sync baseColor when active selection changes (to show correct slider position)
-    LaunchedEffect(activeColorInt) {
-        if (activeColorInt != 0 && currentColor.alpha > 0f) {
-             // Only sync if significant difference to prevent drift or jumping
-             if (currentColor.red != baseColor.red || currentColor.green != baseColor.green || currentColor.blue != baseColor.blue) {
-                 baseColor = currentColor
-             }
-        }
-    }
-
-    // Unified Update Helper
-    val updateActiveColor = { newColor: Color ->
-        baseColor = newColor
+    fun updateActiveColor(newColor: Color, saveHistory: Boolean = true) {
         if (colorMode == ColorMode.TEXT) {
             if (layer.isGradient) {
                  val stops = layer.gradientColors.toMutableList()
                  if (editingGradientStart) stops[0] = newColor.toArgb() else stops[1] = newColor.toArgb()
-                 onUpdate(layer.copy(gradientColors = stops))
+                 onUpdate(layer.copy(gradientColors = stops), saveHistory)
             } else {
-                 onUpdate(layer.copy(color = newColor.toArgb()))
+                 onUpdate(layer.copy(color = newColor.toArgb()), saveHistory)
             }
         } else {
-            onUpdate(layer.copy(showBackground = true, backgroundColor = newColor.toArgb()))
+            onUpdate(layer.copy(showBackground = true, backgroundColor = newColor.toArgb()), saveHistory)
         }
     }
     
@@ -566,7 +557,7 @@ fun ColorTabContent(
                          .clip(RoundedCornerShape(16.dp))
                          .background(if(isSolid) Color(0xFF007AFF) else Color(0xFF3A3A3C))
                          .clickable { 
-                             onUpdate(layer.copy(isGradient = false, textureUri = null)) 
+                             onUpdate(layer.copy(isGradient = false, textureUri = null), true) 
                          },
                      contentAlignment = Alignment.Center
                  ) {
@@ -581,7 +572,7 @@ fun ColorTabContent(
                          .clip(RoundedCornerShape(16.dp))
                          .background(if(isGradient) Color(0xFF007AFF) else Color(0xFF3A3A3C))
                          .clickable { 
-                             onUpdate(layer.copy(isGradient = true, textureUri = null)) 
+                             onUpdate(layer.copy(isGradient = true, textureUri = null), true) 
                          },
                      contentAlignment = Alignment.Center
                  ) {
@@ -632,7 +623,7 @@ fun ColorTabContent(
                          }
                          
                          Button(
-                             onClick = { onUpdate(layer.copy(textureUri = null)) },
+                             onClick = { onUpdate(layer.copy(textureUri = null), true) },
                              colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)) // Red
                          ) {
                              Text("Remove")
@@ -658,7 +649,7 @@ fun ColorTabContent(
                               Text("Angle", color = Color.Gray, fontSize = 10.sp)
                               Text("${layer.gradientAngle.toInt()}°", color = Color.Gray, fontSize = 10.sp)
                           }
-                          Slider(value = layer.gradientAngle, onValueChange = { onUpdate(layer.copy(gradientAngle = it)) }, valueRange = 0f..360f)
+                          Slider(value = layer.gradientAngle, onValueChange = { onUpdate(layer.copy(gradientAngle = it), false) }, onValueChangeFinished = onSave, valueRange = 0f..360f)
                       }
                       
                       // End Stop
@@ -687,7 +678,7 @@ fun ColorTabContent(
                 item {
                     ColorCircle(
                         color = Color.Transparent, isSelected = !layer.showBackground, isNoColor = true,
-                        onClick = { onUpdate(layer.copy(showBackground = false)) }
+                        onClick = { onUpdate(layer.copy(showBackground = false), true) }
                     )
                 }
             }
@@ -698,7 +689,7 @@ fun ColorTabContent(
                 
                 ColorCircle(
                     color = color, isSelected = isSelected,
-                    onClick = { updateActiveColor(color) }
+                    onClick = { updateActiveColor(color, true) }
                 )
             }
         }
@@ -708,6 +699,7 @@ fun ColorTabContent(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            val currentColor = Color(activeColorInt)
             val visualColor = baseColor.copy(alpha = 1f)
             
             // Spectrum
@@ -715,8 +707,9 @@ fun ColorTabContent(
                 selectedColor = visualColor,
                 onColorSelected = { newColor ->
                     val alpha = currentColor.alpha
-                    updateActiveColor(newColor.copy(alpha = alpha))
-                }
+                    updateActiveColor(newColor.copy(alpha = alpha), false)
+                },
+                onFinished = onSave
             )
             
             // Opacity
@@ -724,8 +717,9 @@ fun ColorTabContent(
                 color = visualColor, 
                 alpha = currentColor.alpha,
                 onAlphaChanged = { newAlpha ->
-                    updateActiveColor(visualColor.copy(alpha = newAlpha))
-                }
+                    updateActiveColor(visualColor.copy(alpha = newAlpha), false)
+                },
+                onFinished = onSave
             )
 
             // Hex + Eyedropper
@@ -736,12 +730,12 @@ fun ColorTabContent(
             ) {
                 HexColorInput(
                     color = currentColor,
-                    onColorChange = { updateActiveColor(it) }
+                    onColorChange = { updateActiveColor(it, true) }
                 )
                 
                 Box(
                     modifier = Modifier.size(36.dp).background(Color(0xFF334155), RoundedCornerShape(8.dp)).clickable { 
-                        onRequestEyedropper { color -> updateActiveColor(color) }
+                        onRequestEyedropper { color -> updateActiveColor(color, true) }
                     },
                     contentAlignment = Alignment.Center
                 ) {
@@ -790,7 +784,8 @@ fun ColorCircle(
 @Composable
 fun SpectrumSlider(
     selectedColor: Color,
-    onColorSelected: (Color) -> Unit
+    onColorSelected: (Color) -> Unit,
+    onFinished: () -> Unit = {}
 ) {
     BoxWithConstraints(
         modifier = Modifier
@@ -815,11 +810,14 @@ fun SpectrumSlider(
                             val hue = (offset.x / size.width.toFloat()).coerceIn(0f, 1f) * 360f
                             val color = android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f))
                             onColorSelected(Color(color))
+                            onFinished()
                         }
                     }
                 }
                 .pointerInput(Unit) {
-                    detectDragGestures { change, _ ->
+                    detectDragGestures(
+                        onDragEnd = { onFinished() }
+                    ) { change, _ ->
                         change.consume()
                         if (size.width > 0) {
                             val hue = (change.position.x.coerceIn(0f, size.width.toFloat()) / size.width.toFloat()) * 360f
@@ -836,7 +834,8 @@ fun SpectrumSlider(
 fun OpacitySlider(
     color: Color,
     alpha: Float,
-    onAlphaChanged: (Float) -> Unit
+    onAlphaChanged: (Float) -> Unit,
+    onFinished: () -> Unit = {}
 ) {
     BoxWithConstraints(
         modifier = Modifier.fillMaxWidth().height(30.dp),
@@ -873,11 +872,14 @@ fun OpacitySlider(
                         if (size.width > 0) {
                             val newAlpha = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
                             onAlphaChanged(newAlpha)
+                            onFinished()
                         }
                     }
                 }
                 .pointerInput(Unit) {
-                    detectDragGestures { change, _ ->
+                    detectDragGestures(
+                        onDragEnd = { onFinished() }
+                    ) { change, _ ->
                         change.consume()
                         if (size.width > 0) {
                             val newAlpha = (change.position.x.coerceIn(0f, size.width.toFloat()) / size.width.toFloat()).coerceIn(0f, 1f)
@@ -958,7 +960,7 @@ fun HexColorInput(
 }
 
 @Composable
-fun EffectsTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
+fun EffectsTabContent(layer: TextLayer, onUpdate: (TextLayer, Boolean) -> Unit, onSave: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp)
@@ -977,7 +979,7 @@ fun EffectsTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
                             .height(30.dp)
                             .clip(RoundedCornerShape(15.dp))
                             .background(if (isSelected) Color(0xFF007AFF) else Color(0xFF2C2C2E))
-                            .clickable { onUpdate(layer.copy(blendMode = mode)) }
+                            .clickable { onUpdate(layer.copy(blendMode = mode), true) }
                             .padding(horizontal = 12.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -996,7 +998,7 @@ fun EffectsTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
         EffectSection(
             title = "Shadow",
             isEnabled = layer.hasShadow,
-            onToggle = { onUpdate(layer.copy(hasShadow = it)) }
+            onToggle = { onUpdate(layer.copy(hasShadow = it), true) }
         ) {
             // Shadow Controls
             if (layer.hasShadow) {
@@ -1010,7 +1012,7 @@ fun EffectsTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
                             ColorCircle(
                                 color = color,
                                 isSelected = layer.shadowColor == color.toArgb(),
-                                onClick = { onUpdate(layer.copy(shadowColor = color.toArgb())) }
+                                onClick = { onUpdate(layer.copy(shadowColor = color.toArgb()), true) }
                             )
                         }
                     }
@@ -1026,7 +1028,8 @@ fun EffectsTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
                     }
                     PremiumSlider(
                         value = layer.shadowBlur,
-                        onValueChange = { onUpdate(layer.copy(shadowBlur = it)) },
+                        onValueChange = { onUpdate(layer.copy(shadowBlur = it), false) },
+                        onValueChangeFinished = onSave,
                         valueRange = 1f..50f
                     )
                     
@@ -1041,7 +1044,8 @@ fun EffectsTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
                     }
                     PremiumSlider(
                         value = layer.shadowOffsetX,
-                        onValueChange = { onUpdate(layer.copy(shadowOffsetX = it)) },
+                        onValueChange = { onUpdate(layer.copy(shadowOffsetX = it), false) },
+                        onValueChangeFinished = onSave,
                         valueRange = -30f..30f
                     )
 
@@ -1056,7 +1060,8 @@ fun EffectsTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
                     }
                     PremiumSlider(
                         value = layer.shadowOffsetY,
-                        onValueChange = { onUpdate(layer.copy(shadowOffsetY = it)) },
+                        onValueChange = { onUpdate(layer.copy(shadowOffsetY = it), false) },
+                        onValueChangeFinished = onSave,
                         valueRange = -30f..30f
                     )
                 }
@@ -1068,8 +1073,8 @@ fun EffectsTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
             title = "Outline",
             isEnabled = layer.outlineWidth > 0f, 
             onToggle = { isEnabled -> 
-                if (isEnabled) onUpdate(layer.copy(outlineWidth = 2f, outlineColor = if(layer.outlineColor == 0) android.graphics.Color.BLACK else layer.outlineColor))
-                else onUpdate(layer.copy(outlineWidth = 0f))
+                if (isEnabled) onUpdate(layer.copy(outlineWidth = 2f, outlineColor = if(layer.outlineColor == 0) android.graphics.Color.BLACK else layer.outlineColor), true)
+                else onUpdate(layer.copy(outlineWidth = 0f), true)
             }
         ) {
             if (layer.outlineWidth > 0f) {
@@ -1083,7 +1088,7 @@ fun EffectsTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
                             ColorCircle(
                                 color = color,
                                 isSelected = layer.outlineColor == color.toArgb(),
-                                onClick = { onUpdate(layer.copy(outlineColor = color.toArgb())) }
+                                onClick = { onUpdate(layer.copy(outlineColor = color.toArgb()), true) }
                             )
                         }
                     }
@@ -1099,7 +1104,8 @@ fun EffectsTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
                     }
                     PremiumSlider(
                         value = layer.outlineWidth,
-                        onValueChange = { onUpdate(layer.copy(outlineWidth = it)) },
+                        onValueChange = { onUpdate(layer.copy(outlineWidth = it), false) },
+                        onValueChangeFinished = onSave,
                         valueRange = 0.5f..10f
                     )
                 }
@@ -1115,7 +1121,7 @@ fun EffectsTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
                     showBackground = isEnabled,
                     // Ensure visible color if enabling
                     backgroundColor = if(isEnabled && (layer.backgroundColor == 0 || layer.backgroundColor == android.graphics.Color.TRANSPARENT)) android.graphics.Color.parseColor("#80000000") else layer.backgroundColor
-                )) 
+                ), true) 
             }
         ) {
             if (layer.showBackground) {
@@ -1131,7 +1137,8 @@ fun EffectsTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
                     }
                     PremiumSlider(
                         value = layer.backgroundPadding,
-                        onValueChange = { onUpdate(layer.copy(backgroundPadding = it)) },
+                        onValueChange = { onUpdate(layer.copy(backgroundPadding = it), false) },
+                        onValueChangeFinished = onSave,
                         valueRange = 0f..60f
                     )
 
@@ -1146,7 +1153,8 @@ fun EffectsTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
                     }
                     PremiumSlider(
                         value = layer.backgroundCornerRadius,
-                        onValueChange = { onUpdate(layer.copy(backgroundCornerRadius = it)) },
+                        onValueChange = { onUpdate(layer.copy(backgroundCornerRadius = it), false) },
+                        onValueChangeFinished = onSave,
                         valueRange = 0f..50f
                     )
                 }
@@ -1160,9 +1168,9 @@ fun EffectsTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
             onToggle = { isEnabled ->
                  if (isEnabled) {
                      // Default tilt of 15 degrees to make effect visible and enable controls
-                     onUpdate(layer.copy(rotationX = 15f))
+                     onUpdate(layer.copy(rotationX = 15f), true)
                  } else {
-                     onUpdate(layer.copy(rotationX = 0f, rotationY = 0f))
+                     onUpdate(layer.copy(rotationX = 0f, rotationY = 0f), true)
                  }
             }
         ) {
@@ -1180,7 +1188,8 @@ fun EffectsTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
                     }
                     PremiumSlider(
                         value = layer.rotationX,
-                        onValueChange = { onUpdate(layer.copy(rotationX = it)) },
+                        onValueChange = { onUpdate(layer.copy(rotationX = it), false) },
+                        onValueChangeFinished = onSave,
                         valueRange = -60f..60f
                     )
 
@@ -1195,7 +1204,8 @@ fun EffectsTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
                     }
                     PremiumSlider(
                         value = layer.rotationY,
-                        onValueChange = { onUpdate(layer.copy(rotationY = it)) },
+                        onValueChange = { onUpdate(layer.copy(rotationY = it), false) },
+                        onValueChangeFinished = onSave,
                         valueRange = -60f..60f
                     )
                 }
@@ -1208,7 +1218,7 @@ fun EffectsTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
             isEnabled = layer.textBlur > 0f,
             onToggle = { isEnabled ->
                 // Default blur 2f if enabling
-                if(isEnabled) onUpdate(layer.copy(textBlur = 2f)) else onUpdate(layer.copy(textBlur = 0f))
+                if(isEnabled) onUpdate(layer.copy(textBlur = 2f), true) else onUpdate(layer.copy(textBlur = 0f), true)
             }
         ) {
             if (layer.textBlur > 0f) {
@@ -1223,7 +1233,8 @@ fun EffectsTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
                 }
                 PremiumSlider(
                     value = layer.textBlur,
-                    onValueChange = { onUpdate(layer.copy(textBlur = it)) },
+                    onValueChange = { onUpdate(layer.copy(textBlur = it), false) },
+                    onValueChangeFinished = onSave,
                     valueRange = 0f..20f
                 )
             }
@@ -1234,8 +1245,8 @@ fun EffectsTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
             title = "Reflection",
             isEnabled = layer.reflectionOpacity > 0f,
             onToggle = { isEnabled ->
-                 if(isEnabled && layer.reflectionOpacity == 0f) onUpdate(layer.copy(reflectionOpacity = 0.5f))
-                 else if (!isEnabled) onUpdate(layer.copy(reflectionOpacity = 0f))
+                 if(isEnabled && layer.reflectionOpacity == 0f) onUpdate(layer.copy(reflectionOpacity = 0.5f), true)
+                 else if (!isEnabled) onUpdate(layer.copy(reflectionOpacity = 0f), true)
             }
         ) {
             if (layer.reflectionOpacity > 0f) {
@@ -1251,7 +1262,8 @@ fun EffectsTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
                     }
                     PremiumSlider(
                         value = layer.reflectionOpacity,
-                        onValueChange = { onUpdate(layer.copy(reflectionOpacity = it)) },
+                        onValueChange = { onUpdate(layer.copy(reflectionOpacity = it), false) },
+                        onValueChangeFinished = onSave,
                         valueRange = 0f..1f
                     )
 
@@ -1266,7 +1278,8 @@ fun EffectsTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
                     }
                     PremiumSlider(
                         value = layer.reflectionOffset,
-                        onValueChange = { onUpdate(layer.copy(reflectionOffset = it)) },
+                        onValueChange = { onUpdate(layer.copy(reflectionOffset = it), false) },
+                        onValueChangeFinished = onSave,
                         valueRange = -20f..60f
                     )
                 }
@@ -1278,8 +1291,8 @@ fun EffectsTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
             title = "Curved Text",
             isEnabled = abs(layer.curvature) > 0f,
             onToggle = { isEnabled ->
-                 if(isEnabled && abs(layer.curvature) == 0f) onUpdate(layer.copy(curvature = 90f))
-                 else if (!isEnabled) onUpdate(layer.copy(curvature = 0f))
+                 if(isEnabled && abs(layer.curvature) == 0f) onUpdate(layer.copy(curvature = 90f), true)
+                 else if (!isEnabled) onUpdate(layer.copy(curvature = 0f), true)
             }
         ) {
             if (abs(layer.curvature) > 0f) {
@@ -1294,7 +1307,8 @@ fun EffectsTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
                     }
                     PremiumSlider(
                         value = layer.curvature,
-                        onValueChange = { onUpdate(layer.copy(curvature = it)) },
+                        onValueChange = { onUpdate(layer.copy(curvature = it), false) },
+                        onValueChangeFinished = onSave,
                         valueRange = -180f..180f
                     )
                 }
@@ -1305,7 +1319,7 @@ fun EffectsTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
         EffectSection(
             title = "Neon",
             isEnabled = layer.isNeon,
-            onToggle = { onUpdate(layer.copy(isNeon = it, isGlitch = if(it) false else layer.isGlitch)) }
+            onToggle = { onUpdate(layer.copy(isNeon = it, isGlitch = if(it) false else layer.isGlitch), true) }
         ) {
              Text("Glows in dark themes", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.padding(top=8.dp))
         }
@@ -1314,7 +1328,7 @@ fun EffectsTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
         EffectSection(
             title = "Glitch",
             isEnabled = layer.isGlitch,
-            onToggle = { onUpdate(layer.copy(isGlitch = it, isNeon = if(it) false else layer.isNeon)) }
+            onToggle = { onUpdate(layer.copy(isGlitch = it, isNeon = if(it) false else layer.isNeon), true) }
         ) {
             Text("Chromatic Aberration", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.padding(top=8.dp))
         }
@@ -1355,12 +1369,14 @@ fun EffectSection(
 fun PremiumSlider(
     value: Float,
     onValueChange: (Float) -> Unit,
+    onValueChangeFinished: (() -> Unit)? = null,
     valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
     modifier: Modifier = Modifier
 ) {
     Slider(
         value = value,
         onValueChange = onValueChange,
+        onValueChangeFinished = onValueChangeFinished,
         valueRange = valueRange,
         modifier = modifier.height(30.dp),
         colors = SliderDefaults.colors(

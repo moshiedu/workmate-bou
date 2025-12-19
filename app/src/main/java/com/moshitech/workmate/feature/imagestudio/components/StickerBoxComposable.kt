@@ -4,8 +4,13 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.calculateRotation
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateCentroidSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -29,9 +34,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.IntOffset
@@ -39,6 +46,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.moshitech.workmate.feature.imagestudio.viewmodel.StickerLayer
 import kotlin.math.roundToInt
+import kotlin.math.abs
+import kotlin.math.PI
 
 @Composable
 fun StickerBoxComposable(
@@ -46,9 +55,12 @@ fun StickerBoxComposable(
     isSelected: Boolean,
     onSelect: (String) -> Unit,
     onTransform: (String, androidx.compose.ui.geometry.Offset, Float, Float) -> Unit,
+    onTransformEnd: (String) -> Unit, // New callback
     onDelete: (String) -> Unit,
-    onFlip: ((String) -> Unit)? = null // Optional flip callback
+    onFlip: ((String) -> Unit)? = null 
 ) {
+    val viewConfiguration = androidx.compose.ui.platform.LocalViewConfiguration.current
+
     Box(
         modifier = Modifier
             .offset { IntOffset(layer.x.roundToInt(), layer.y.roundToInt()) }
@@ -62,13 +74,57 @@ fun StickerBoxComposable(
                     onTap = { onSelect(layer.id) }
                 )
             }
-            .pointerInput(layer.id) {
-                detectTransformGestures { _, pan, zoom, rotation ->
-                    if (isSelected || true) { // Allow transform even if not strictly "selected" if user drags it? usually select first.
-                         // Better UX: Auto-select on drag start, but for now strict selection
-                        if (isSelected) {
-                            onTransform(layer.id, pan, zoom, rotation)
+            .pointerInput(layer.id, isSelected) {
+                awaitEachGesture {
+                    var zoom = 1f
+                    var pan = Offset.Zero
+                    var rotation = 0f
+                    
+                    awaitFirstDown(requireUnconsumed = false)
+                    var pastTouchSlop = false
+                    
+                    do {
+                        val event = awaitPointerEvent()
+                        val canceled = event.changes.any { it.isConsumed }
+                        if (!canceled) {
+                            val zoomChange = event.calculateZoom()
+                            val rotationChange = event.calculateRotation()
+                            val panChange = event.calculatePan()
+                            
+                            if (!pastTouchSlop) {
+                                zoom *= zoomChange
+                                rotation += rotationChange
+                                pan += panChange
+                                
+                                val centroidSize = event.calculateCentroidSize(useCurrent = false)
+                                val zoomMotion = abs(1 - zoom) * centroidSize
+                                val rotationMotion = abs(rotation * PI.toFloat() * centroidSize / 180f)
+                                val panMotion = pan.getDistance()
+                                
+                                if (zoomMotion > viewConfiguration.touchSlop ||
+                                    rotationMotion > viewConfiguration.touchSlop ||
+                                    panMotion > viewConfiguration.touchSlop
+                                ) {
+                                    pastTouchSlop = true
+                                }
+                            }
+                            
+                            if (pastTouchSlop) {
+                                if (isSelected) {
+                                    if (zoomChange != 1f || rotationChange != 0f || panChange != Offset.Zero) {
+                                        onTransform(layer.id, panChange, zoomChange, rotationChange)
+                                    }
+                                }
+                                event.changes.forEach { 
+                                    if (it.positionChanged()) { it.consume() } 
+                                }
+                            }
                         }
+                    } while (!canceled && event.changes.any { it.pressed })
+                    
+                    // Gesture Ended
+                    if (pastTouchSlop && isSelected) {
+                        onTransformEnd(layer.id)
                     }
                 }
             }
@@ -150,7 +206,9 @@ fun StickerBoxComposable(
                     .background(Color.Green, CircleShape)
                     .align(Alignment.BottomEnd)
                     .pointerInput(Unit) {
-                        detectDragGestures { change, dragAmount ->
+                        detectDragGestures(
+                            onDragEnd = { onTransformEnd(layer.id) }
+                        ) { change, dragAmount ->
                             change.consume()
                             
                             // Scale Logic only: Dragging Outward (Positive X/Y) increases size

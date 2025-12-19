@@ -121,7 +121,10 @@ fun PhotoGalleryScreen(
     ) { permissions ->
         // Check if essential permissions are granted
         val cameraGranted = permissions[Manifest.permission.CAMERA] == true
-        val storageGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        val storageGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            permissions[Manifest.permission.READ_MEDIA_IMAGES] == true || 
+            permissions[Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED] == true
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions[Manifest.permission.READ_MEDIA_IMAGES] == true
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             permissions[Manifest.permission.READ_EXTERNAL_STORAGE] == true
@@ -155,7 +158,13 @@ fun PhotoGalleryScreen(
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    val fullAccess = androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_IMAGES) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    val partialAccess = androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    if (fullAccess || partialAccess) {
+                        viewModel.updatePermissionStatus(true)
+                    }
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     if (androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_IMAGES) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
                         viewModel.updatePermissionStatus(true)
                     }
@@ -179,9 +188,16 @@ fun PhotoGalleryScreen(
     LaunchedEffect(Unit) {
         val permissionsToRequest = mutableListOf<String>()
         
-        // Storage permissions logic (omitted for brevity, assume unchanged logic flow for this block)
-        // Re-inserting the exact logic to be safe since it's a replace block
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        // Storage permissions logic
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            val visualUserSelected = androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            val readMediaImages = androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_IMAGES) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            
+            if (!visualUserSelected && !readMediaImages) {
+                 permissionsToRequest.add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
+                 permissionsToRequest.add(Manifest.permission.READ_MEDIA_IMAGES)
+            }
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_IMAGES) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                 permissionsToRequest.add(Manifest.permission.READ_MEDIA_IMAGES)
             }
@@ -207,7 +223,7 @@ fun PhotoGalleryScreen(
         }
     }
 
-    val editorEnabled = uiState.selectedImages.size == 1
+    val editorEnabled = uiState.selectedImages.size <= 1
 
     Scaffold(
         containerColor = DarkBackground,
@@ -248,6 +264,19 @@ fun PhotoGalleryScreen(
                         IconButton(onClick = { viewModel.setSelectionMode(true) }) {
                             Icon(Icons.Filled.CheckCircle, contentDescription = "Select", tint = TextWhite)
                         }
+                        
+                        // Manage Access for Android 14+ (Limited Permissions)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                            IconButton(onClick = { 
+                                permissionLauncher.launch(arrayOf(
+                                    Manifest.permission.READ_MEDIA_IMAGES,
+                                    Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+                                ))
+                            }) {
+                                Icon(Icons.Default.Collections, contentDescription = "Manage Access", tint = TextWhite)
+                            }
+                        }
+
                         IconButton(onClick = { 
                             if (androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
                                 val uri = viewModel.createTempPictureUri()
@@ -275,8 +304,12 @@ fun PhotoGalleryScreen(
                 onTabSelected = { tab ->
                      when (tab) {
                         "Editor" -> {
-                             // This block will only be reachable if enabled (size == 1)
-                             if (uiState.selectedImages.size == 1) {
+                             // This block is reachable if enabled (size <= 1).
+                             // If size is 0, we navigate with no URI parameter (or empty), 
+                             // expecting PhotoEditorScreen to handle the empty state.
+                             if (uiState.selectedImages.isEmpty()) {
+                                  navController.navigate(com.moshitech.workmate.navigation.Screen.PhotoEditor.route)
+                             } else if (uiState.selectedImages.size == 1) {
                                  val uri = uiState.selectedImages.first()
                                  val encodedUri = android.net.Uri.encode(uri.toString())
                                  navController.navigate("${com.moshitech.workmate.navigation.Screen.PhotoEditor.route}?uri=$encodedUri")
@@ -319,7 +352,10 @@ fun PhotoGalleryScreen(
                 PermissionRequestState(
                     onAllowAccess = {
                         val permissions = mutableListOf<String>()
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                            permissions.add(Manifest.permission.READ_MEDIA_IMAGES)
+                            permissions.add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
+                        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                             permissions.add(Manifest.permission.READ_MEDIA_IMAGES)
                         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                             permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
