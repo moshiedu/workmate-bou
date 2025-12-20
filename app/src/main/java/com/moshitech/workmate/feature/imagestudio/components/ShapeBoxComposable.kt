@@ -56,9 +56,19 @@ fun ShapeBoxComposable(
                     onSelect(layer.id)
                 }
             }
-            .pointerInput(layer.id) {
+            .pointerInput(layer.id, layer.rotation, layer.scale) {
                 detectTransformGestures { _, pan, zoom, rotation ->
-                    onTransform(layer.id, pan, zoom, rotation)
+                    // Convert local pan to global pan by correcting for rotation and scale
+                    val rad = Math.toRadians(layer.rotation.toDouble())
+                    val cos = Math.cos(rad)
+                    val sin = Math.sin(rad)
+                    
+                    val rotX = pan.x * cos - pan.y * sin
+                    val rotY = pan.x * sin + pan.y * cos
+                    
+                    val correctedPan = Offset(rotX.toFloat(), rotY.toFloat()) * layer.scale
+                    
+                    onTransform(layer.id, correctedPan, zoom, rotation)
                 }
             }
     ) {
@@ -72,6 +82,8 @@ fun ShapeBoxComposable(
                     androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(30f, 15f), 0f)
                 com.moshitech.workmate.feature.imagestudio.viewmodel.StrokeStyle.DOTTED -> 
                     androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(5f, 10f), 0f)
+                com.moshitech.workmate.feature.imagestudio.viewmodel.StrokeStyle.LONG_DASH -> androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(50f, 20f), 0f)
+                com.moshitech.workmate.feature.imagestudio.viewmodel.StrokeStyle.DASH_DOT -> androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(30f, 15f, 5f, 15f), 0f)
                 com.moshitech.workmate.feature.imagestudio.viewmodel.StrokeStyle.SOLID -> null
             }
             
@@ -152,16 +164,15 @@ fun ShapeBoxComposable(
                          canvas.drawLine(start, end, shadowPaint)
                          
                          // Arrow Head
-                         val arrowSize = layer.strokeWidth * 3f
+                         val arrowSize = layer.strokeWidth * 3f + 10f
                          val arrowPath = Path().apply {
                             moveTo(end.x, end.y)
-                            lineTo(end.x - arrowSize, end.y - arrowSize)
-                            lineTo(end.x - arrowSize, end.y + arrowSize)
+                            lineTo(end.x - arrowSize, end.y - arrowSize / 1.5f)
+                            lineTo(end.x - arrowSize, end.y + arrowSize / 1.5f)
                             close()
                          }
-                         // Fill the arrow head regardless? Or stroke it?
-                         // Usually arrows head matches body style. If dashed line, arrow head might be weird.
-                         // Let's solid fill arrow head for better look or use same paint
+                         
+                         // Fill Arrow Head
                          val headPaint = androidx.compose.ui.graphics.Paint().apply {
                              this.color = color
                              this.style = androidx.compose.ui.graphics.PaintingStyle.Fill
@@ -172,6 +183,23 @@ fun ShapeBoxComposable(
                              }
                          }
                          canvas.drawPath(arrowPath, headPaint)
+                     }
+                     ShapeType.TRIANGLE -> {
+                         val path = Path().apply {
+                             moveTo(size.width / 2f, 0f)
+                             lineTo(size.width, size.height)
+                             lineTo(0f, size.height)
+                             close()
+                         }
+                         canvas.drawPath(path, shadowPaint)
+                     }
+                     ShapeType.PENTAGON -> {
+                         val path = createPolygonPath(5, size.width, size.height)
+                         canvas.drawPath(path, shadowPaint)
+                     }
+                     ShapeType.STAR -> {
+                         val path = createStarPath(5, size.width, size.height)
+                         canvas.drawPath(path, shadowPaint)
                      }
                 }
             }
@@ -216,4 +244,42 @@ fun ShapeBoxComposable(
             }
         }
     }
+}
+
+private fun createPolygonPath(sides: Int, width: Float, height: Float): Path {
+    val path = Path()
+    val radius = kotlin.math.min(width, height) / 2f
+    val cx = width / 2f
+    val cy = height / 2f
+    val angleStep = (2 * kotlin.math.PI / sides)
+    val startAngle = -kotlin.math.PI / 2
+    
+    for (i in 0 until sides) {
+        val angle = startAngle + i * angleStep
+        val px = cx + (radius * kotlin.math.cos(angle)).toFloat()
+        val py = cy + (radius * kotlin.math.sin(angle)).toFloat()
+        if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+    }
+    path.close()
+    return path
+}
+
+private fun createStarPath(points: Int, width: Float, height: Float, innerRatio: Float = 0.4f): Path {
+    val path = Path()
+    val outerRadius = kotlin.math.min(width, height) / 2f
+    val innerRadius = outerRadius * innerRatio
+    val cx = width / 2f
+    val cy = height / 2f
+    val angleStep = Math.PI / points
+    val startAngle = -Math.PI / 2
+    
+    for (i in 0 until (points * 2)) {
+        val radius = if (i % 2 == 0) outerRadius else innerRadius
+        val angle = startAngle + i * angleStep
+        val px = cx + (radius * kotlin.math.cos(angle)).toFloat()
+        val py = cy + (radius * kotlin.math.sin(angle)).toFloat()
+        if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+    }
+    path.close()
+    return path
 }

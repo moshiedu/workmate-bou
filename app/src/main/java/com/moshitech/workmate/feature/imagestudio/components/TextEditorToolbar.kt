@@ -77,7 +77,7 @@ fun TextEditorToolbar(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 0.dp), // Reduced vertical padding due to handle
+                        .padding(horizontal = 12.dp, vertical = 0.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     TextToolTab.values().forEach { tab ->
@@ -89,15 +89,15 @@ fun TextEditorToolbar(
                         ) {
                             Text(
                                 text = tab.name.lowercase().replaceFirstChar { it.uppercase() },
-                                color = if (selectedTab == tab) Color(0xFF007AFF) else Color.Gray, // Blue text when selected
-                                fontSize = 15.sp,
+                                color = if (selectedTab == tab) Color(0xFF007AFF) else Color.Gray,
+                                fontSize = 13.sp,
                                 fontWeight = if (selectedTab == tab) FontWeight.SemiBold else FontWeight.Normal,
-                                modifier = Modifier.padding(bottom = 8.dp)
+                                modifier = Modifier.padding(bottom = 4.dp)
                             )
                             // Blue underline indicator
                             Box(
                                 modifier = Modifier
-                                    .width(40.dp) // Fixed width indicator (not full cell)
+                                    .width(32.dp)
                                     .height(2.dp)
                                     .background(
                                         if (selectedTab == tab) Color(0xFF007AFF) else Color.Transparent
@@ -119,9 +119,9 @@ fun TextEditorToolbar(
             // Tab Content
             Box(
                 modifier = Modifier
-                    .fillMaxSize() // Fill remaining space in parent
+                    .weight(1f) // Fill remaining space in parent
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 8.dp), // Compact padding
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
                 contentAlignment = Alignment.TopCenter
             ) {
                 when (selectedTab) {
@@ -139,6 +139,9 @@ fun TextEditorToolbar(
                     TextToolTab.EFFECTS -> EffectsTabContent(layer, onUpdate, onSave)
                 }
             }
+            
+            // Shared Sliders (Bottom Fixed)
+            TextTransformControls(layer, { l -> onUpdate(l, true) })
         }
     }
 }
@@ -147,15 +150,15 @@ fun TextEditorToolbar(
 fun FontTabContent(layer: TextLayer, onUpdate: (TextLayer, Boolean) -> Unit, onSave: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(16.dp) // Gap between sections
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         // Font Family Selection
-        Text("Font Family", color = Color.White, fontSize = 14.sp)
+        Text("Font Family", color = Color.White, fontSize = 13.sp)
         
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(horizontal = 4.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(horizontal = 2.dp)
         ) {
             items(com.moshitech.workmate.feature.imagestudio.viewmodel.AppFont.values()) { font ->
                 val isSelected = layer.fontFamily == font
@@ -173,33 +176,33 @@ fun FontTabContent(layer: TextLayer, onUpdate: (TextLayer, Boolean) -> Unit, onS
                 
                 Column(
                     modifier = Modifier
-                         .width(80.dp)
+                         .width(65.dp)
                          .clickable { onUpdate(layer.copy(fontFamily = font), true) },
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(70.dp)
-                            .clip(RoundedCornerShape(12.dp))
+                            .size(56.dp)
+                            .clip(RoundedCornerShape(10.dp))
                             .background(if (isSelected) Color(0xFF007AFF) else Color(0xFF1C1C1E))
                             .border(
                                 width = if (isSelected) 2.dp else 1.dp,
                                 color = if (isSelected) Color(0xFF007AFF) else Color(0xFF3A3A3C),
-                                shape = RoundedCornerShape(12.dp)
+                                shape = RoundedCornerShape(10.dp)
                             ),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = "Abc",
-                            fontSize = 20.sp,
+                            fontSize = 18.sp,
                             fontFamily = fontFamily,
                             color = Color.White
                         )
                     }
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = font.name.lowercase().replace("_", " ").replaceFirstChar { it.uppercase() },
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         color = if (isSelected) Color.White else Color.Gray,
                         maxLines = 1
                     )
@@ -362,6 +365,8 @@ fun StyleTabContent(layer: TextLayer, onUpdate: (TextLayer) -> Unit) {
                 onClick = { onUpdate(layer.copy(alignment = com.moshitech.workmate.feature.imagestudio.viewmodel.TextAlignment.JUSTIFY)) }
             )
         }
+        
+        Spacer(modifier = Modifier.height(32.dp))
     }
 }
 
@@ -643,14 +648,17 @@ fun ColorTabContent(
                           ColorCircle(color = Color(layer.gradientColors[0]), isSelected = editingGradientStart, onClick = { editingGradientStart = true })
                       }
                       
-                      // Angle Slider
-                      Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                          Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                              Text("Angle", color = Color.Gray, fontSize = 10.sp)
-                              Text("${layer.gradientAngle.toInt()}°", color = Color.Gray, fontSize = 10.sp)
-                          }
-                          Slider(value = layer.gradientAngle, onValueChange = { onUpdate(layer.copy(gradientAngle = it), false) }, onValueChangeFinished = onSave, valueRange = 0f..360f)
-                      }
+                       // Angle Slider
+                       Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                           CompactModernSlider(
+                               value = layer.gradientAngle,
+                               onValueChange = { onUpdate(layer.copy(gradientAngle = it), false) },
+                               onValueChangeFinished = onSave,
+                               valueRange = 0f..360f,
+                               label = "Angle",
+                               unit = "°"
+                           )
+                       }
                       
                       // End Stop
                       Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1410,4 +1418,55 @@ fun PremiumSlider(
             }
         }
     )
+}
+
+@Composable
+fun TextTransformControls(
+    layer: TextLayer,
+    onUpdate: (TextLayer) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .background(Color(0xFF0D121F)) // Match background
+    ) {
+        // Grey Separator Line
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(Color(0xFF2C2C2E))
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            // Scale
+            Column(modifier = Modifier.weight(1f)) {
+                CompactModernSlider(
+                    value = layer.scale,
+                    onValueChange = { scale -> 
+                        onUpdate(layer.copy(scale = scale))
+                    },
+                    valueRange = 0.1f..5f,
+                    label = "Box Size",
+                    unit = "x"
+                )
+            }
+            // Rotation
+            Column(modifier = Modifier.weight(1f)) {
+                CompactModernSlider(
+                    value = layer.rotation,
+                    onValueChange = { rotation -> 
+                        onUpdate(layer.copy(rotation = rotation))
+                    },
+                    valueRange = 0f..360f,
+                    label = "Rotation",
+                    unit = "°"
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp)) // Bottom padding
+    }
 }

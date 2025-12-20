@@ -117,7 +117,7 @@ fun TextBoxComposable(
                 else Modifier
             )
             // General Drag/Pinch/Rotate on the text body using custom detection for End event
-            .pointerInput(layer.id, layer.isLocked, isEditing) {
+            .pointerInput(layer.id, layer.isLocked, isEditing, layer.rotation, layer.scale) {
                 if (!layer.isLocked && !isEditing) {
                     awaitEachGesture {
                         var zoom = 1f
@@ -140,7 +140,16 @@ fun TextBoxComposable(
                                 if (!pastTouchSlop) {
                                     zoom *= zoomChange
                                     rotation += rotationChange
-                                    pan += panChange
+                                    
+                                    // Correct Pan for Rotation
+                                    val rad = Math.toRadians(layer.rotation.toDouble())
+                                    val cos = Math.cos(rad)
+                                    val sin = Math.sin(rad)
+                                    val rotX = panChange.x * cos - panChange.y * sin
+                                    val rotY = panChange.x * sin + panChange.y * cos
+                                    val correctedPanChange = Offset(rotX.toFloat(), rotY.toFloat()) * layer.scale
+                                    
+                                    pan += correctedPanChange
                                     
                                     val centroidSize = event.calculateCentroidSize(useCurrent = false)
                                     val zoomMotion = abs(1 - zoom) * centroidSize
@@ -157,11 +166,19 @@ fun TextBoxComposable(
                                 
                                 if (pastTouchSlop) {
                                     if (zoomChange != 1f || rotationChange != 0f || panChange != Offset.Zero) {
-                                        onTransform(layer.id, panChange, zoomChange, rotationChange)
+                                        // Calculate corrected pan for immediate transform
+                                        val rad = Math.toRadians(layer.rotation.toDouble())
+                                        val cos = Math.cos(rad)
+                                        val sin = Math.sin(rad)
+                                        val rotX = panChange.x * cos - panChange.y * sin
+                                        val rotY = panChange.x * sin + panChange.y * cos
+                                        val correctedPanChange = Offset(rotX.toFloat(), rotY.toFloat()) * layer.scale
+                                        
+                                        onTransform(layer.id, correctedPanChange, zoomChange, rotationChange)
                                     }
                                     event.changes.forEach { change: androidx.compose.ui.input.pointer.PointerInputChange ->
                                         if (change.previousPosition != change.position) { 
-                                            // change.consume() // removed
+                                            change.consume()
                                         } 
                                     }
                                 }
@@ -264,12 +281,17 @@ fun TextBoxComposable(
 
                 // Text Display Logic (For Non-Editing State)
                 val displayText = buildAnnotatedString {
+                    val isPlaceholder = layer.text.isEmpty() && !isEditing
+                    
                     if (finalBrush != null && !layer.isNeon) {
                         pushStyle(SpanStyle(brush = finalBrush))
                     }
                     
-                    if (layer.text.isEmpty() && !isEditing) {
+                    if (isPlaceholder) {
+                        // Placeholder text with white color for better visibility
+                        pushStyle(SpanStyle(color = Color.White.copy(alpha = 0.7f)))
                         append("Your Text Here")
+                        pop()
                     } else if (layer.isAllCaps) {
                         append(layer.text.uppercase())
                     } else if (layer.isSmallCaps) {
@@ -326,7 +348,7 @@ fun TextBoxComposable(
                         AppFont.PLAYFAIR -> androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font(com.moshitech.workmate.R.font.playfair_display))
                         else -> androidx.compose.ui.text.font.FontFamily.Default
                     },
-                    fontWeight = if (layer.isBold) FontWeight.Bold else FontWeight.Normal,
+                    fontWeight = if (layer.isBold) FontWeight.Bold else FontWeight.W400,
                     fontStyle = if (layer.isItalic) FontStyle.Italic else FontStyle.Normal,
                     textDecoration = when {
                         layer.isUnderline && layer.isStrikethrough -> TextDecoration.combine(
@@ -358,6 +380,7 @@ fun TextBoxComposable(
                         onValueChange = { onTextChange(layer.id, it) },
                         textStyle = textStyle,
                         modifier = Modifier
+                            .fillMaxWidth()
                             .defaultMinSize(minWidth = 50.dp)
                             .focusRequester(focusRequester),
                         cursorBrush = androidx.compose.ui.graphics.SolidColor(Color.White)

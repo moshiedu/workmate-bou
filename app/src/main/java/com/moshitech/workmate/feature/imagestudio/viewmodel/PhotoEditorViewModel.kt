@@ -27,6 +27,7 @@ data class EditorState(
     val activeFilterMatrix: FloatArray? = null,
     val textLayers: List<TextLayer> = emptyList(),
     val stickerLayers: List<StickerLayer> = emptyList(),
+    val shapeLayers: List<ShapeLayer> = emptyList(),
     val drawActions: List<DrawAction> = emptyList()
 ) {
     override fun equals(other: Any?): Boolean {
@@ -49,6 +50,7 @@ data class EditorState(
         } else if (other.activeFilterMatrix != null) return false
         if (textLayers != other.textLayers) return false
         if (stickerLayers != other.stickerLayers) return false
+        if (shapeLayers != other.shapeLayers) return false
         if (drawActions != other.drawActions) return false
 
         return true
@@ -66,6 +68,7 @@ data class EditorState(
         result = 31 * result + (activeFilterMatrix?.contentHashCode() ?: 0)
         result = 31 * result + textLayers.hashCode()
         result = 31 * result + stickerLayers.hashCode()
+        result = 31 * result + shapeLayers.hashCode()
         result = 31 * result + drawActions.hashCode()
         return result
     }
@@ -98,7 +101,7 @@ data class TextLayer(
     val textOrientation: TextOrientation = TextOrientation.HORIZONTAL,
     val hasOutline: Boolean = false,
     val outlineColor: Int = android.graphics.Color.BLACK,
-    val outlineWidth: Float = 2f,
+    val outlineWidth: Float = 0f,
     val outlineThickness: Float = 2f,
     val hasShadow: Boolean = false,
     val shadowColor: Int = android.graphics.Color.BLACK,
@@ -218,11 +221,11 @@ enum class DrawMode {
 }
 
 enum class StrokeStyle {
-    SOLID, DASHED, DOTTED
+    SOLID, DASHED, DOTTED, LONG_DASH, DASH_DOT
 }
 
 enum class ShapeType {
-    RECTANGLE, CIRCLE, LINE, ARROW
+    RECTANGLE, CIRCLE, LINE, ARROW, TRIANGLE, STAR, PENTAGON
 }
 
 // Mosaic pattern types
@@ -327,7 +330,8 @@ data class PhotoEditorUiState(
     val currentShadowColor: Int = android.graphics.Color.BLACK,
     val currentShadowBlur: Float = 10f,
     val currentShadowX: Float = 5f,
-    val currentShadowY: Float = 5f
+    val currentShadowY: Float = 5f,
+    val isPreviewMode: Boolean = false
 )
 
 class PhotoEditorViewModel(application: Application) : AndroidViewModel(application) {
@@ -437,7 +441,6 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
         val state = _uiState.value
         val original = state.originalBitmap ?: return
         
-        _uiState.update { it.copy(isLoading = true) }
         
         val newBitmap = repository.applyTransformations(
             original = original,
@@ -451,7 +454,7 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
             tint = state.tint
         )
         
-        _uiState.update { it.copy(previewBitmap = newBitmap, isLoading = false) }
+        _uiState.update { it.copy(previewBitmap = newBitmap) }
     }
     
     fun showSaveDialog() {
@@ -490,7 +493,10 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
                 bitmap = renderTextLayersOnBitmap(bitmap, state.textLayers)
             }
             
-            // Render drawings onto bitmap if any exist
+            if (state.shapeLayers.isNotEmpty()) {
+                bitmap = renderShapeLayersOnBitmap(bitmap, state.shapeLayers)
+            }
+            
             // Render drawings onto bitmap if any exist
             if (state.drawActions.isNotEmpty()) {
                 bitmap = renderDrawingsOnBitmap(bitmap, state.drawActions)
@@ -907,6 +913,7 @@ fun setRotationAngle(angle: Float) {
             activeFilterMatrix = _uiState.value.activeFilterMatrix,
             textLayers = _uiState.value.textLayers,
             stickerLayers = _uiState.value.stickerLayers, // Ensure stickerLayers are saved
+            shapeLayers = _uiState.value.shapeLayers,
             drawActions = _uiState.value.drawActions
         )
 
@@ -1046,12 +1053,18 @@ fun setRotationAngle(angle: Float) {
                 activeFilterId = state.activeFilterId,
                 activeFilterMatrix = state.activeFilterMatrix,
                 textLayers = state.textLayers,
+                stickerLayers = state.stickerLayers,
+                shapeLayers = state.shapeLayers,
                 drawActions = state.drawActions,
                 // Reset dialogs
                 showTextDialog = false,
                 editingTextId = null,
-                // Important: If we don't update bitmap, ensure we keep the current valid one or if we do update, keep current until loaded? 
-                // But here we are just setting state vars.
+                // Clear selections to prevent ghost references
+                selectedTextLayerId = null,
+                selectedStickerLayerId = null,
+                selectedShapeLayerId = null,
+                editingTextLayerId = null,
+                showFloatingToolbar = false
             )
         }
         
@@ -1205,7 +1218,7 @@ fun updateOpacity(opacity: Float) {
     // Text Box Management
     fun createTextBoxAtCenter() {
         val newLayer = TextLayer(
-            text = "Your Text Here",
+            text = "",
             x = 90f, // Centered horizontally (screen width ~360-400dp, text width 200dp)
             y = 400f, // Centered vertically in visible area
             width = 200f,
@@ -1241,6 +1254,27 @@ fun updateOpacity(opacity: Float) {
             ) 
         }
         saveToHistory()
+    }
+
+    // Preview Mode Toggle
+    fun togglePreviewMode() {
+        _uiState.update {
+            it.copy(
+                isPreviewMode = !it.isPreviewMode,
+                selectedTextLayerId = if (!it.isPreviewMode) null else it.selectedTextLayerId,
+                selectedShapeLayerId = if (!it.isPreviewMode) null else it.selectedShapeLayerId,
+                selectedStickerLayerId = if (!it.isPreviewMode) null else it.selectedStickerLayerId
+            )
+        }
+    }
+
+    // Deselect functions for tab switching
+    fun deselectText() {
+        _uiState.update { it.copy(selectedTextLayerId = null, editingTextLayerId = null) }
+    }
+    
+    fun deselectShape() {
+        _uiState.update { it.copy(selectedShapeLayerId = null) }
     }
 
     fun updateTextLayerTransform(id: String, pan: androidx.compose.ui.geometry.Offset, zoom: Float, rotation: Float) {
@@ -1509,28 +1543,52 @@ fun updateOpacity(opacity: Float) {
     }
 
     fun addShapeLayer(type: ShapeType) {
-        val newShape = ShapeLayer(
-            type = type,
-            x = 0f, y = 0f, // Default Center relative to image center
-            width = 200f, height = 200f,
-            color = _uiState.value.currentDrawColor,
-            strokeWidth = _uiState.value.currentStrokeWidth,
-            strokeStyle = _uiState.value.currentStrokeStyle,
-            shadowColor = _uiState.value.currentShadowColor,
-            shadowBlur = _uiState.value.currentShadowBlur,
-            shadowX = _uiState.value.currentShadowX,
-            shadowY = _uiState.value.currentShadowY
-        )
-        _uiState.update { 
-            it.copy(
-                shapeLayers = it.shapeLayers + newShape,
-                selectedShapeLayerId = newShape.id,
-                selectedTextLayerId = null,
-                selectedStickerLayerId = null
-            ) 
-        }
-        saveToHistory()
+    val bitmap = _uiState.value.previewBitmap ?: return
+    val bmpW = bitmap.width.toFloat()
+    val bmpH = bitmap.height.toFloat()
+    
+    // Size relative to image, e.g., 1/4th of the smaller dimension
+    val shapeSize = minOf(bmpW, bmpH) / 3f
+    val width = if (type == ShapeType.LINE || type == ShapeType.ARROW) shapeSize * 0.8f else shapeSize
+    val height = if (type == ShapeType.LINE || type == ShapeType.ARROW) 20f else shapeSize // Initial height for line/arrow is stroke-ish or small box? No, Shape.Line has start/end. ShapeLayer has w/h.
+    
+    // For Line/Arrow, ShapeLayer wrapper width/height defines the bounding box? 
+    // Wait, the Shape types (Rect, Circle) use `width` and `height` from ShapeLayer props in `renderShapeLayersOnBitmap`.
+    // But `Shape.Line` uses start/end. 
+    // Let's verify how `ShapeLayer` maps to specific Shape classes in `addShapeAction` vs `ShapeLayer` list.
+    // Actually `ShapeLayer` is a data class for "Vector Layers that are movable".
+    // Let's check `ShapeBoxComposable`. It uses `layer.width` and `layer.height`.
+    
+    // Center position
+    val centerX = bmpW / 2f
+    val centerY = bmpH / 2f
+    val x = centerX - width / 2f
+    val y = centerY - (if(type == ShapeType.LINE || type == ShapeType.ARROW) shapeSize/2f else height/2f) // Box centered.
+
+    val newShape = ShapeLayer(
+        type = type,
+        x = x, 
+        y = y, 
+        width = width, 
+        height = if(type == ShapeType.LINE || type == ShapeType.ARROW) shapeSize else height, // ensure box is square-ish for rotation context or appropriate
+        color = _uiState.value.currentDrawColor,
+        strokeWidth = _uiState.value.currentStrokeWidth,
+        strokeStyle = _uiState.value.currentStrokeStyle,
+        shadowColor = _uiState.value.currentShadowColor,
+        shadowBlur = _uiState.value.currentShadowBlur,
+        shadowX = _uiState.value.currentShadowX,
+        shadowY = _uiState.value.currentShadowY
+    )
+    _uiState.update { 
+        it.copy(
+            shapeLayers = it.shapeLayers + newShape,
+            selectedShapeLayerId = newShape.id,
+            selectedTextLayerId = null,
+            selectedStickerLayerId = null
+        ) 
     }
+    saveToHistory()
+}
 
     fun selectShapeLayer(id: String) {
         _uiState.update {
@@ -1594,6 +1652,139 @@ fun updateOpacity(opacity: Float) {
         }
     }
 
+    private fun renderShapeLayersOnBitmap(originalBitmap: Bitmap, shapeLayers: List<ShapeLayer>): Bitmap {
+        val bitmap = originalBitmap.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = android.graphics.Canvas(bitmap)
+        val paint = android.graphics.Paint().apply {
+            isAntiAlias = true
+        }
+
+        shapeLayers.forEach { layer ->
+            canvas.save()
+
+            // Transform Canvas: Translate to Center, Rotate, Scale, Translate back to TopLeft
+            val cx = layer.x + layer.width / 2f
+            val cy = layer.y + layer.height / 2f
+            
+            canvas.translate(cx, cy)
+            canvas.rotate(layer.rotation) // Degrees
+            canvas.scale(layer.scale, layer.scale)
+            canvas.translate(-layer.width / 2f, -layer.height / 2f)
+
+            // Setup Paint
+            paint.color = layer.color
+            paint.strokeWidth = layer.strokeWidth * 1f // Scale is applied to canvas
+            paint.style = if (layer.isFilled) android.graphics.Paint.Style.FILL else android.graphics.Paint.Style.STROKE
+            paint.strokeCap = android.graphics.Paint.Cap.ROUND
+            paint.strokeJoin = android.graphics.Paint.Join.ROUND
+
+            if (layer.hasShadow) {
+                paint.setShadowLayer(layer.shadowBlur, layer.shadowX, layer.shadowY, layer.shadowColor)
+            } else {
+                paint.clearShadowLayer()
+            }
+
+            when (layer.strokeStyle) {
+                StrokeStyle.DASHED -> paint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(30f, 15f), 0f)
+                StrokeStyle.DOTTED -> paint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(5f, 10f), 0f)
+                StrokeStyle.LONG_DASH -> paint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(50f, 20f), 0f)
+                StrokeStyle.DASH_DOT -> paint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(30f, 15f, 5f, 15f), 0f)
+                StrokeStyle.SOLID -> paint.pathEffect = null
+            }
+
+            val w = layer.width
+            val h = layer.height
+
+            when (layer.type) {
+                ShapeType.RECTANGLE -> {
+                    canvas.drawRect(0f, 0f, w, h, paint)
+                }
+                ShapeType.CIRCLE -> {
+                    canvas.drawOval(0f, 0f, w, h, paint)
+                }
+                ShapeType.LINE -> {
+                    val styleBackup = paint.style
+                    paint.style = android.graphics.Paint.Style.STROKE
+                    canvas.drawLine(0f, h/2f, w, h/2f, paint)
+                    paint.style = styleBackup
+                }
+                ShapeType.ARROW -> {
+                     val styleBackup = paint.style
+                     paint.style = android.graphics.Paint.Style.STROKE
+                     canvas.drawLine(0f, h/2f, w, h/2f, paint)
+                     
+                     // Arrow Head
+                     val headSize = layer.strokeWidth * 3f + 10f
+                     val path = android.graphics.Path()
+                     path.moveTo(w, h/2f)
+                     path.lineTo(w - headSize, h/2f - headSize / 1.5f)
+                     path.lineTo(w - headSize, h/2f + headSize / 1.5f)
+                     path.close()
+                     
+                     paint.style = android.graphics.Paint.Style.FILL
+                     canvas.drawPath(path, paint)
+                     paint.style = styleBackup
+                }
+                ShapeType.TRIANGLE -> {
+                    val path = android.graphics.Path()
+                    path.moveTo(w/2f, 0f)
+                    path.lineTo(w, h)
+                    path.lineTo(0f, h)
+                    path.close()
+                    canvas.drawPath(path, paint)
+                }
+                ShapeType.PENTAGON -> {
+                    val path = createPolygonPath(5, w, h)
+                    canvas.drawPath(path, paint)
+                }
+                ShapeType.STAR -> {
+                     val path = createStarPath(5, w, h)
+                     canvas.drawPath(path, paint)
+                }
+            }
+
+            canvas.restore()
+        }
+        return bitmap
+    }
+    
+    private fun createPolygonPath(sides: Int, width: Float, height: Float): android.graphics.Path {
+        val path = android.graphics.Path()
+        val radius = kotlin.math.min(width, height) / 2f
+        val cx = width / 2f
+        val cy = height / 2f
+        val angleStep = (2 * kotlin.math.PI / sides)
+        val startAngle = -kotlin.math.PI / 2 
+        
+        for (i in 0 until sides) {
+            val angle = startAngle + i * angleStep
+            val px = cx + (radius * kotlin.math.cos(angle)).toFloat()
+            val py = cy + (radius * kotlin.math.sin(angle)).toFloat()
+            if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+        }
+        path.close()
+        return path
+    }
+
+    private fun createStarPath(points: Int, width: Float, height: Float, innerRatio: Float = 0.4f): android.graphics.Path {
+        val path = android.graphics.Path()
+        val outerRadius = kotlin.math.min(width, height) / 2f
+        val innerRadius = outerRadius * innerRatio
+        val cx = width / 2f
+        val cy = height / 2f
+        val angleStep = Math.PI / points
+        val startAngle = -Math.PI / 2
+        
+        for (i in 0 until (points * 2)) {
+            val radius = if (i % 2 == 0) outerRadius else innerRadius
+            val angle = startAngle + i * angleStep
+            val px = cx + (radius * kotlin.math.cos(angle)).toFloat()
+            val py = cy + (radius * kotlin.math.sin(angle)).toFloat()
+            if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+        }
+        path.close()
+        return path
+    }
 }
 
 

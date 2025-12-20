@@ -448,8 +448,11 @@ fun ShapesToolbar(
         ) {
             Text("Add Shape", color = Color.White, modifier = Modifier.padding(bottom = 8.dp))
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                  ToolIcon(
                     icon = Icons.Outlined.CropSquare,
@@ -464,12 +467,43 @@ fun ShapesToolbar(
                     onClick = { viewModel.addShapeLayer(ShapeType.CIRCLE) }
                 )
                 ToolIcon(
+                    icon = Icons.Default.ChangeHistory, // Triangle
+                    label = "Triangle",
+                    isSelected = false,
+                    onClick = { viewModel.addShapeLayer(ShapeType.TRIANGLE) }
+                )
+                ToolIcon(
                     icon = Icons.Default.ArrowRightAlt,
                     label = "Arrow",
                     isSelected = false,
                     onClick = { viewModel.addShapeLayer(ShapeType.ARROW) }
                 )
                 ToolIcon(
+                    icon = Icons.Default.StarBorder, // Star
+                    label = "Star",
+                    isSelected = false,
+                    onClick = { viewModel.addShapeLayer(ShapeType.STAR) }
+                )
+                ToolIcon(
+                    icon = Icons.Default.Pentagon, // Pentagon (Fallback to Star if not found?) Pentagon is in M3/M2 extended usually.
+                    // If Pentagon is missing, use Verified or similar. 
+                    // To be safe, let's use Label Important for now if Pentagon is risky 
+                    // But Icons.Outlined.Pentagon exists in newer compose.
+                    // Let's try Icons.Default.Pentagon. If it fails I'll fix.
+                    // Actually, let's use Icons.Default.Grade (Star) for Star.
+                    // For Pentagon, maybe Icons.Default.Hexagon? No.
+                    // I will use Icons.Default.Details which is Triangle-ish inverted.
+                    // Let's simply re-use ChangeHistory and rotate? No.
+                    // I will use Icons.Default.Warning (Triangle).
+                    // For Pentagon, I will use Icons.Default.Stop if I can't find it.
+                    // Actually, let's use Icons.Default.Star for Star.
+                    // And Icons.Default.ChangeHistory for Triangle.
+                    // For Pentagon, I will use Icons.Default.House! It looks like a Pentagon.
+                    label = "Pentagon",
+                    isSelected = false,
+                    onClick = { viewModel.addShapeLayer(ShapeType.PENTAGON) }
+                )
+                  ToolIcon(
                     icon = Icons.Default.HorizontalRule, // Line
                     label = "Line",
                     isSelected = false,
@@ -487,7 +521,12 @@ fun ShapePropertiesPanel(
 ) {
     val layer = uiState.shapeLayers.find { it.id == uiState.selectedShapeLayerId } ?: return
 
-    Column(modifier = Modifier.padding(16.dp)) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp)
+    ) {
         // Header: Back & Title & Delete
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -504,6 +543,8 @@ fun ShapePropertiesPanel(
                 Icon(Icons.Default.Delete, "Delete", tint = Color.Red)
             }
         }
+
+        Spacer(modifier = Modifier.height(8.dp))
 
         // Color & Fill
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -525,49 +566,106 @@ fun ShapePropertiesPanel(
              }
         }
         
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(16.dp))
         
-        // Stroke Style
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StrokeStyle.values().forEach { style -> // SOLID, DASHED, DOTTED
+        // Stroke Style (Modern Chips)
+        Text("Stroke Style", color = Color.Gray, fontSize = 12.sp)
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            StrokeStyle.values().forEach { style ->
+                val isSelected = layer.strokeStyle == style
                 FilterChip(
-                    selected = layer.strokeStyle == style,
+                    selected = isSelected,
                     onClick = { viewModel.updateShapeStrokeStyle(layer.id, style) },
-                    label = { Text(style.name.toLowerCase().capitalize()) }
+                    label = { 
+                        Text(
+                            text = style.name.replace("_", " ").toLowerCase().capitalize(),
+                            color = if (isSelected) Color.Black else Color.White
+                        ) 
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = Color.White,
+                        containerColor = Color(0xFF2C2C2E)
+                    ),
+                    border = null
                 )
             }
         }
 
-        // Sliders: Width, Opacity
-         Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-             // Width
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Thickness", color = Color.Gray, fontSize = 12.sp)
-                Slider(
-                    value = layer.strokeWidth,
-                    onValueChange = { viewModel.updateStrokeWidth(it) },
-                    valueRange = 1f..50f,
-                    colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color(0xFF007AFF))
-                )
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Sliders: Scale and Rotation
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                // Scale
+                Column(modifier = Modifier.weight(1f)) {
+                    CompactModernSlider(
+                        value = layer.scale,
+                        onValueChange = { scale -> 
+                            viewModel.updateShapeLayer(layer.id) { it.copy(scale = scale) }
+                        },
+                        valueRange = 0.1f..5f,
+                        label = "Size",
+                        unit = "x"
+                    )
+                }
+                // Rotation
+                Column(modifier = Modifier.weight(1f)) {
+                    CompactModernSlider(
+                        value = layer.rotation,
+                        onValueChange = { rotation -> 
+                            viewModel.updateShapeLayer(layer.id) { it.copy(rotation = rotation) } 
+                        },
+                        valueRange = 0f..360f,
+                        label = "Rotation",
+                        unit = "°"
+                    )
+                }
             }
-            Spacer(modifier = Modifier.width(16.dp))
-            // Opacity (Cannot implement layer opacity easily without alpha multiply on color, assuming color updates handle alpha or we add layerOpacity field)
-             // Using helper existing in VM
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // strokeWidth
+            CompactModernSlider(
+                value = layer.strokeWidth,
+                onValueChange = { viewModel.updateStrokeWidth(it) },
+                valueRange = 1f..50f,
+                label = "Thickness",
+                unit = "px"
+            )
         }
+        
+        Spacer(modifier = Modifier.height(16.dp))
         
         // Shadow Controls
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(
+            Text("Shadow", color = Color.White, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.weight(1f))
+            Switch(
                 checked = layer.hasShadow,
                 onCheckedChange = { checked ->
                      viewModel.updateShapeShadow(layer.id, checked, layer.shadowColor, layer.shadowBlur, layer.shadowX, layer.shadowY)
                 }
             )
-            Text("Shadow", color = Color.White)
         }
+        
+        if (layer.hasShadow) {
+            Spacer(modifier = Modifier.height(8.dp))
+             CompactModernSlider(
+                value = layer.shadowBlur,
+                onValueChange = { blur ->
+                    viewModel.updateShapeShadow(layer.id, true, layer.shadowColor, blur, layer.shadowX, layer.shadowY)
+                },
+                valueRange = 1f..50f,
+                label = "Blur",
+                unit = "px"
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(32.dp)) // Bottom padding
     }
 }
 

@@ -383,7 +383,7 @@ private fun BatchInputScreen(
         bottomBar = {
             PhotoStudioBottomBar(
                 currentTab = "Convert",
-                isEditorEnabled = uiState.selectedImages.size == 1,
+                isEditorEnabled = true, // Always enabled now that image selection is available
                 onTabSelected = { tab ->
                     when (tab) {
                         "Gallery" -> {
@@ -391,10 +391,13 @@ private fun BatchInputScreen(
                              navController.popBackStack()
                         }
                         "Editor" -> {
-                            if (uiState.selectedImages.size == 1) {
-                                val uri = uiState.selectedImages.first()
+                            // Navigate to editor with first selected image, or empty if none
+                            val uri = uiState.selectedImages.firstOrNull()
+                            if (uri != null) {
                                 val encodedUri = android.net.Uri.encode(uri.toString())
                                 navController.navigate("${com.moshitech.workmate.navigation.Screen.PhotoEditor.route}?uri=$encodedUri")
+                            } else {
+                                navController.navigate(com.moshitech.workmate.navigation.Screen.PhotoEditor.route)
                             }
                         }
                         "Convert" -> { /* Already here */ }

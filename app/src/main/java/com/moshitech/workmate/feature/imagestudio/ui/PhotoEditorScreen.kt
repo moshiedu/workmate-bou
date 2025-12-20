@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
@@ -149,16 +151,57 @@ fun PhotoEditorScreen(
     var currentTab by remember { mutableStateOf(EditorTab.TEXT) }
     var showOriginal by remember { mutableStateOf(false) }
     var showImageSourceDialog by remember { mutableStateOf(false) }
+    var showExitConfirmDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Eyedropper State (Lifted for Toolbar access)
     var eyedropperCallback by remember { mutableStateOf<((Color) -> Unit)?>(null) }
     val isEyedropperActive = eyedropperCallback != null
     
+    // Deselect layers when switching tabs (standard photo editor behavior)
+    LaunchedEffect(currentTab) {
+        when (currentTab) {
+            EditorTab.TEXT -> {
+                // Deselect shapes and stickers when on Text tab
+                viewModel.deselectShape()
+                viewModel.deselectSticker()
+            }
+            EditorTab.DRAW -> {
+                // Deselect text and stickers when on Draw tab
+                viewModel.deselectText()
+                viewModel.deselectSticker()
+            }
+            else -> {
+                // Deselect all layers when on other tabs (Adjust, Filters, etc.)
+                viewModel.deselectText()
+                viewModel.deselectShape()
+                viewModel.deselectSticker()
+            }
+        }
+    }
+    
     // Reset zoom when entering eyedropper mode for accurate picking
     LaunchedEffect(isEyedropperActive) {
         if (isEyedropperActive) {
             viewModel.clearMessage() // Clear any previous messages
+        }
+    }
+    
+    // Back Press Handler - Show confirmation if there are unsaved changes
+    androidx.activity.compose.BackHandler(enabled = true) {
+        // Check if there are any changes (text layers, shapes, stickers, or adjustments)
+        val hasChanges = uiState.textLayers.isNotEmpty() || 
+                        uiState.shapeLayers.isNotEmpty() || 
+                        uiState.stickerLayers.isNotEmpty() ||
+                        uiState.brightness != 0f ||
+                        uiState.contrast != 1f ||
+                        uiState.saturation != 1f ||
+                        uiState.hue != 0f
+        
+        if (hasChanges) {
+            showExitConfirmDialog = true
+        } else {
+            navController.popBackStack()
         }
     }
 
@@ -251,7 +294,7 @@ fun PhotoEditorScreen(
                         Icon(Icons.Default.Close, "Close", tint = Color.White)
                     }
                     
-                    // Center: Undo/Redo
+                    // Center: Undo/Redo/Preview
                     Row(
                         modifier = Modifier.align(Alignment.Center),
                         verticalAlignment = Alignment.CenterVertically
@@ -276,6 +319,17 @@ fun PhotoEditorScreen(
                                 imageVector = Icons.Default.Redo,
                                 contentDescription = "Redo",
                                 tint = if (uiState.canRedo) Color.White else Color.Gray,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        IconButton(
+                            onClick = { viewModel.togglePreviewMode() }
+                        ) {
+                            Icon(
+                                imageVector = if (uiState.isPreviewMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = if (uiState.isPreviewMode) "Show UI" else "Preview",
+                                tint = Color.White,
                                 modifier = Modifier.size(24.dp)
                             )
                         }
@@ -435,7 +489,7 @@ fun PhotoEditorScreen(
 
                             Box(
                                 modifier = Modifier
-                                    .size(displayWidth, displayHeight)
+                                    .requiredSize(displayWidth, displayHeight)
                                     .graphicsLayer {
                                         // Apply Fit Scale (bitScale) AND User Transforms (scale/offset/rotation)
                                         // This ensures the Box visual matches the user operation, 
@@ -511,8 +565,8 @@ fun PhotoEditorScreen(
                                     Canvas(
                                         modifier = Modifier
                                             .fillMaxSize()
-                                            .pointerInput(isDrawMode) {
-                                                if (isDrawMode) {
+                                            .pointerInput(isDrawMode, uiState.activeDrawMode) {
+                                                if (isDrawMode && uiState.activeDrawMode == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawMode.PAINT) {
                                                     awaitEachGesture {
                                                         val down = awaitFirstDown(requireUnconsumed = false)
                                                         var dragPtrId = down.id
@@ -888,30 +942,27 @@ fun PhotoEditorScreen(
                         // Layers moved to ContentBox
 
 
-                        // ADD NEW TEXT Pill Button (Overlay on Image Canvas)
+                        // ADD NEW TEXT FAB (Top-Right Corner, below header)
                         if (currentTab == EditorTab.TEXT) {
-                            Button(
+                            FloatingActionButton(
                                 onClick = { viewModel.createTextBoxAtCenter() },
                                 modifier = Modifier
-                                    .height(40.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFF007AFF) // iOS Blue
-                                ),
-                                shape = RoundedCornerShape(50), // Pill Shape
-                                contentPadding = PaddingValues(horizontal = 16.dp)
+                                    .align(Alignment.TopEnd)
+                                    .padding(top = 68.dp, end = 12.dp)
+                                    .size(48.dp)
+                                    .graphicsLayer {
+                                        shadowElevation = 12f
+                                        shape = CircleShape
+                                        clip = true
+                                    },
+                                containerColor = Color(0xFF007AFF),
+                                contentColor = Color.White
                             ) {
                                 Icon(
                                     Icons.Default.Add,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    "Add New Text",
-                                    color = Color.White,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 14.sp
+                                    contentDescription = "Add Text",
+                                    modifier = Modifier.size(24.dp),
+                                    tint = Color.White
                                 )
                             }
                         }
@@ -1007,21 +1058,24 @@ fun PhotoEditorScreen(
                             }
                             EditorTab.TEXT -> {
                                 // Text Editor Toolbar Content
-                                if (uiState.selectedTextLayerId != null) {
-                                    val selectedLayer = uiState.textLayers.find { it.id == uiState.selectedTextLayerId }
-                                    selectedLayer?.let { layer ->
-                                        // This component needs to fill the panel to be useful in this new layout
-                                        Box(Modifier.fillMaxSize()) {
-                                            com.moshitech.workmate.feature.imagestudio.components.TextEditorToolbar(
-                                                layer = layer,
-                                                visible = true,
-                                                onUpdate = { updated, save -> viewModel.updateTextProperty(layer.id, save) { updated } },
-                                                onSave = { viewModel.saveToHistory() },
-                                                onRequestEyedropper = { callback -> eyedropperCallback = callback },
-                                                onRequestTexturePick = { texturePickerLauncher.launch("image/*") },
-                                                modifier = Modifier.fillMaxSize() // Force fill
-                                            )
-                                        }
+                                // Show toolbar if there are any text layers, not just when one is selected
+                                val layerToEdit = if (uiState.selectedTextLayerId != null) {
+                                    uiState.textLayers.find { it.id == uiState.selectedTextLayerId }
+                                } else {
+                                    uiState.textLayers.lastOrNull()
+                                }
+                                
+                                if (layerToEdit != null) {
+                                    Box(Modifier.fillMaxSize()) {
+                                        com.moshitech.workmate.feature.imagestudio.components.TextEditorToolbar(
+                                            layer = layerToEdit,
+                                            visible = true,
+                                            onUpdate = { updated, save -> viewModel.updateTextProperty(layerToEdit.id, save) { updated } },
+                                            onSave = { viewModel.saveToHistory() },
+                                            onRequestEyedropper = { callback -> eyedropperCallback = callback },
+                                            onRequestTexturePick = { texturePickerLauncher.launch("image/*") },
+                                            modifier = Modifier.fillMaxSize()
+                                        )
                                     }
                                 } else {
                                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1422,6 +1476,42 @@ fun PhotoEditorScreen(
                 }
             )
         }
+        
+        // Exit Confirmation Dialog
+        if (showExitConfirmDialog) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showExitConfirmDialog = false },
+                title = { Text("Unsaved Changes") },
+                text = { Text("You have unsaved changes. Do you want to save before exiting?") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showExitConfirmDialog = false
+                            viewModel.showSaveDialog()
+                        }
+                    ) {
+                        Text("Save")
+                    }
+                },
+                dismissButton = {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(
+                            onClick = {
+                                showExitConfirmDialog = false
+                                navController.popBackStack()
+                            }
+                        ) {
+                            Text("Discard")
+                        }
+                        TextButton(
+                            onClick = { showExitConfirmDialog = false }
+                        ) {
+                            Text("Cancel")
+                        }
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -1449,6 +1539,27 @@ fun AdjustTab(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp) // Reduced Gap 
     ) {
+        var showResetDialog by remember { mutableStateOf(false) }
+
+        if (showResetDialog) {
+            AlertDialog(
+                onDismissRequest = { showResetDialog = false },
+                title = { Text("Reset Adjustments?") },
+                text = { Text("This will reset all brightness, contrast, and other adjustments to default values.") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            onReset()
+                            showResetDialog = false
+                        }
+                    ) { Text("Reset", color = androidx.compose.material3.MaterialTheme.colorScheme.error) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showResetDialog = false }) { Text("Cancel") }
+                }
+            )
+        }
+
         // Header with Title and Reset
         Row(
             modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
@@ -1463,7 +1574,7 @@ fun AdjustTab(
                 modifier = Modifier.padding(start = 8.dp)
             )
             
-            TextButton(onClick = onReset) {
+            TextButton(onClick = { showResetDialog = true }) {
                 Text("Reset Default", color = Color(0xFF007AFF), fontSize = 14.sp)
             }
         }
@@ -1553,8 +1664,10 @@ private fun CompactSlider(
         )
         
         // Custom Slider with Thin Track and Custom Thumb
+        val animatedValue by animateFloatAsState(targetValue = value, label = "SliderAnimation")
+        
         Slider(
-            value = value,
+            value = animatedValue,
             onValueChange = onValueChange,
             valueRange = range,
             modifier = Modifier.weight(1f),
