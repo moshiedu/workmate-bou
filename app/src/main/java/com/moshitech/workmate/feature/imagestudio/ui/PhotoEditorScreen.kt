@@ -911,10 +911,15 @@ fun PhotoEditorScreen(
                                                         isSelected = stickerLayer.id == uiState.selectedStickerLayerId,
                                                         onSelect = { viewModel.selectSticker(it) },
                                                         onTransform = { id, pan, zoom, rot -> 
-                                                            // Convert input (Dp) to Pixels
+                                                            // The pan is in screen pixels, we need to convert to bitmap coordinates
+                                                            // accounting for both scale AND offset
                                                             val density = density.density
                                                             val panPx = pan * density
                                                             val combinedScale = scale * bitScale
+                                                            
+                                                            // Convert screen pan to bitmap pan
+                                                            // We only need to divide by scale, NOT adjust for offset
+                                                            // because the sticker's position is already in bitmap space
                                                             val bitmapPan = Offset(
                                                                 panPx.x / combinedScale,
                                                                 panPx.y / combinedScale

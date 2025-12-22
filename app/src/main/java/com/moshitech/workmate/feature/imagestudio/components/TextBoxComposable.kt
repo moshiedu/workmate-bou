@@ -84,12 +84,18 @@ fun TextBoxComposable(
     modifier: Modifier = Modifier
 ) {
     val localDensity = LocalDensity.current
-    // Apply transforms via graphicsLayer
+    // Standard 3.1: Position via offset, visual transforms via graphicsLayer
     Box(
         modifier = modifier
+            .offset {
+                androidx.compose.ui.unit.IntOffset(
+                    layer.x.toInt(),
+                    layer.y.toInt()
+                )
+            }
             .graphicsLayer {
-                translationX = layer.x
-                translationY = layer.y
+                // translationX = layer.x // REMOVED per contract
+                // translationY = layer.y // REMOVED per contract
                 scaleX = layer.scale
                 scaleY = layer.scale
                 rotationZ = layer.rotation
@@ -142,13 +148,13 @@ fun TextBoxComposable(
                                     zoom *= zoomChange
                                     rotation += rotationChange
                                     
-                                    // Correct Pan for Rotation
+                                    // Standard 4.1: Correct Pan for Rotation ONLY (no scale)
                                     val rad = Math.toRadians(layer.rotation.toDouble())
                                     val cos = Math.cos(rad)
                                     val sin = Math.sin(rad)
                                     val rotX = panChange.x * cos - panChange.y * sin
                                     val rotY = panChange.x * sin + panChange.y * cos
-                                    val correctedPanChange = Offset(rotX.toFloat(), rotY.toFloat()) * layer.scale
+                                    val correctedPanChange = Offset(rotX.toFloat(), rotY.toFloat())
                                     
                                     pan += correctedPanChange
                                     
@@ -167,13 +173,13 @@ fun TextBoxComposable(
                                 
                                 if (pastTouchSlop) {
                                     if (zoomChange != 1f || rotationChange != 0f || panChange != Offset.Zero) {
-                                        // Calculate corrected pan for immediate transform
+                                        // Standard 4.1: Calculate corrected pan without scale
                                         val rad = Math.toRadians(layer.rotation.toDouble())
                                         val cos = Math.cos(rad)
                                         val sin = Math.sin(rad)
                                         val rotX = panChange.x * cos - panChange.y * sin
                                         val rotY = panChange.x * sin + panChange.y * cos
-                                        val correctedPanChange = Offset(rotX.toFloat(), rotY.toFloat()) * layer.scale
+                                        val correctedPanChange = Offset(rotX.toFloat(), rotY.toFloat())
                                         
                                         onTransform(layer.id, correctedPanChange, zoomChange, rotationChange)
                                     }

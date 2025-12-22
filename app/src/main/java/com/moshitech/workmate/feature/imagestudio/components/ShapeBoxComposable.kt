@@ -41,14 +41,20 @@ fun ShapeBoxComposable(
 ) {
     Box(
         modifier = modifier
-            // Use graphicsLayer for translation (pixels) to match other layers
+            // Standard 3.1 & 3.2: Position via offset, visual transforms via graphicsLayer
+            .offset {
+                androidx.compose.ui.unit.IntOffset(
+                    (layer.x - layer.width / 2).toInt(),
+                    (layer.y - layer.height / 2).toInt()
+                )
+            }
             .graphicsLayer {
-                translationX = layer.x
-                translationY = layer.y
+                // translationX = layer.x // REMOVED per contract
+                // translationY = layer.y // REMOVED per contract
                 scaleX = layer.scale
                 scaleY = layer.scale
                 rotationZ = layer.rotation
-                alpha = layer.opacity // Apply opacity/transparency
+                alpha = layer.opacity
             }
             .size(layer.width.dp, layer.height.dp) // Size is intrinsic to the box
             // Center the pivot? GraphicsLayer default is Center.
@@ -57,9 +63,9 @@ fun ShapeBoxComposable(
                     onSelect(layer.id)
                 }
             }
-            .pointerInput(layer.id, layer.rotation, layer.scale) {
+            .pointerInput(layer.id, layer.rotation) {
                 detectTransformGestures { _, pan, zoom, rotation ->
-                    // Convert local pan to global pan by correcting for rotation and scale
+                    // Standard 4.1: Convert local rotation to global delta, but DO NOT scale position
                     val rad = Math.toRadians(layer.rotation.toDouble())
                     val cos = Math.cos(rad)
                     val sin = Math.sin(rad)
@@ -67,7 +73,8 @@ fun ShapeBoxComposable(
                     val rotX = pan.x * cos - pan.y * sin
                     val rotY = pan.x * sin + pan.y * cos
                     
-                    val correctedPan = Offset(rotX.toFloat(), rotY.toFloat()) * layer.scale
+                    // Sending raw rotated delta. Scale handling belongs in proper conversion layer.
+                    val correctedPan = Offset(rotX.toFloat(), rotY.toFloat())
                     
                     onTransform(layer.id, correctedPan, zoom, rotation)
                 }

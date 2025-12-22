@@ -62,12 +62,22 @@ fun StickerBoxComposable(
     onFlip: ((String) -> Unit)? = null 
 ) {
     val viewConfiguration = androidx.compose.ui.platform.LocalViewConfiguration.current
+    val density = androidx.compose.ui.platform.LocalDensity.current
 
         Box(
         modifier = Modifier
+            // Apply position using offset BEFORE graphicsLayer
+            // This ensures position is in bitmap coordinate space, not affected by parent scaling
+            .offset {
+                androidx.compose.ui.unit.IntOffset(
+                    layer.x.toInt(),
+                    layer.y.toInt()
+                )
+            }
             .graphicsLayer {
-                translationX = layer.x
-                translationY = layer.y
+                // Remove translationX/Y - position is now handled by offset modifier
+                // translationX = layer.x  // REMOVED
+                // translationY = layer.y  // REMOVED
                 rotationZ = layer.rotation
                 scaleX = layer.scale * (if (layer.isFlipped) -1f else 1f)
                 scaleY = layer.scale
@@ -155,29 +165,42 @@ fun StickerBoxComposable(
                             drawCircle(
                                 color = shadowColor.copy(alpha = 0.3f),
                                 radius = size.minDimension / 2 + blurRadius,
-                                center = center.copy(
-                                    x = center.x + layer.shadowOffsetX.dp.toPx(),
-                                    y = center.y + layer.shadowOffsetY.dp.toPx()
+                                center = center + androidx.compose.ui.geometry.Offset(layer.shadowOffsetX, layer.shadowOffsetY)
+                            )
+                        }
+                    } else Modifier
+                )
+                .then(
+                    // CRITICAL FIX: Draw selection border using drawBehind (pure visual overlay)
+                    // DO NOT use .border() modifier as it affects layout measurement
+                    if (isSelected) {
+                        Modifier.drawBehind {
+                            val strokeWidth = 2.dp.toPx()
+                            val pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(
+                                floatArrayOf(10f, 10f), 0f
+                            )
+                            drawRect(
+                                color = androidx.compose.ui.graphics.Color.White,
+                                style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                    width = strokeWidth,
+                                    pathEffect = pathEffect
                                 )
                             )
                         }
                     } else Modifier
                 )
                 .then(
-                    // Apply border if enabled
+                    // Apply border if enabled (non-selection border)
                     if (layer.hasBorder) {
-                        Modifier.border(
-                            width = layer.borderWidth.dp,
-                            color = androidx.compose.ui.graphics.Color(layer.borderColor)
-                        )
+                        Modifier.drawBehind {
+                            drawRect(
+                                color = androidx.compose.ui.graphics.Color(layer.borderColor),
+                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = layer.borderWidth)
+                            )
+                        }
                     } else Modifier
                 )
-                .border(
-                    width = if (isSelected) 2.dp else 0.dp,
-                    color = if (isSelected) Color.White else Color.Transparent,
-                    shape = RoundedCornerShape(4.dp)
-                )
-                .padding(if (isSelected) 8.dp else 0.dp) // Padding for border
+                // REMOVED: .padding() - was causing layout shift
         ) {
             if (layer.text != null) {
                 // Emoji / Text Sticker
