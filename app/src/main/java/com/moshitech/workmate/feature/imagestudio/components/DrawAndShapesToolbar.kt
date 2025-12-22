@@ -626,6 +626,34 @@ fun ShapePropertiesPanel(
                 }
             }
             
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            // Position X & Y
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                // Position X
+                Column(modifier = Modifier.weight(1f)) {
+                    CompactModernSlider(
+                        value = layer.x,
+                        onValueChange = { viewModel.updateShapePosition(layer.id, x = it, saveHistory = false) },
+                        onValueChangeFinished = { viewModel.updateShapePosition(layer.id, x = layer.x, saveHistory = true) },
+                        valueRange = -500f..1500f,
+                        label = "Position X",
+                        unit = "px"
+                    )
+                }
+                // Position Y
+                Column(modifier = Modifier.weight(1f)) {
+                    CompactModernSlider(
+                        value = layer.y,
+                        onValueChange = { viewModel.updateShapePosition(layer.id, y = it, saveHistory = false) },
+                        onValueChangeFinished = { viewModel.updateShapePosition(layer.id, y = layer.y, saveHistory = true) },
+                        valueRange = -500f..1500f,
+                        label = "Position Y",
+                        unit = "px"
+                    )
+                }
+            }
+            
             Spacer(modifier = Modifier.height(16.dp))
             
             // strokeWidth
@@ -636,6 +664,80 @@ fun ShapePropertiesPanel(
                 label = "Thickness",
                 unit = "px"
             )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            // Opacity
+            CompactModernSlider(
+                value = layer.opacity * 100f,
+                onValueChange = { viewModel.updateShapeOpacity(layer.id, it / 100f, saveHistory = false) },
+                onValueChangeFinished = { viewModel.updateShapeOpacity(layer.id, layer.opacity, saveHistory = true) },
+                valueRange = 0f..100f,
+                label = "Opacity",
+                unit = "%"
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        // Quick Action Buttons
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            // Duplicate Button
+            Button(
+                onClick = { viewModel.duplicateShape(layer.id) },
+                modifier = Modifier.weight(1f).height(36.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF007AFF)
+                ),
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
+            ) {
+                Icon(
+                    Icons.Default.ContentCopy,
+                    contentDescription = "Duplicate",
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(3.dp))
+                Text("Copy", fontSize = 10.sp, maxLines = 1)
+            }
+            
+            // Bring to Front Button
+            Button(
+                onClick = { viewModel.bringShapeToFront(layer.id) },
+                modifier = Modifier.weight(1f).height(36.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF34C759)
+                ),
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
+            ) {
+                Icon(
+                    Icons.Default.ArrowUpward,
+                    contentDescription = "To Front",
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(3.dp))
+                Text("Front", fontSize = 10.sp, maxLines = 1)
+            }
+            
+            // Send to Back Button
+            Button(
+                onClick = { viewModel.sendShapeToBack(layer.id) },
+                modifier = Modifier.weight(1f).height(36.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFFF9500)
+                ),
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
+            ) {
+                Icon(
+                    Icons.Default.ArrowDownward,
+                    contentDescription = "To Back",
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(3.dp))
+                Text("Back", fontSize = 10.sp, maxLines = 1)
+            }
         }
         
         Spacer(modifier = Modifier.height(16.dp))
@@ -657,10 +759,43 @@ fun ShapePropertiesPanel(
              CompactModernSlider(
                 value = layer.shadowBlur,
                 onValueChange = { blur ->
-                    viewModel.updateShapeShadow(layer.id, true, layer.shadowColor, blur, layer.shadowX, layer.shadowY)
+                    viewModel.updateShapeShadow(layer.id, true, layer.shadowColor, blur, layer.shadowX, layer.shadowY, saveHistory = false)
+                },
+                onValueChangeFinished = {
+                    viewModel.updateShapeShadow(layer.id, true, layer.shadowColor, layer.shadowBlur, layer.shadowX, layer.shadowY, saveHistory = true)
                 },
                 valueRange = 1f..50f,
                 label = "Blur",
+                unit = "px"
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            CompactModernSlider(
+                value = layer.shadowX,
+                onValueChange = { offsetX ->
+                    viewModel.updateShapeShadow(layer.id, true, layer.shadowColor, layer.shadowBlur, offsetX, layer.shadowY, saveHistory = false)
+                },
+                onValueChangeFinished = {
+                    viewModel.updateShapeShadow(layer.id, true, layer.shadowColor, layer.shadowBlur, layer.shadowX, layer.shadowY, saveHistory = true)
+                },
+                valueRange = -20f..20f,
+                label = "Offset X",
+                unit = "px"
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            CompactModernSlider(
+                value = layer.shadowY,
+                onValueChange = { offsetY ->
+                    viewModel.updateShapeShadow(layer.id, true, layer.shadowColor, layer.shadowBlur, layer.shadowX, offsetY, saveHistory = false)
+                },
+                onValueChangeFinished = {
+                    viewModel.updateShapeShadow(layer.id, true, layer.shadowColor, layer.shadowBlur, layer.shadowX, layer.shadowY, saveHistory = true)
+                },
+                valueRange = -20f..20f,
+                label = "Offset Y",
                 unit = "px"
             )
         }

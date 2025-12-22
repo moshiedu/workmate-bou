@@ -1467,6 +1467,39 @@ fun TextTransformControls(
                 )
             }
         }
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        // Position X & Y
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Position X
+            Column(modifier = Modifier.weight(1f)) {
+                CompactModernSlider(
+                    value = layer.x,
+                    onValueChange = { x -> 
+                        onUpdate(layer.copy(x = x))
+                    },
+                    valueRange = -500f..1500f,
+                    label = "Position X",
+                    unit = "px"
+                )
+            }
+            // Position Y
+            Column(modifier = Modifier.weight(1f)) {
+                CompactModernSlider(
+                    value = layer.y,
+                    onValueChange = { y -> 
+                        onUpdate(layer.copy(y = y))
+                    },
+                    valueRange = -500f..1500f,
+                    label = "Position Y",
+                    unit = "px"
+                )
+            }
+        }
         Spacer(modifier = Modifier.height(8.dp)) // Bottom padding
     }
 }

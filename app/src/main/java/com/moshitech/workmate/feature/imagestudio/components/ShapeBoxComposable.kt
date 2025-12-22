@@ -48,6 +48,7 @@ fun ShapeBoxComposable(
                 scaleX = layer.scale
                 scaleY = layer.scale
                 rotationZ = layer.rotation
+                alpha = layer.opacity // Apply opacity/transparency
             }
             .size(layer.width.dp, layer.height.dp) // Size is intrinsic to the box
             // Center the pivot? GraphicsLayer default is Center.

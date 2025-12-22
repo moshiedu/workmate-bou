@@ -83,6 +83,7 @@ fun TextBoxComposable(
     onDelete: (String) -> Unit,    
     modifier: Modifier = Modifier
 ) {
+    val localDensity = LocalDensity.current
     // Apply transforms via graphicsLayer
     Box(
         modifier = modifier
@@ -94,7 +95,7 @@ fun TextBoxComposable(
                 rotationZ = layer.rotation
                 rotationX = layer.rotationX
                 rotationY = layer.rotationY
-                cameraDistance = 8 * density
+                cameraDistance = 8 * this.density
                 
                 // Blend Mode Application
                 val composeBlendMode = when(layer.blendMode) {
@@ -335,7 +336,7 @@ fun TextBoxComposable(
 
                 val textStyle = TextStyle(
                     color = effectiveColor, 
-                    fontSize = layer.fontSize.sp,
+                    fontSize = with(localDensity) { layer.fontSize.toSp() }, // Correct: Bitmap Px -> Sp
                     fontFamily = when(layer.fontFamily) {
                         AppFont.DEFAULT -> androidx.compose.ui.text.font.FontFamily.Default
                         AppFont.SERIF -> androidx.compose.ui.text.font.FontFamily.Serif
@@ -365,7 +366,7 @@ fun TextBoxComposable(
                         TextAlignment.JUSTIFY -> TextAlign.Justify
                     },
                     letterSpacing = layer.letterSpacing.sp,
-                    lineHeight = (layer.fontSize * layer.lineHeight).sp,
+                    lineHeight = with(localDensity) { (layer.fontSize * layer.lineHeight).toSp() },
                     shadow = finalShadow
                 )
 
@@ -386,8 +387,9 @@ fun TextBoxComposable(
                         cursorBrush = androidx.compose.ui.graphics.SolidColor(Color.White)
                     )
                 } else {
-                    val density = LocalDensity.current
-                    Box(modifier = Modifier.graphicsLayer { alpha = layer.layerOpacity }) {
+                    Box(modifier = Modifier.graphicsLayer { 
+                        alpha = layer.layerOpacity 
+                    }) {
                         
                         if (abs(layer.curvature) > 0f) {
                              // --- CURVED MODE ---
@@ -397,14 +399,14 @@ fun TextBoxComposable(
                                      CurvedTextRenderer(
                                          text = displayText.text,
                                          layer = layer.copy(color = Color.Red.toArgb(), isNeon = false, layerOpacity = 0.7f),
-                                         density = density
+                                         density = localDensity
                                      )
                                  }
                                  Box(modifier = Modifier.offset(x = glitchOffset, y = glitchOffset)) {
                                      CurvedTextRenderer(
                                          text = displayText.text,
                                          layer = layer.copy(color = Color.Cyan.toArgb(), isNeon = false, layerOpacity = 0.7f),
-                                         density = density
+                                         density = localDensity
                                      )
                                  }
                              }
@@ -418,7 +420,7 @@ fun TextBoxComposable(
                              CurvedTextRenderer(
                                  text = displayText.text,
                                  layer = layer,
-                                 density = density
+                                 density = localDensity
                              )
                         } else {
                             // --- STRAIGHT MODE ---
@@ -442,7 +444,7 @@ fun TextBoxComposable(
                                     style = textStyle.copy(
                                         color = Color(layer.outlineColor),
                                         drawStyle = Stroke(
-                                            width = with(density) { layer.outlineWidth.dp.toPx() },
+                                            width = layer.outlineWidth, // Raw Pixels
                                             join = StrokeJoin.Round
                                         )
                                     ),

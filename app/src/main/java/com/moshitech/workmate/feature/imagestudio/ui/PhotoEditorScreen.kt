@@ -4,6 +4,9 @@ import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import com.canhub.cropper.CropImageContract
+import com.canhub.cropper.CropImageContractOptions
+import com.canhub.cropper.CropImageOptions
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
@@ -37,6 +40,9 @@ import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.RotateLeft
 import androidx.compose.material.icons.filled.RotateRight
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.Visibility
@@ -78,6 +84,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.Tab
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -85,6 +93,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -114,20 +123,21 @@ import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.LinearScale
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.runtime.key
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import com.canhub.cropper.CropImageContract
-import com.canhub.cropper.CropImageContractOptions
-import com.canhub.cropper.CropImageOptions
 import com.moshitech.workmate.feature.imagestudio.components.AdContainer
 import com.moshitech.workmate.feature.imagestudio.components.TextEditorBottomToolbar
 import com.moshitech.workmate.feature.imagestudio.components.TextEditorToolbar
@@ -137,7 +147,7 @@ import com.moshitech.workmate.feature.imagestudio.viewmodel.DrawAction
 
 
 enum class EditorTab {
-    CROP, ADJUST, FILTERS, STICKERS, SHAPES, ROTATE, TEXT, DRAW
+    CROP, ADJUST, FILTERS, STICKERS, STICKER_CONTROLS, SHAPES, ROTATE, TEXT, DRAW
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -152,6 +162,7 @@ fun PhotoEditorScreen(
     var showOriginal by remember { mutableStateOf(false) }
     var showImageSourceDialog by remember { mutableStateOf(false) }
     var showExitConfirmDialog by remember { mutableStateOf(false) }
+    var showLayerPanel by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Eyedropper State (Lifted for Toolbar access)
@@ -333,6 +344,26 @@ fun PhotoEditorScreen(
                                 modifier = Modifier.size(24.dp)
                             )
                         }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        // NEW: Layers button
+                        BadgedBox(
+                            badge = {
+                                if (viewModel.getAllLayers().isNotEmpty()) {
+                                    Badge { Text("${viewModel.getAllLayers().size}") }
+                                }
+                            }
+                        ) {
+                            IconButton(
+                                onClick = { showLayerPanel = !showLayerPanel }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Layers,
+                                    contentDescription = "Layers",
+                                    tint = if (showLayerPanel) Color(0xFF3B82F6) else Color.White,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
                     }
                     
                     // Right: Save/Check
@@ -362,11 +393,12 @@ fun PhotoEditorScreen(
                     com.moshitech.workmate.feature.imagestudio.components.PhotoEditorBottomNav(
                         selectedTool = when (currentTab) {
                             EditorTab.CROP -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.CROP
+                            EditorTab.ADJUST -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.ADJUST
                             EditorTab.FILTERS -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.FILTERS
                             EditorTab.STICKERS -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.STICKERS
-                            EditorTab.ROTATE -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.ROTATE
-                            EditorTab.ADJUST -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.ADJUST
+                            EditorTab.STICKER_CONTROLS -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.ADJUST // Use settings icon
                             EditorTab.SHAPES -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.SHAPES
+                            EditorTab.ROTATE -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.ROTATE
                             EditorTab.TEXT -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.TEXT
                             EditorTab.DRAW -> com.moshitech.workmate.feature.imagestudio.components.EditorTool.DRAW
                         },
@@ -483,13 +515,22 @@ fun PhotoEditorScreen(
                         val bitmapToShow = if (showOriginal) uiState.originalBitmap else uiState.previewBitmap
                         if (bitmapToShow != null) {
                             val density = LocalDensity.current
-                            // Calculate display size based on Bitmap dimensions (Unscaled)
-                            val displayWidth = with(density) { bitmapToShow.width.toDp() }
-                            val displayHeight = with(density) { bitmapToShow.height.toDp() }
+                            // Use bitmap dimensions directly as pixels (not DP)
+                            // This ensures layer coordinates (in pixels) match the Box's local coordinate space
+                            val displayWidthPx = bitmapToShow.width.toFloat()
+                            val displayHeightPx = bitmapToShow.height.toFloat()
+                            
+                            // Convert to Dp for Modifier.requiredSize (Compose requires Dp units)
+                            val displayWidth = with(density) { displayWidthPx.toDp() }
+                            val displayHeight = with(density) { displayHeightPx.toDp() }
 
                             Box(
                                 modifier = Modifier
                                     .requiredSize(displayWidth, displayHeight)
+                                    .onGloballyPositioned { coordinates ->
+                                        // Update container size for coordinate mapping
+                                        viewModel.updateContainerSize(coordinates.size.width, coordinates.size.height)
+                                    }
                                     .graphicsLayer {
                                         // Apply Fit Scale (bitScale) AND User Transforms (scale/offset/rotation)
                                         // This ensures the Box visual matches the user operation, 
@@ -572,7 +613,7 @@ fun PhotoEditorScreen(
                                                         var dragPtrId = down.id
                                                         var isMultiTouch = false
                                                         
-                                                        // Initial Point (Already in Local/Bitmap Coordinates due to ContentBox scaling)
+                                                        // Drawing coordinates are already in correct bitmap space
                                                         val startPos = down.position
                                                         val rawNormX = startPos.x
                                                         val rawNormY = startPos.y
@@ -789,48 +830,105 @@ fun PhotoEditorScreen(
                                     }
 
                                     // 4. Overlays
-                                    // Text Layers
-                                    uiState.textLayers.forEach { textLayer ->
-                                        key(textLayer.id) {
-                                            com.moshitech.workmate.feature.imagestudio.components.TextBoxComposable(
-                                                layer = textLayer,
-                                                isSelected = textLayer.id == uiState.selectedTextLayerId,
-                                                isEditing = textLayer.id == uiState.editingTextLayerId,
-                                                onSelect = { viewModel.selectTextLayer(it) },
-                                                onEdit = { viewModel.enterTextEditMode(it) },
-                                                onTransform = { id, pan, zoom, rotation -> viewModel.updateTextLayerTransform(id, pan, zoom, rotation) },
-                                                onTransformEnd = { viewModel.saveToHistory() }, 
-                                                onTextChange = { id, text -> viewModel.updateTextInline(id, text) },
-                                                onDuplicate = { viewModel.duplicateTextLayer(it) },
-                                                onDelete = { viewModel.removeTextLayer(it) },
-                                            )
+                                    // Unified Z-ordering for all layer types
+                                    val allLayers = (uiState.textLayers.map { it to com.moshitech.workmate.feature.imagestudio.data.LayerType.TEXT } +
+                                            uiState.shapeLayers.map { it to com.moshitech.workmate.feature.imagestudio.data.LayerType.SHAPE } +
+                                            uiState.stickerLayers.map { it to com.moshitech.workmate.feature.imagestudio.data.LayerType.STICKER })
+                                        .filter { (layer, _) -> 
+                                            // Handle visibility check based on type
+                                            when(layer) {
+                                                is com.moshitech.workmate.feature.imagestudio.viewmodel.TextLayer -> layer.isVisible
+                                                is com.moshitech.workmate.feature.imagestudio.viewmodel.ShapeLayer -> layer.isVisible
+                                                is com.moshitech.workmate.feature.imagestudio.viewmodel.StickerLayer -> layer.isVisible
+                                                else -> true
+                                            }
                                         }
-                                    }
-                                    // Shape Layers
-                                    uiState.shapeLayers.forEach { layer ->
-                                        key(layer.id) {
-                                            com.moshitech.workmate.feature.imagestudio.components.ShapeBoxComposable(
-                                                layer = layer,
-                                                isSelected = layer.id == uiState.selectedShapeLayerId,
-                                                onSelect = { viewModel.selectShapeLayer(it) },
-                                                onTransform = { id, pan, zoom, rot -> viewModel.updateShapeLayerTransform(id, pan, zoom, rot) },
-                                                onDelete = { viewModel.deleteShapeLayer(it) }
-                                            )
+                                        .sortedBy { (layer, _) -> 
+                                             when(layer) {
+                                                is com.moshitech.workmate.feature.imagestudio.viewmodel.TextLayer -> layer.zIndex
+                                                is com.moshitech.workmate.feature.imagestudio.viewmodel.ShapeLayer -> layer.zIndex
+                                                is com.moshitech.workmate.feature.imagestudio.viewmodel.StickerLayer -> layer.zIndex
+                                                else -> 0
+                                            }
                                         }
-                                    }
-                                    // Sticker Layers
-                                    uiState.stickerLayers.forEach { layer ->
-                                       key(layer.id) {
-                                           com.moshitech.workmate.feature.imagestudio.components.StickerBoxComposable(
-                                               layer = layer,
-                                               isSelected = layer.id == uiState.selectedStickerLayerId,
-                                               onSelect = { viewModel.selectSticker(it) },
-                                               onTransform = { id, pan, zoom, rot -> viewModel.updateStickerTransform(id, pan, zoom, rot) },
-                                               onTransformEnd = { viewModel.saveToHistory() },
-                                               onDelete = { viewModel.removeSticker(it) },
-                                               onFlip = { viewModel.flipSticker(it) } 
-                                           )
-                                       }
+
+                                    allLayers.forEach { (layer, type) ->
+                                        when (type) {
+                                            com.moshitech.workmate.feature.imagestudio.data.LayerType.TEXT -> {
+                                                val textLayer = layer as com.moshitech.workmate.feature.imagestudio.viewmodel.TextLayer
+                                                key(textLayer.id) {
+                                                    com.moshitech.workmate.feature.imagestudio.components.TextBoxComposable(
+                                                        layer = textLayer,
+                                                        isSelected = textLayer.id == uiState.selectedTextLayerId,
+                                                        isEditing = textLayer.id == uiState.editingTextLayerId,
+                                                        onSelect = { viewModel.selectTextLayer(it) },
+                                                        onEdit = { viewModel.enterTextEditMode(it) },
+                                                        onTransform = { id, pan, zoom, rotation -> 
+                                                            // Convert input (Dp) to Pixels, then adjust for Zoom
+                                                            val density = density.density
+                                                            val panPx = pan * density
+                                                            val combinedScale = scale * bitScale
+                                                            val bitmapPan = Offset(
+                                                                panPx.x / combinedScale,
+                                                                panPx.y / combinedScale
+                                                            )
+                                                            viewModel.updateTextLayerTransform(id, bitmapPan, zoom, rotation)
+                                                        },
+                                                        onTransformEnd = { viewModel.saveToHistory() }, 
+                                                        onTextChange = { id, text -> viewModel.updateTextInline(id, text) },
+                                                        onDuplicate = { viewModel.duplicateTextLayer(it) },
+                                                        onDelete = { viewModel.removeTextLayer(it) },
+                                                    )
+                                                }
+                                            }
+                                            com.moshitech.workmate.feature.imagestudio.data.LayerType.SHAPE -> {
+                                                val shapeLayer = layer as com.moshitech.workmate.feature.imagestudio.viewmodel.ShapeLayer
+                                                key(shapeLayer.id) {
+                                                    com.moshitech.workmate.feature.imagestudio.components.ShapeBoxComposable(
+                                                        layer = shapeLayer,
+                                                        isSelected = shapeLayer.id == uiState.selectedShapeLayerId,
+                                                        onSelect = { viewModel.selectShapeLayer(it) },
+                                                        onTransform = { id, pan, zoom, rot -> 
+                                                            // Convert input (Dp) to Pixels, then adjust for Zoom
+                                                            val density = density.density
+                                                            val panPx = pan * density
+                                                            val combinedScale = scale * bitScale
+                                                            val bitmapPan = Offset(
+                                                                panPx.x / combinedScale,
+                                                                panPx.y / combinedScale
+                                                            )
+                                                            viewModel.updateShapeLayerTransform(id, bitmapPan, zoom, rot)
+                                                        },
+                                                        onDelete = { viewModel.deleteShapeLayer(it) }
+                                                    )
+                                                }
+                                            }
+                                            com.moshitech.workmate.feature.imagestudio.data.LayerType.STICKER -> {
+                                                val stickerLayer = layer as com.moshitech.workmate.feature.imagestudio.viewmodel.StickerLayer
+                                                key(stickerLayer.id) {
+                                                    com.moshitech.workmate.feature.imagestudio.components.StickerBoxComposable(
+                                                        layer = stickerLayer,
+                                                        isSelected = stickerLayer.id == uiState.selectedStickerLayerId,
+                                                        onSelect = { viewModel.selectSticker(it) },
+                                                        onTransform = { id, pan, zoom, rot -> 
+                                                            // Convert input (Dp) to Pixels
+                                                            val density = density.density
+                                                            val panPx = pan * density
+                                                            val combinedScale = scale * bitScale
+                                                            val bitmapPan = Offset(
+                                                                panPx.x / combinedScale,
+                                                                panPx.y / combinedScale
+                                                            )
+                                                            viewModel.updateStickerTransform(id, bitmapPan, zoom, rot)
+                                                        },
+                                                        onTransformEnd = { viewModel.saveToHistory() },
+                                                        onDelete = { viewModel.removeSticker(it) },
+                                                        onFlip = { viewModel.flipSticker(it) } 
+                                                    )
+                                                }
+                                            }
+                                            else -> {}
+                                        }
                                     }
                                 }
                             }
@@ -1020,8 +1118,10 @@ fun PhotoEditorScreen(
                                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                     androidx.compose.material3.Button(onClick = {
                                         if (imageUri != null) {
-                                            val options = CropImageContractOptions(uri = imageUri, cropImageOptions = CropImageOptions())
-                                            cropImageLauncher.launch(options)
+                                            viewModel.prepareImageForCropping { uri ->
+                                                val options = CropImageContractOptions(uri = uri, cropImageOptions = CropImageOptions())
+                                                cropImageLauncher.launch(options)
+                                            }
                                         }
                                     }) { Text("Crop Image") }
                                 }
@@ -1052,9 +1152,327 @@ fun PhotoEditorScreen(
                                 )
                             }
                             EditorTab.STICKERS -> {
-                                com.moshitech.workmate.feature.imagestudio.components.StickersTab(
-                                    onStickerSelected = { emoji -> viewModel.addSticker(text = emoji) }
-                                )
+                                // Sub-tabs within Stickers (like WhatsApp)
+                                var stickerSubTab by remember { mutableStateOf(0) } // 0 = Picker, 1 = Controls
+                                val selectedSticker = uiState.stickerLayers.find { it.id == uiState.selectedStickerLayerId }
+                                
+                                // Auto-switch to controls when sticker is selected
+                                LaunchedEffect(uiState.selectedStickerLayerId) {
+                                    if (uiState.selectedStickerLayerId != null) {
+                                        stickerSubTab = 1 // Switch to Controls tab
+                                    }
+                                }
+                                
+                                Column(modifier = Modifier.fillMaxSize()) {
+                                    // Sub-tab row (like WhatsApp emoji categories)
+                                    TabRow(
+                                        selectedTabIndex = stickerSubTab,
+                                        containerColor = Color(0xFF1E1E1E),
+                                        contentColor = Color.White,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Tab(
+                                            selected = stickerSubTab == 0,
+                                            onClick = { stickerSubTab = 0 },
+                                            text = { Text("Stickers", fontSize = 14.sp) }
+                                        )
+                                        Tab(
+                                            selected = stickerSubTab == 1,
+                                            onClick = { stickerSubTab = 1 },
+                                            text = { Text("Controls", fontSize = 14.sp) }
+                                        )
+                                    }
+                                    
+                                    // Sub-tab content
+                                    when (stickerSubTab) {
+                                        0 -> {
+                                            // Sticker Picker
+                                            com.moshitech.workmate.feature.imagestudio.components.StickersTab(
+                                                onStickerSelected = { emoji -> 
+                                                    viewModel.addSticker(text = emoji)
+                                                    stickerSubTab = 1 // Auto-switch to controls
+                                                }
+                                            )
+                                        }
+                                        1 -> {
+                                            // Controls Panel
+                                            if (selectedSticker != null) {
+                                                Column(
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .verticalScroll(rememberScrollState())
+                                                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    // Opacity Slider
+                                                    CompactModernSlider(
+                                                        label = "Opacity",
+                                                        value = selectedSticker.opacity * 100f,
+                                                        onValueChange = { newValue ->
+                                                            viewModel.updateStickerOpacity(selectedSticker.id, newValue / 100f, saveHistory = false)
+                                                        },
+                                                        onValueChangeFinished = {
+                                                            viewModel.updateStickerOpacity(selectedSticker.id, selectedSticker.opacity, saveHistory = true)
+                                                        },
+                                                        valueRange = 0f..100f,
+                                                        unit = "%"
+                                                    )
+                                                    
+                                                    // Position Controls
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        // Position X
+                                                        CompactModernSlider(
+                                                            label = "Position X",
+                                                            value = selectedSticker.x,
+                                                            onValueChange = { newValue ->
+                                                                viewModel.updateStickerPosition(selectedSticker.id, x = newValue, saveHistory = false)
+                                                            },
+                                                            onValueChangeFinished = {
+                                                                viewModel.updateStickerPosition(selectedSticker.id, x = selectedSticker.x, saveHistory = true)
+                                                            },
+                                                            valueRange = -500f..1500f,
+                                                            unit = "px",
+                                                            modifier = Modifier.weight(1f)
+                                                        )
+                                                        
+                                                        // Position Y
+                                                        CompactModernSlider(
+                                                            label = "Position Y",
+                                                            value = selectedSticker.y,
+                                                            onValueChange = { newValue ->
+                                                                viewModel.updateStickerPosition(selectedSticker.id, y = newValue, saveHistory = false)
+                                                            },
+                                                            onValueChangeFinished = {
+                                                                viewModel.updateStickerPosition(selectedSticker.id, y = selectedSticker.y, saveHistory = true)
+                                                            },
+                                                            valueRange = -500f..1500f,
+                                                            unit = "px",
+                                                            modifier = Modifier.weight(1f)
+                                                        )
+                                                    }
+                                                    
+                                                    // Quick Action Buttons
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                    ) {
+                                                        // Duplicate Button
+                                                        Button(
+                                                            onClick = { viewModel.duplicateSticker(selectedSticker.id) },
+                                                            modifier = Modifier.weight(1f).height(36.dp),
+                                                            colors = ButtonDefaults.buttonColors(
+                                                                containerColor = Color(0xFF007AFF)
+                                                            ),
+                                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
+                                                        ) {
+                                                            Icon(
+                                                                Icons.Default.ContentCopy,
+                                                                contentDescription = "Duplicate",
+                                                                modifier = Modifier.size(14.dp)
+                                                            )
+                                                            Spacer(modifier = Modifier.width(3.dp))
+                                                            Text("Copy", fontSize = 10.sp, maxLines = 1)
+                                                        }
+                                                        
+                                                        // Bring to Front Button
+                                                        Button(
+                                                            onClick = { viewModel.bringStickerToFront(selectedSticker.id) },
+                                                            modifier = Modifier.weight(1f).height(36.dp),
+                                                            colors = ButtonDefaults.buttonColors(
+                                                                containerColor = Color(0xFF34C759)
+                                                            ),
+                                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
+                                                        ) {
+                                                            Icon(
+                                                                Icons.Default.ArrowUpward,
+                                                                contentDescription = "To Front",
+                                                                modifier = Modifier.size(14.dp)
+                                                            )
+                                                            Spacer(modifier = Modifier.width(3.dp))
+                                                            Text("Front", fontSize = 10.sp, maxLines = 1)
+                                                        }
+                                                        
+                                                        // Send to Back Button
+                                                        Button(
+                                                            onClick = { viewModel.sendStickerToBack(selectedSticker.id) },
+                                                            modifier = Modifier.weight(1f).height(36.dp),
+                                                            colors = ButtonDefaults.buttonColors(
+                                                                containerColor = Color(0xFFFF9500)
+                                                            ),
+                                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
+                                                        ) {
+                                                            Icon(
+                                                                Icons.Default.ArrowDownward,
+                                                                contentDescription = "To Back",
+                                                                modifier = Modifier.size(14.dp)
+                                                            )
+                                                            Spacer(modifier = Modifier.width(3.dp))
+                                                            Text("Back", fontSize = 10.sp, maxLines = 1)
+                                                        }
+                                                    }
+                                                    
+                                                    Spacer(modifier = Modifier.height(16.dp))
+                                                    
+                                                    // Shadow Controls
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, bottom = 8.dp),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            "Shadow",
+                                                            color = Color.White,
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 14.sp
+                                                        )
+                                                        androidx.compose.material3.Switch(
+                                                            checked = selectedSticker.hasShadow,
+                                                            onCheckedChange = { enabled ->
+                                                                viewModel.updateStickerShadow(selectedSticker.id, hasShadow = enabled)
+                                                            }
+                                                        )
+                                                    }
+                                                    
+                                                    if (selectedSticker.hasShadow) {
+                                                        CompactModernSlider(
+                                                            label = "Blur",
+                                                            value = selectedSticker.shadowBlur,
+                                                            onValueChange = { newValue ->
+                                                                viewModel.updateStickerShadow(selectedSticker.id, shadowBlur = newValue, saveHistory = false)
+                                                            },
+                                                            onValueChangeFinished = {
+                                                                viewModel.updateStickerShadow(selectedSticker.id, shadowBlur = selectedSticker.shadowBlur, saveHistory = true)
+                                                            },
+                                                            valueRange = 0f..20f,
+                                                            unit = "px"
+                                                        )
+                                                        
+                                                        CompactModernSlider(
+                                                            label = "Offset X",
+                                                            value = selectedSticker.shadowOffsetX,
+                                                            onValueChange = { newValue ->
+                                                                viewModel.updateStickerShadow(selectedSticker.id, shadowOffsetX = newValue, saveHistory = false)
+                                                            },
+                                                            onValueChangeFinished = {
+                                                                viewModel.updateStickerShadow(selectedSticker.id, shadowOffsetX = selectedSticker.shadowOffsetX, saveHistory = true)
+                                                            },
+                                                            valueRange = -20f..20f,
+                                                            unit = "px"
+                                                        )
+                                                        
+                                                        CompactModernSlider(
+                                                            label = "Offset Y",
+                                                            value = selectedSticker.shadowOffsetY,
+                                                            onValueChange = { newValue ->
+                                                                viewModel.updateStickerShadow(selectedSticker.id, shadowOffsetY = newValue, saveHistory = false)
+                                                            },
+                                                            onValueChangeFinished = {
+                                                                viewModel.updateStickerShadow(selectedSticker.id, shadowOffsetY = selectedSticker.shadowOffsetY, saveHistory = true)
+                                                            },
+                                                            valueRange = -20f..20f,
+                                                            unit = "px"
+                                                        )
+                                                    }
+                                                    
+                                                    Spacer(modifier = Modifier.height(16.dp))
+                                                    
+                                                    // Border Controls
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, bottom = 8.dp),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            "Border",
+                                                            color = Color.White,
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 14.sp
+                                                        )
+                                                        androidx.compose.material3.Switch(
+                                                            checked = selectedSticker.hasBorder,
+                                                            onCheckedChange = { enabled ->
+                                                                viewModel.updateStickerBorder(selectedSticker.id, hasBorder = enabled)
+                                                            }
+                                                        )
+                                                    }
+                                                    
+                                                    if (selectedSticker.hasBorder) {
+                                                        CompactModernSlider(
+                                                            label = "Width",
+                                                            value = selectedSticker.borderWidth,
+                                                            onValueChange = { newValue ->
+                                                                viewModel.updateStickerBorder(selectedSticker.id, borderWidth = newValue, saveHistory = false)
+                                                            },
+                                                            onValueChangeFinished = {
+                                                                viewModel.updateStickerBorder(selectedSticker.id, borderWidth = selectedSticker.borderWidth, saveHistory = true)
+                                                            },
+                                                            valueRange = 1f..10f,
+                                                            unit = "px"
+                                                        )
+                                                    }
+                                                    
+                                                    Spacer(modifier = Modifier.height(16.dp))
+                                                    
+                                                    // Color Tint Controls
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, bottom = 8.dp),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            "Color Tint",
+                                                            color = Color.White,
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 14.sp
+                                                        )
+                                                        androidx.compose.material3.Switch(
+                                                            checked = selectedSticker.hasTint,
+                                                            onCheckedChange = { enabled ->
+                                                                viewModel.updateStickerTint(selectedSticker.id, hasTint = enabled)
+                                                            }
+                                                        )
+                                                    }
+                                                    
+                                                    if (selectedSticker.hasTint) {
+                                                        CompactModernSlider(
+                                                            label = "Strength",
+                                                            value = selectedSticker.tintStrength * 100f,
+                                                            onValueChange = { newValue ->
+                                                                viewModel.updateStickerTint(selectedSticker.id, tintStrength = newValue / 100f, saveHistory = false)
+                                                            },
+                                                            onValueChangeFinished = {
+                                                                viewModel.updateStickerTint(selectedSticker.id, tintStrength = selectedSticker.tintStrength, saveHistory = true)
+                                                            },
+                                                            valueRange = 0f..100f,
+                                                            unit = "%"
+                                                        )
+                                                    }
+                                                    
+                                                    Spacer(modifier = Modifier.height(32.dp))
+                                                }
+                                            } else {
+                                                // No sticker selected
+                                                Box(
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Text(
+                                                        "Select a sticker to adjust",
+                                                        color = Color.Gray,
+                                                        fontSize = 14.sp
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            EditorTab.STICKER_CONTROLS -> {
+                                // This tab is no longer needed - keeping for compatibility
+                                Box(modifier = Modifier.fillMaxSize())
                             }
                             EditorTab.TEXT -> {
                                 // Text Editor Toolbar Content
@@ -1511,6 +1929,87 @@ fun PhotoEditorScreen(
                     }
                 }
             )
+        }
+        
+        // NEW: Layer Panel (slides in from right)
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showLayerPanel,
+            enter = androidx.compose.animation.slideInHorizontally(initialOffsetX = { it }),
+            exit = androidx.compose.animation.slideOutHorizontally(targetOffsetX = { it })
+        ) {
+            // NEW: Background dimmer that dismisses panel when clicked
+            if (showLayerPanel) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.5f))
+                        .clickable { showLayerPanel = false } // Close when clicking outside
+                )
+            }
+
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                // The Panel itself (clicks on panel should not close it)
+                com.moshitech.workmate.feature.imagestudio.ui.components.LayerPanel(
+                    layers = viewModel.getAllLayers(),
+                    selectedLayerId = uiState.selectedTextLayerId ?: uiState.selectedStickerLayerId,
+                    onLayerSelected = { layerId ->
+                        // Find layer type and select it
+                        val layer = viewModel.getAllLayers().find { it.id == layerId }
+                        layer?.let {
+                            when (it.type) {
+                                com.moshitech.workmate.feature.imagestudio.data.LayerType.TEXT -> {
+                                    viewModel.selectTextLayer(layerId)
+                                }
+                                // Sticker and Shape selection not implemented yet
+                                else -> {}
+                            }
+                        }
+                    },
+                    onVisibilityToggle = { layerId ->
+                        val layer = viewModel.getAllLayers().find { it.id == layerId }
+                        layer?.let {
+                            viewModel.toggleLayerVisibility(layerId, it.type)
+                        }
+                    },
+                    onLayerReorder = { layerId, targetZIndex ->
+                        // Find the target layer with this z-index
+                        val targetLayer = viewModel.getAllLayers().find { it.zIndex == targetZIndex }
+                        if (targetLayer != null && targetLayer.id != layerId) {
+                            // Swap z-indices between dragged and target layers
+                            viewModel.swapLayerZIndices(layerId, targetLayer.id)
+                        } else {
+                            // Fallback: just set the z-index directly
+                            val layer = viewModel.getAllLayers().find { it.id == layerId }
+                            layer?.let {
+                                viewModel.updateLayerZIndex(layerId, it.type, targetZIndex)
+                            }
+                        }
+                    },
+                    onLayerRename = { layerId, newName ->
+                        val layer = viewModel.getAllLayers().find { it.id == layerId }
+                        layer?.let {
+                            viewModel.renameLayer(layerId, it.type, newName)
+                        }
+                    },
+                    onLayerDelete = { layerId ->
+                        // Delete functionality not implemented yet
+                        // TODO: Add delete functions to ViewModel
+                    },
+                    onClose = { showLayerPanel = false }, // Close button callback
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(320.dp)
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                        ) { 
+                            // Consume clicks so they don't propagate to the background dismisser
+                        }
+                )
+            }
         }
     }
 }

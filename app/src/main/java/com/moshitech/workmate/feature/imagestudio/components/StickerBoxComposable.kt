@@ -34,6 +34,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -61,14 +63,23 @@ fun StickerBoxComposable(
 ) {
     val viewConfiguration = androidx.compose.ui.platform.LocalViewConfiguration.current
 
-    Box(
+        Box(
         modifier = Modifier
-            .offset { IntOffset(layer.x.roundToInt(), layer.y.roundToInt()) }
-            .graphicsLayer(
-                rotationZ = layer.rotation,
-                scaleX = layer.scale * (if (layer.isFlipped) -1f else 1f),
+            .graphicsLayer {
+                translationX = layer.x
+                translationY = layer.y
+                rotationZ = layer.rotation
+                scaleX = layer.scale * (if (layer.isFlipped) -1f else 1f)
                 scaleY = layer.scale
-            )
+                alpha = layer.opacity  // Apply opacity/transparency
+                
+                // Apply shadow if enabled
+                if (layer.hasShadow) {
+                    shadowElevation = layer.shadowBlur
+                    // Note: Compose doesn't support shadow offset directly in graphicsLayer
+                    // We'll need to use a different approach for offset shadows
+                }
+            }
             .pointerInput(layer.id) {
                 detectTapGestures(
                     onTap = { onSelect(layer.id) }
@@ -128,10 +139,39 @@ fun StickerBoxComposable(
                     }
                 }
             }
-    ) {
+     ) {
         // Sticker Content
         Box(
             modifier = Modifier
+                .then(
+                    // Apply shadow using drawBehind for custom shadow rendering
+                    if (layer.hasShadow) {
+                        Modifier.drawBehind {
+                            val shadowColor = androidx.compose.ui.graphics.Color(layer.shadowColor)
+                            val blurRadius = layer.shadowBlur.dp.toPx()
+                            
+                            // Draw shadow by drawing the content multiple times with offset and blur
+                            // This is a simple approximation - for better quality, use BlurMaskFilter
+                            drawCircle(
+                                color = shadowColor.copy(alpha = 0.3f),
+                                radius = size.minDimension / 2 + blurRadius,
+                                center = center.copy(
+                                    x = center.x + layer.shadowOffsetX.dp.toPx(),
+                                    y = center.y + layer.shadowOffsetY.dp.toPx()
+                                )
+                            )
+                        }
+                    } else Modifier
+                )
+                .then(
+                    // Apply border if enabled
+                    if (layer.hasBorder) {
+                        Modifier.border(
+                            width = layer.borderWidth.dp,
+                            color = androidx.compose.ui.graphics.Color(layer.borderColor)
+                        )
+                    } else Modifier
+                )
                 .border(
                     width = if (isSelected) 2.dp else 0.dp,
                     color = if (isSelected) Color.White else Color.Transparent,
@@ -143,14 +183,36 @@ fun StickerBoxComposable(
                 // Emoji / Text Sticker
                 Text(
                     text = layer.text,
-                    fontSize = 64.sp // Base size for emoji
+                    fontSize = 64.sp, // Base size for emoji
+                    modifier = if (layer.hasTint) {
+                        Modifier.drawWithContent {
+                            drawContent()
+                            // Draw tint overlay on top (only where content exists)
+                            drawRect(
+                                color = androidx.compose.ui.graphics.Color(layer.tintColor).copy(alpha = layer.tintStrength),
+                                blendMode = androidx.compose.ui.graphics.BlendMode.SrcAtop
+                            )
+                        }
+                    } else Modifier
                 )
             } else if (layer.resId != 0) {
-                // Drawable Sticker
+                // Drawable Sticker  
                 Image(
                     painter = painterResource(id = layer.resId),
                     contentDescription = null,
-                    modifier = Modifier.size(100.dp),
+                    modifier = Modifier.size(100.dp)
+                        .then(
+                            if (layer.hasTint) {
+                                Modifier.drawWithContent {
+                                    drawContent()
+                                    // Draw tint overlay on top (only where content exists)
+                                    drawRect(
+                                        color = androidx.compose.ui.graphics.Color(layer.tintColor).copy(alpha = layer.tintStrength),
+                                        blendMode = androidx.compose.ui.graphics.BlendMode.SrcAtop
+                                    )
+                                }
+                            } else Modifier
+                        ),
                     contentScale = ContentScale.Fit
                 )
             }

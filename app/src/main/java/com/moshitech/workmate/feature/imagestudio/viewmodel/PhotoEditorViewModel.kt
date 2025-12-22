@@ -5,6 +5,8 @@ import android.graphics.Bitmap
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+// ADDED:
+import androidx.core.net.toUri
 import com.moshitech.workmate.feature.imagestudio.repository.EditRepository
 import com.moshitech.workmate.feature.imagestudio.util.MonetizationManager
 import kotlinx.coroutines.Job
@@ -125,7 +127,12 @@ data class TextLayer(
     val reflectionOffset: Float = 0f,
     val isLocked: Boolean = false,
     val fontFamily: AppFont = AppFont.DEFAULT,
-    val textureUri: String? = null
+    val textureUri: String? = null,
+    
+    // NEW: Layer management (Phase 2)
+    val isVisible: Boolean = true,
+    val zIndex: Int = 0,
+    val layerName: String = "Text Layer"
 )
 
 data class StickerLayer(
@@ -138,7 +145,32 @@ data class StickerLayer(
     val scale: Float = 1f,
     val rotation: Float = 0f,
     val isFlipped: Boolean = false,
-    val isLocked: Boolean = false
+    val isLocked: Boolean = false,
+    
+    // NEW: Layer management (Phase 2)
+    val isVisible: Boolean = true,
+    val zIndex: Int = 0,
+    val layerName: String = "Sticker Layer",
+    
+    // NEW: Advanced controls (Phase 3)
+    val opacity: Float = 1f,  // 0f (transparent) to 1f (opaque)
+    
+    // NEW: Shadow effects
+    val hasShadow: Boolean = false,
+    val shadowColor: Int = android.graphics.Color.BLACK,
+    val shadowBlur: Float = 8f,
+    val shadowOffsetX: Float = 4f,
+    val shadowOffsetY: Float = 4f,
+    
+    // NEW: Border effects
+    val hasBorder: Boolean = false,
+    val borderColor: Int = android.graphics.Color.WHITE,
+    val borderWidth: Float = 2f,
+    
+    // NEW: Color tint
+    val hasTint: Boolean = false,
+    val tintColor: Int = android.graphics.Color.BLUE,
+    val tintStrength: Float = 0.5f  // 0f to 1f
 )
 
 enum class AppFont {
@@ -273,11 +305,17 @@ data class ShapeLayer(
     val isFilled: Boolean = false,
     val isLocked: Boolean = false,
     val strokeStyle: StrokeStyle = StrokeStyle.SOLID,
+    val opacity: Float = 1f, // NEW: Transparency control (0f to 1f)
     val hasShadow: Boolean = false,
     val shadowColor: Int = android.graphics.Color.BLACK,
     val shadowBlur: Float = 10f,
     val shadowX: Float = 5f,
-    val shadowY: Float = 5f
+    val shadowY: Float = 5f,
+    
+    // NEW: Layer management (Phase 2)
+    val isVisible: Boolean = true,
+    val zIndex: Int = 0,
+    val layerName: String = "Shape Layer"
 )
 
 data class PhotoEditorUiState(
@@ -331,15 +369,71 @@ data class PhotoEditorUiState(
     val currentShadowBlur: Float = 10f,
     val currentShadowX: Float = 5f,
     val currentShadowY: Float = 5f,
-    val isPreviewMode: Boolean = false
+    val isPreviewMode: Boolean = false,
+    
+    // NEW: Crop state management
+    val cropRect: android.graphics.Rect? = null,
+    val originalImageBounds: android.graphics.Rect? = null,
+    val isCropApplied: Boolean = false,
+    
+    // NEW: Layer management
+    val hasUnappliedLayers: Boolean = false,
+    
+    // NEW: Edit history
+    val editHistory: List<com.moshitech.workmate.feature.imagestudio.data.EditOperation> = emptyList(),
+    val maxHistorySize: Int = 50,
+    // NEW: Container dimensions for coordinate mapping
+    val containerWidth: Int = 1,
+    val containerHeight: Int = 1,
 )
 
 class PhotoEditorViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = EditRepository(application)
+    private val editorPreferences = com.moshitech.workmate.feature.imagestudio.data.EditorPreferences(application)
+    private val compositeRenderer = com.moshitech.workmate.feature.imagestudio.util.CompositeRenderer(application)
     
     private val _uiState = MutableStateFlow(PhotoEditorUiState())
     val uiState: StateFlow<PhotoEditorUiState> = _uiState.asStateFlow()
+    
+    // Coordinate Mapping Helpers
+    fun updateContainerSize(width: Int, height: Int) {
+        if (width > 0 && height > 0) {
+            _uiState.update { it.copy(containerWidth = width, containerHeight = height) }
+        }
+    }
+    
+    fun getBitmapScale(): Float {
+        val state = uiState.value
+        val bitmap = state.originalBitmap ?: return 1f
+        // Scale is determined by "FitCenter" logic: min(containerW/bmW, containerH/bmH)
+        val scaleW = state.containerWidth.toFloat() / bitmap.width
+        val scaleH = state.containerHeight.toFloat() / bitmap.height
+        return kotlin.math.min(scaleW, scaleH)
+    }
+    
+    fun getBitmapOffset(): Pair<Float, Float> {
+        val state = uiState.value
+        val bitmap = state.originalBitmap ?: return 0f to 0f
+        val scale = getBitmapScale()
+        val scaledW = bitmap.width * scale
+        val scaledH = bitmap.height * scale
+        
+        val offX = (state.containerWidth - scaledW) / 2f
+        val offY = (state.containerHeight - scaledH) / 2f
+        
+        return offX to offY
+    }
+    
+    // Convert UI Coordinate -> Bitmap Coordinate
+    fun uiToBitmapCoord(uiX: Float, uiY: Float): Pair<Float, Float> {
+        val (offX, offY) = getBitmapOffset()
+        val scale = getBitmapScale()
+        val bmX = (uiX - offX) / scale
+        val bmY = (uiY - offY) / scale
+        return bmX to bmY
+    }
+
 
     private var applyJob: Job? = null
     
@@ -357,7 +451,23 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
                     it.copy(
                         originalBitmap = bitmap,
                         previewBitmap = bitmap,
-                        isLoading = false
+                        isLoading = false,
+                        // Reset all editor state when loading new image (or crop result)
+                        textLayers = emptyList(),
+                        shapeLayers = emptyList(),
+                        stickerLayers = emptyList(),
+                        drawActions = emptyList(),
+                        cropRect = null,
+                        isCropApplied = false,
+                        hasUnappliedLayers = false,
+                        brightness = 0f,
+                        contrast = 1f,
+                        saturation = 1f,
+                        hue = 0f,
+                        temperature = 0f,
+                        tint = 0f,
+                        activeFilterId = null,
+                        activeFilterMatrix = null
                     ) 
                 }
             } else {
@@ -488,19 +598,13 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
                 bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
             }
             
-            // Render text layers onto bitmap if any exist
-            if (state.textLayers.isNotEmpty()) {
-                bitmap = renderTextLayersOnBitmap(bitmap, state.textLayers)
-            }
-            
-            if (state.shapeLayers.isNotEmpty()) {
-                bitmap = renderShapeLayersOnBitmap(bitmap, state.shapeLayers)
-            }
-            
-            // Render drawings onto bitmap if any exist
-            if (state.drawActions.isNotEmpty()) {
-                bitmap = renderDrawingsOnBitmap(bitmap, state.drawActions)
-            }
+            // Use CompositeRenderer to properly render all layers with formatting
+            val currentState = getCurrentEditorState()
+            bitmap = compositeRenderer.renderComposite(
+                baseImage = bitmap,
+                state = currentState,
+                cropRect = null
+            )
             
             // Check Pro Quality
             val quality = if (MonetizationManager.isHighQualitySaveLocked()) 85 else 100
@@ -1097,10 +1201,10 @@ fun setRotationAngle(angle: Float) {
     
     fun addTextLayer(
         text: String,
-        x: Float = 100f,
-        y: Float = 100f,
+        x: Float = -1f, // Default to -1 to trigger auto-centering
+        y: Float = -1f,
         color: Int = android.graphics.Color.WHITE,
-        fontSize: Float = 20f,
+        fontSize: Float = 60f, // Larger default for high-res bitmaps
         fontFamily: AppFont = AppFont.DEFAULT,
         isBold: Boolean = false,
         isItalic: Boolean = false,
@@ -1109,19 +1213,37 @@ fun setRotationAngle(angle: Float) {
         outlineColor: Int = android.graphics.Color.BLACK,
         hasShadow: Boolean = false
     ) {
+        // Calculate center of bitmap if no coordinates provided
+        val (finalX, finalY) = if (x == -1f || y == -1f) {
+            val bitmap = uiState.value.originalBitmap
+            if (bitmap != null) {
+                bitmap.width / 2f to bitmap.height / 2f
+            } else {
+                100f to 100f
+            }
+        } else {
+            // Already in bitmap layout if passed explicitly, or convert?
+            // For now assume if passed explicitly it's raw, but usually it's -1.
+            x to y
+        }
+    
+        // Auto-assign z-index to be on top of existing layers
+        val nextZIndex = (getAllLayers().maxOfOrNull { it.zIndex } ?: -1) + 1
+        
         val newLayer = TextLayer(
             text = text,
-            x = x,
-            y = y,
+            x = finalX,
+            y = finalY,
             color = color,
-            fontSize = fontSize,
+            fontSize = fontSize, // This is now in bitmap pixels (or relative scale)
             fontFamily = fontFamily,
             isBold = isBold,
             isItalic = isItalic,
             alignment = alignment,
             hasOutline = hasOutline,
             outlineColor = outlineColor,
-            hasShadow = hasShadow
+            hasShadow = hasShadow,
+            zIndex = nextZIndex
         )
         _uiState.update { it.copy(textLayers = it.textLayers + newLayer, showTextDialog = false) }
         saveToHistory()
@@ -1217,12 +1339,16 @@ fun updateOpacity(opacity: Float) {
     
     // Text Box Management
     fun createTextBoxAtCenter() {
+        // Auto-assign z-index to be on top of existing layers
+        val nextZIndex = (getAllLayers().maxOfOrNull { it.zIndex } ?: -1) + 1
+        
         val newLayer = TextLayer(
             text = "",
             x = 90f, // Centered horizontally (screen width ~360-400dp, text width 200dp)
             y = 400f, // Centered vertically in visible area
             width = 200f,
-            height = 80f
+            height = 80f,
+            zIndex = nextZIndex
         )
         _uiState.update { 
             it.copy(
@@ -1238,12 +1364,16 @@ fun updateOpacity(opacity: Float) {
     
     // Kept (and simplified) for backward compatibility or tap-to-create
     fun createTextBoxAt(x: Float, y: Float) {
+        // Auto-assign z-index to be on top of existing layers
+        val nextZIndex = (getAllLayers().maxOfOrNull { it.zIndex } ?: -1) + 1
+        
         val newLayer = TextLayer(
             text = "",
             x = x,
             y = y,
             width = 200f,
-            height = 80f
+            height = 80f,
+            zIndex = nextZIndex
         )
         _uiState.update { 
             it.copy(
@@ -1281,6 +1411,172 @@ fun updateOpacity(opacity: Float) {
         _uiState.update {
             it.copy(
                 textLayers = it.textLayers.map { layer ->
+                    if (layer.id == id && !layer.isLocked) {
+                        layer.copy(
+                            x = layer.x + pan.x,
+                            y = layer.y + pan.y,
+                            scale = layer.scale * zoom,
+                            rotation = layer.rotation + rotation
+                        )
+                    } else layer
+                }
+            )
+        }
+    }
+    
+    fun updateStickerTransform(id: String, pan: androidx.compose.ui.geometry.Offset, zoom: Float, rotation: Float) {
+        _uiState.update { state ->
+            state.copy(
+                stickerLayers = state.stickerLayers.map { layer ->
+                    if (layer.id == id && !layer.isLocked) {
+                        layer.copy(
+                            x = layer.x + pan.x,
+                            y = layer.y + pan.y,
+                            scale = (layer.scale * zoom).coerceIn(0.1f, 10f),
+                            rotation = layer.rotation + rotation
+                        )
+                    } else layer
+                }
+            )
+        }
+    }
+    
+    fun updateStickerOpacity(id: String, opacity: Float, saveHistory: Boolean = true) {
+        _uiState.update { state ->
+            state.copy(
+                stickerLayers = state.stickerLayers.map { layer ->
+                    if (layer.id == id) {
+                        layer.copy(opacity = opacity.coerceIn(0f, 1f))
+                    } else layer
+                }
+            )
+        }
+        if (saveHistory) saveToHistory()
+    }
+    
+    fun updateStickerPosition(id: String, x: Float? = null, y: Float? = null, saveHistory: Boolean = true) {
+        _uiState.update { state ->
+            state.copy(
+                stickerLayers = state.stickerLayers.map { layer ->
+                    if (layer.id == id) {
+                        layer.copy(
+                            x = x ?: layer.x,
+                            y = y ?: layer.y
+                        )
+                    } else layer
+                }
+            )
+        }
+        if (saveHistory) saveToHistory()
+    }
+    
+    fun duplicateSticker(id: String) {
+        val originalSticker = _uiState.value.stickerLayers.find { it.id == id } ?: return
+        val nextZIndex = (getAllLayers().maxOfOrNull { it.zIndex } ?: -1) + 1
+        
+        val duplicatedSticker = originalSticker.copy(
+            id = java.util.UUID.randomUUID().toString(),
+            x = originalSticker.x + 20f, // Offset slightly
+            y = originalSticker.y + 20f,
+            zIndex = nextZIndex
+        )
+        
+        _uiState.update { state ->
+            state.copy(
+                stickerLayers = state.stickerLayers + duplicatedSticker,
+                selectedStickerLayerId = duplicatedSticker.id
+            )
+        }
+        saveToHistory()
+    }
+    
+    fun bringStickerToFront(id: String) {
+        val maxZIndex = getAllLayers().maxOfOrNull { it.zIndex } ?: 0
+        updateLayerZIndex(id, com.moshitech.workmate.feature.imagestudio.data.LayerType.STICKER, maxZIndex + 1)
+    }
+    
+    fun sendStickerToBack(id: String) {
+        val minZIndex = getAllLayers().minOfOrNull { it.zIndex } ?: 0
+        updateLayerZIndex(id, com.moshitech.workmate.feature.imagestudio.data.LayerType.STICKER, minZIndex - 1)
+    }
+    
+    fun updateStickerShadow(
+        id: String,
+        hasShadow: Boolean? = null,
+        shadowColor: Int? = null,
+        shadowBlur: Float? = null,
+        shadowOffsetX: Float? = null,
+        shadowOffsetY: Float? = null,
+        saveHistory: Boolean = true
+    ) {
+        _uiState.update { state ->
+            state.copy(
+                stickerLayers = state.stickerLayers.map { layer ->
+                    if (layer.id == id) {
+                        layer.copy(
+                            hasShadow = hasShadow ?: layer.hasShadow,
+                            shadowColor = shadowColor ?: layer.shadowColor,
+                            shadowBlur = shadowBlur ?: layer.shadowBlur,
+                            shadowOffsetX = shadowOffsetX ?: layer.shadowOffsetX,
+                            shadowOffsetY = shadowOffsetY ?: layer.shadowOffsetY
+                        )
+                    } else layer
+                }
+            )
+        }
+        if (saveHistory) saveToHistory()
+    }
+    
+    fun updateStickerBorder(
+        id: String,
+        hasBorder: Boolean? = null,
+        borderColor: Int? = null,
+        borderWidth: Float? = null,
+        saveHistory: Boolean = true
+    ) {
+        _uiState.update { state ->
+            state.copy(
+                stickerLayers = state.stickerLayers.map { layer ->
+                    if (layer.id == id) {
+                        layer.copy(
+                            hasBorder = hasBorder ?: layer.hasBorder,
+                            borderColor = borderColor ?: layer.borderColor,
+                            borderWidth = borderWidth ?: layer.borderWidth
+                        )
+                    } else layer
+                }
+            )
+        }
+        if (saveHistory) saveToHistory()
+    }
+    
+    fun updateStickerTint(
+        id: String,
+        hasTint: Boolean? = null,
+        tintColor: Int? = null,
+        tintStrength: Float? = null,
+        saveHistory: Boolean = true
+    ) {
+        _uiState.update { state ->
+            state.copy(
+                stickerLayers = state.stickerLayers.map { layer ->
+                    if (layer.id == id) {
+                        layer.copy(
+                            hasTint = hasTint ?: layer.hasTint,
+                            tintColor = tintColor ?: layer.tintColor,
+                            tintStrength = tintStrength ?: layer.tintStrength
+                        )
+                    } else layer
+                }
+            )
+        }
+        if (saveHistory) saveToHistory()
+    }
+
+    fun updateShapeLayerTransform(id: String, pan: androidx.compose.ui.geometry.Offset, zoom: Float, rotation: Float) {
+        _uiState.update { state ->
+            state.copy(
+                shapeLayers = state.shapeLayers.map { layer ->
                     if (layer.id == id && !layer.isLocked) {
                         layer.copy(
                             x = layer.x + pan.x,
@@ -1414,11 +1710,15 @@ fun updateOpacity(opacity: Float) {
 
     // Sticker Methods
     fun addSticker(resId: Int = 0, text: String? = null) {
+        // Auto-assign z-index to be on top of existing layers
+        val nextZIndex = (getAllLayers().maxOfOrNull { it.zIndex } ?: -1) + 1
+        
         val newSticker = StickerLayer(
             resId = resId,
             text = text,
             x = 400f, // Center-ish
-            y = 400f // Center-ish
+            y = 400f, // Center-ish
+            zIndex = nextZIndex
         )
         _uiState.update { it.copy(
             stickerLayers = it.stickerLayers + newSticker,
@@ -1449,22 +1749,7 @@ fun updateOpacity(opacity: Float) {
         _uiState.update { it.copy(selectedStickerLayerId = null) }
     }
 
-    fun updateStickerTransform(id: String, pan: androidx.compose.ui.geometry.Offset, zoom: Float, rotation: Float) {
-        _uiState.update { state ->
-            state.copy(
-                stickerLayers = state.stickerLayers.map { layer ->
-                    if (layer.id == id && !layer.isLocked) {
-                        layer.copy(
-                            x = layer.x + pan.x,
-                            y = layer.y + pan.y,
-                            scale = (layer.scale * zoom).coerceIn(0.1f, 10f),
-                            rotation = layer.rotation + rotation
-                        )
-                    } else layer
-                }
-            )
-        }
-    }
+
 
     fun flipSticker(id: String) {
         _uiState.update { state ->
@@ -1547,6 +1832,9 @@ fun updateOpacity(opacity: Float) {
     val bmpW = bitmap.width.toFloat()
     val bmpH = bitmap.height.toFloat()
     
+    // Auto-assign z-index to be on top of existing layers
+    val nextZIndex = (getAllLayers().maxOfOrNull { it.zIndex } ?: -1) + 1
+    
     // Size relative to image, e.g., 1/4th of the smaller dimension
     val shapeSize = minOf(bmpW, bmpH) / 3f
     val width = if (type == ShapeType.LINE || type == ShapeType.ARROW) shapeSize * 0.8f else shapeSize
@@ -1577,7 +1865,8 @@ fun updateOpacity(opacity: Float) {
         shadowColor = _uiState.value.currentShadowColor,
         shadowBlur = _uiState.value.currentShadowBlur,
         shadowX = _uiState.value.currentShadowX,
-        shadowY = _uiState.value.currentShadowY
+        shadowY = _uiState.value.currentShadowY,
+        zIndex = nextZIndex
     )
     _uiState.update { 
         it.copy(
@@ -1609,8 +1898,8 @@ fun updateOpacity(opacity: Float) {
 
 
 
-    fun updateShapeShadow(id: String, hasShadow: Boolean, color: Int, blur: Float, x: Float, y: Float) {
-        updateShapeLayer(id) {
+    fun updateShapeShadow(id: String, hasShadow: Boolean, color: Int, blur: Float, x: Float, y: Float, saveHistory: Boolean = true) {
+        updateShapeLayer(id, saveHistory) {
             it.copy(
                 hasShadow = hasShadow,
                 shadowColor = color,
@@ -1625,6 +1914,49 @@ fun updateOpacity(opacity: Float) {
         updateShapeLayer(id) { it.copy(strokeStyle = style) }
     }
     
+    fun updateShapeOpacity(id: String, opacity: Float, saveHistory: Boolean = true) {
+        updateShapeLayer(id, saveHistory) { it.copy(opacity = opacity.coerceIn(0f, 1f)) }
+    }
+    
+    fun updateShapePosition(id: String, x: Float? = null, y: Float? = null, saveHistory: Boolean = true) {
+        updateShapeLayer(id, saveHistory) { layer ->
+            layer.copy(
+                x = x ?: layer.x,
+                y = y ?: layer.y
+            )
+        }
+    }
+    
+    fun duplicateShape(id: String) {
+        val original = _uiState.value.shapeLayers.find { it.id == id } ?: return
+        val maxZIndex = _uiState.value.shapeLayers.maxOfOrNull { it.zIndex } ?: 0
+        
+        val duplicate = original.copy(
+            id = java.util.UUID.randomUUID().toString(),
+            x = original.x + 20f, // Offset slightly
+            y = original.y + 20f,
+            zIndex = maxZIndex + 1
+        )
+        
+        _uiState.update { state ->
+            state.copy(
+                shapeLayers = state.shapeLayers + duplicate,
+                selectedShapeLayerId = duplicate.id // Auto-select the duplicate
+            )
+        }
+        saveToHistory()
+    }
+    
+    fun bringShapeToFront(id: String) {
+        val maxZIndex = _uiState.value.shapeLayers.maxOfOrNull { it.zIndex } ?: 0
+        updateShapeLayer(id) { it.copy(zIndex = maxZIndex + 1) }
+    }
+    
+    fun sendShapeToBack(id: String) {
+        val minZIndex = _uiState.value.shapeLayers.minOfOrNull { it.zIndex } ?: 0
+        updateShapeLayer(id) { it.copy(zIndex = minZIndex - 1) }
+    }
+    
     fun deleteShapeLayer(id: String) {
         _uiState.update { 
             it.copy(
@@ -1635,22 +1967,7 @@ fun updateOpacity(opacity: Float) {
         saveToHistory()
     }
 
-    fun updateShapeLayerTransform(id: String, pan: androidx.compose.ui.geometry.Offset, zoom: Float, rotation: Float) {
-        _uiState.update { state ->
-            state.copy(
-                shapeLayers = state.shapeLayers.map { layer ->
-                    if (layer.id == id && !layer.isLocked) {
-                        layer.copy(
-                            x = layer.x + pan.x,
-                            y = layer.y + pan.y,
-                            scale = layer.scale * zoom,
-                            rotation = layer.rotation + rotation
-                        )
-                    } else layer
-                }
-            )
-        }
-    }
+
 
     private fun renderShapeLayersOnBitmap(originalBitmap: Bitmap, shapeLayers: List<ShapeLayer>): Bitmap {
         val bitmap = originalBitmap.copy(Bitmap.Config.ARGB_8888, true)
@@ -1784,6 +2101,270 @@ fun updateOpacity(opacity: Float) {
         }
         path.close()
         return path
+    }
+    
+    // ========== NEW: Crop Management Functions ==========
+    
+    fun setCropRect(rect: android.graphics.Rect) {
+        _uiState.update { it.copy(cropRect = rect) }
+    }
+    
+    fun resetCrop() {
+        _uiState.update { it.copy(cropRect = null) }
+    }
+    
+    fun applyCrop() {
+        val cropRect = uiState.value.cropRect ?: return
+        val bitmap = uiState.value.originalBitmap ?: return
+        
+        viewModelScope.launch {
+            try {
+                val currentState = getCurrentEditorState()
+                val croppedBitmap = compositeRenderer.renderComposite(
+                    baseImage = bitmap,
+                    state = currentState,
+                    cropRect = cropRect
+                )
+                
+                _uiState.update {
+                    it.copy(
+                        originalBitmap = croppedBitmap,
+                        cropRect = null,
+                        isCropApplied = true,
+                        textLayers = emptyList(),
+                        shapeLayers = emptyList(),
+                        stickerLayers = emptyList(),
+                        drawActions = emptyList(),
+                        hasUnappliedLayers = false
+                    )
+                }
+                
+                trackOperation(com.moshitech.workmate.feature.imagestudio.data.EditOperation.CropApplied(cropRect))
+                saveToHistory()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _uiState.update { it.copy(message = "Failed to apply crop: ${e.message}") }
+            }
+        }
+    }
+
+    fun prepareImageForCropping(onReady: (android.net.Uri) -> Unit) {
+        val bitmap = uiState.value.originalBitmap ?: return
+        
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                // 1. Render Composite (flattens layers + applies adjustments)
+                val currentState = getCurrentEditorState()
+                val composite = compositeRenderer.renderComposite(
+                    baseImage = bitmap,
+                    state = currentState,
+                    cropRect = null
+                )
+                
+                // 2. Save to Temp File
+                val context = getApplication<android.app.Application>()
+                val cacheDir = context.cacheDir
+                val file = java.io.File(cacheDir, "crop_temp_${System.currentTimeMillis()}.png")
+                val stream = java.io.FileOutputStream(file)
+                composite.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream)
+                stream.close()
+                
+                // 3. Return URI via callback
+                val uri = android.net.Uri.fromFile(file)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onReady(uri)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _uiState.update { it.copy(message = "Failed to prepare for cropping: ${e.message}") }
+            }
+        }
+    }
+    
+    // ========== NEW: Layer Application Functions ==========
+    
+    fun applyAllLayers() {
+        val bitmap = uiState.value.originalBitmap ?: return
+        
+        viewModelScope.launch {
+            try {
+                val currentState = getCurrentEditorState()
+                val composite = compositeRenderer.renderComposite(bitmap, currentState, null)
+                
+                _uiState.update {
+                    it.copy(
+                        originalBitmap = composite,
+                        textLayers = emptyList(),
+                        shapeLayers = emptyList(),
+                        stickerLayers = emptyList(),
+                        drawActions = emptyList(),
+                        hasUnappliedLayers = false
+                    )
+                }
+                
+                trackOperation(com.moshitech.workmate.feature.imagestudio.data.EditOperation.LayersFlattened())
+                saveToHistory()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _uiState.update { it.copy(message = "Failed to apply layers: ${e.message}") }
+            }
+        }
+    }
+    
+    // ========== NEW: Edit History Tracking ==========
+    
+    private fun trackOperation(operation: com.moshitech.workmate.feature.imagestudio.data.EditOperation) {
+        _uiState.update { state ->
+            val newHistory = (state.editHistory + operation).takeLast(state.maxHistorySize)
+            state.copy(editHistory = newHistory)
+        }
+    }
+    
+    // ========== NEW: Preference Management ==========
+    
+    fun setLayerApplicationMode(mode: com.moshitech.workmate.feature.imagestudio.data.EditorPreferences.LayerApplicationMode) {
+        viewModelScope.launch {
+            editorPreferences.setLayerApplicationMode(mode)
+        }
+    }
+    
+    fun setShowCropConfirmation(show: Boolean) {
+        viewModelScope.launch {
+            editorPreferences.setShowCropConfirmation(show)
+        }
+    }
+    
+    val layerApplicationMode = editorPreferences.layerApplicationMode
+    val showCropConfirmation = editorPreferences.showCropConfirmation
+    val hasSeenLayerPreferenceDialog = editorPreferences.hasSeenLayerPreferenceDialog
+    
+    // ========== Helper Functions ==========
+    
+    private fun getCurrentEditorState(): EditorState {
+        val state = uiState.value
+        return EditorState(
+            brightness = state.brightness,
+            contrast = state.contrast,
+            saturation = state.saturation,
+            hue = state.hue,
+            temperature = state.temperature,
+            tint = state.tint,
+            rotationAngle = state.rotationAngle,
+            activeFilterId = state.activeFilterId,
+            activeFilterMatrix = state.activeFilterMatrix,
+            textLayers = state.textLayers,
+            stickerLayers = state.stickerLayers,
+            shapeLayers = state.shapeLayers,
+            drawActions = state.drawActions
+        )
+    }
+    
+    // ========== NEW: Layer Management Functions (Phase 2) ==========
+    
+    fun toggleLayerVisibility(layerId: String, layerType: com.moshitech.workmate.feature.imagestudio.data.LayerType) {
+        _uiState.update { state ->
+            when (layerType) {
+                com.moshitech.workmate.feature.imagestudio.data.LayerType.TEXT -> state.copy(
+                    textLayers = state.textLayers.map {
+                        if (it.id == layerId) it.copy(isVisible = !it.isVisible) else it
+                    }
+                )
+                com.moshitech.workmate.feature.imagestudio.data.LayerType.STICKER -> state.copy(
+                    stickerLayers = state.stickerLayers.map {
+                        if (it.id == layerId) it.copy(isVisible = !it.isVisible) else it
+                    }
+                )
+                com.moshitech.workmate.feature.imagestudio.data.LayerType.SHAPE -> state.copy(
+                    shapeLayers = state.shapeLayers.map {
+                        if (it.id == layerId) it.copy(isVisible = !it.isVisible) else it
+                    }
+                )
+                else -> state
+            }
+        }
+        saveToHistory()
+    }
+    
+    fun updateLayerZIndex(layerId: String, layerType: com.moshitech.workmate.feature.imagestudio.data.LayerType, newZIndex: Int) {
+        _uiState.update { state ->
+            when (layerType) {
+                com.moshitech.workmate.feature.imagestudio.data.LayerType.TEXT -> state.copy(
+                    textLayers = state.textLayers.map {
+                        if (it.id == layerId) it.copy(zIndex = newZIndex) else it
+                    }
+                )
+                com.moshitech.workmate.feature.imagestudio.data.LayerType.STICKER -> state.copy(
+                    stickerLayers = state.stickerLayers.map {
+                        if (it.id == layerId) it.copy(zIndex = newZIndex) else it
+                    }
+                )
+                com.moshitech.workmate.feature.imagestudio.data.LayerType.SHAPE -> state.copy(
+                    shapeLayers = state.shapeLayers.map {
+                        if (it.id == layerId) it.copy(zIndex = newZIndex) else it
+                    }
+                )
+                else -> state
+            }
+        }
+        saveToHistory()
+    }
+    
+    fun renameLayer(layerId: String, layerType: com.moshitech.workmate.feature.imagestudio.data.LayerType, newName: String) {
+        _uiState.update { state ->
+            when (layerType) {
+                com.moshitech.workmate.feature.imagestudio.data.LayerType.TEXT -> state.copy(
+                    textLayers = state.textLayers.map {
+                        if (it.id == layerId) it.copy(layerName = newName) else it
+                    }
+                )
+                com.moshitech.workmate.feature.imagestudio.data.LayerType.STICKER -> state.copy(
+                    stickerLayers = state.stickerLayers.map {
+                        if (it.id == layerId) it.copy(layerName = newName) else it
+                    }
+                )
+                com.moshitech.workmate.feature.imagestudio.data.LayerType.SHAPE -> state.copy(
+                    shapeLayers = state.shapeLayers.map {
+                        if (it.id == layerId) it.copy(layerName = newName) else it
+                    }
+                )
+                else -> state
+            }
+        }
+    }
+    
+    fun getAllLayers(): List<com.moshitech.workmate.feature.imagestudio.data.Layer> {
+        val state = uiState.value
+        return buildList {
+            addAll(state.textLayers.map { com.moshitech.workmate.feature.imagestudio.data.Layer.Text(it) })
+            addAll(state.stickerLayers.map { com.moshitech.workmate.feature.imagestudio.data.Layer.Sticker(it) })
+            addAll(state.shapeLayers.map { com.moshitech.workmate.feature.imagestudio.data.Layer.Shape(it) })
+        }
+    }
+    
+    fun bringToFront(layerId: String, layerType: com.moshitech.workmate.feature.imagestudio.data.LayerType) {
+        val maxZIndex = getAllLayers().maxOfOrNull { it.zIndex } ?: 0
+        updateLayerZIndex(layerId, layerType, maxZIndex + 1)
+    }
+    
+    fun sendToBack(layerId: String, layerType: com.moshitech.workmate.feature.imagestudio.data.LayerType) {
+        val minZIndex = getAllLayers().minOfOrNull { it.zIndex } ?: 0
+        updateLayerZIndex(layerId, layerType, minZIndex - 1)
+    }
+    
+    /**
+     * Swap z-indices between two layers for drag-and-drop reordering
+     */
+    fun swapLayerZIndices(draggedLayerId: String, targetLayerId: String) {
+        val allLayers = getAllLayers()
+        val draggedLayer = allLayers.find { it.id == draggedLayerId } ?: return
+        val targetLayer = allLayers.find { it.id == targetLayerId } ?: return
+        
+        val draggedZIndex = draggedLayer.zIndex
+        val targetZIndex = targetLayer.zIndex
+        
+        // Swap the z-indices
+        updateLayerZIndex(draggedLayerId, draggedLayer.type, targetZIndex)
+        updateLayerZIndex(targetLayerId, targetLayer.type, draggedZIndex)
     }
 }
 
