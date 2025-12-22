@@ -1470,6 +1470,30 @@ fun updateOpacity(opacity: Float) {
         if (saveHistory) saveToHistory()
     }
     
+    fun updateStickerScale(id: String, scale: Float, saveHistory: Boolean = true) {
+        _uiState.update { state ->
+            state.copy(
+                stickerLayers = state.stickerLayers.map { layer ->
+                    if (layer.id == id) layer.copy(scale = scale.coerceIn(0.1f, 10f))
+                    else layer
+                }
+            )
+        }
+        if (saveHistory) saveToHistory()
+    }
+    
+    fun updateStickerRotation(id: String, rotation: Float, saveHistory: Boolean = true) {
+        _uiState.update { state ->
+            state.copy(
+                stickerLayers = state.stickerLayers.map { layer ->
+                    if (layer.id == id) layer.copy(rotation = rotation)
+                    else layer
+                }
+            )
+        }
+        if (saveHistory) saveToHistory()
+    }
+    
     fun duplicateSticker(id: String) {
         val originalSticker = _uiState.value.stickerLayers.find { it.id == id } ?: return
         val nextZIndex = (getAllLayers().maxOfOrNull { it.zIndex } ?: -1) + 1

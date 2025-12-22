@@ -85,6 +85,14 @@ class CompositeRenderer(private val context: Context) {
     private fun renderTextLayer(canvas: Canvas, layer: TextLayer) {
         canvas.save()
         
+        // Apply blur if enabled (must be done before other transforms)
+        if (layer.textBlur > 0f) {
+            // Note: Canvas blur requires API 31+, so we'll use a workaround with MaskFilter
+            val blurPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                maskFilter = BlurMaskFilter(layer.textBlur, BlurMaskFilter.Blur.NORMAL)
+            }
+        }
+        
         // Create text paint
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             textSize = layer.fontSize
@@ -105,6 +113,30 @@ class CompositeRenderer(private val context: Context) {
             }
             
             alpha = (layer.layerOpacity * 255).toInt()
+            
+            // Apply shadow
+            if (layer.hasShadow) {
+                setShadowLayer(
+                    layer.shadowBlur,
+                    layer.shadowOffsetX,
+                    layer.shadowOffsetY,
+                    layer.shadowColor
+                )
+            }
+            
+            // Apply neon effect (glow)
+            if (layer.isNeon) {
+                setShadowLayer(
+                    30f,  // Large blur for glow effect
+                    0f, 0f,  // No offset
+                    layer.color  // Glow color matches text color
+                )
+            }
+            
+            // Apply text blur
+            if (layer.textBlur > 0f) {
+                maskFilter = BlurMaskFilter(layer.textBlur, BlurMaskFilter.Blur.NORMAL)
+            }
         }
         
         // Measure text - this is the CONTENT size (what Compose's Box wraps)
@@ -123,6 +155,16 @@ class CompositeRenderer(private val context: Context) {
         canvas.translate(textWidth / 2f, textHeight / 2f)  // Offset to text center
         canvas.rotate(layer.rotation)  // Rotate around text center
         canvas.scale(layer.scale, layer.scale)  // Scale around text center
+        
+        // Apply 3D rotations if present (simplified - full 3D requires Camera)
+        // Note: This is a simplified version, full 3D rotation requires android.graphics.Camera
+        if (layer.rotationX != 0f || layer.rotationY != 0f) {
+            // Skew approximation for 3D effect
+            val skewX = layer.rotationY / 100f
+            val skewY = layer.rotationX / 100f
+            canvas.skew(skewX, skewY)
+        }
+        
         canvas.translate(-textWidth / 2f, -textHeight / 2f)  // Back to text top-left
         
         // Draw background AROUND the text (padding expands outward from text bounds)
@@ -130,6 +172,7 @@ class CompositeRenderer(private val context: Context) {
             val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = layer.backgroundColor
                 style = Paint.Style.FILL
+                alpha = (layer.backgroundOpacity * 255).toInt()
             }
             
             // Background rect expands from text bounds
@@ -146,18 +189,67 @@ class CompositeRenderer(private val context: Context) {
         // Draw text at baseline (0, 0 is top-left of text bounds)
         val baselineY = -fm.ascent  // Distance from top to baseline
         
+        // Draw glitch effect (RGB offset)
+        if (layer.isGlitch) {
+            val glitchOffset = 4f
+            
+            // Red channel offset
+            val redPaint = Paint(paint).apply {
+                color = android.graphics.Color.RED
+                alpha = (0.7f * layer.layerOpacity * 255).toInt()
+                clearShadowLayer()
+            }
+            canvas.drawText(layer.text, -glitchOffset, baselineY - glitchOffset, redPaint)
+            
+            // Cyan channel offset
+            val cyanPaint = Paint(paint).apply {
+                color = android.graphics.Color.CYAN
+                alpha = (0.7f * layer.layerOpacity * 255).toInt()
+                clearShadowLayer()
+            }
+            canvas.drawText(layer.text, glitchOffset, baselineY + glitchOffset, cyanPaint)
+        }
+        
         // Apply outline if enabled
         if (layer.hasOutline && layer.outlineWidth > 0) {
             val outlinePaint = Paint(paint).apply {
                 style = Paint.Style.STROKE
                 strokeWidth = layer.outlineWidth
                 color = layer.outlineColor
+                clearShadowLayer()  // No shadow on outline
             }
             canvas.drawText(layer.text, 0f, baselineY, outlinePaint)
         }
         
         // Draw main text
         canvas.drawText(layer.text, 0f, baselineY, paint)
+        
+        // Draw reflection if enabled
+        if (layer.reflectionOpacity > 0f) {
+            canvas.save()
+            
+            // Flip vertically and offset
+            canvas.scale(1f, -1f)
+            canvas.translate(0f, -textHeight - layer.reflectionOffset)
+            
+            val reflectionPaint = Paint(paint).apply {
+                alpha = (layer.reflectionOpacity * layer.layerOpacity * 255).toInt()
+                // Create gradient for fade effect
+                shader = LinearGradient(
+                    0f, 0f,
+                    0f, textHeight,
+                    intArrayOf(
+                        android.graphics.Color.TRANSPARENT,
+                        android.graphics.Color.WHITE
+                    ),
+                    floatArrayOf(0f, 1f),
+                    Shader.TileMode.CLAMP
+                )
+            }
+            
+            canvas.drawText(layer.text, 0f, baselineY, reflectionPaint)
+            canvas.restore()
+        }
         
         canvas.restore()
     }
@@ -180,6 +272,28 @@ class CompositeRenderer(private val context: Context) {
             color = layer.color
             strokeWidth = layer.strokeWidth
             style = if (layer.isFilled) Paint.Style.FILL else Paint.Style.STROKE
+            
+            // Apply opacity
+            alpha = (layer.opacity * 255).toInt()
+            
+            // Apply stroke style
+            pathEffect = when (layer.strokeStyle) {
+                StrokeStyle.DASHED -> DashPathEffect(floatArrayOf(30f, 15f), 0f)
+                StrokeStyle.DOTTED -> DashPathEffect(floatArrayOf(5f, 10f), 0f)
+                StrokeStyle.LONG_DASH -> DashPathEffect(floatArrayOf(50f, 20f), 0f)
+                StrokeStyle.DASH_DOT -> DashPathEffect(floatArrayOf(30f, 15f, 5f, 15f), 0f)
+                StrokeStyle.SOLID -> null
+            }
+            
+            // Apply shadow
+            if (layer.hasShadow) {
+                setShadowLayer(
+                    layer.shadowBlur,
+                    layer.shadowX,
+                    layer.shadowY,
+                    layer.shadowColor
+                )
+            }
         }
         
         // Render based on shape type
@@ -254,19 +368,68 @@ class CompositeRenderer(private val context: Context) {
         canvas.scale(sx, sy)  // Scale around center
         canvas.translate(-contentWidth / 2f, -contentHeight / 2f)  // Back to top-left
         
-        // Draw Centered (offset by -half)
+        // Create paint with opacity, shadow, and tint
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            // Apply opacity
+            alpha = (layer.opacity * 255).toInt()
+            
+            // Apply shadow
+            if (layer.hasShadow) {
+                setShadowLayer(
+                    layer.shadowBlur,
+                    layer.shadowOffsetX,
+                    layer.shadowOffsetY,
+                    layer.shadowColor
+                )
+            }
+            
+            // Apply tint using ColorFilter
+            if (layer.hasTint) {
+                colorFilter = android.graphics.PorterDuffColorFilter(layer.tintColor, PorterDuff.Mode.SRC_ATOP)
+            }
+        }
+        
+        // Draw content centered (offset by -half)
         if (bitmap != null) {
-            canvas.drawBitmap(bitmap, -contentWidth / 2f, -contentHeight / 2f, null)
+            canvas.drawBitmap(bitmap, -contentWidth / 2f, -contentHeight / 2f, paint)
         } else if (textToDraw != null) {
-            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 this.textSize = textSize
                 this.textAlign = Paint.Align.CENTER
+                alpha = (layer.opacity * 255).toInt()
+                
+                if (layer.hasShadow) {
+                    setShadowLayer(
+                        layer.shadowBlur,
+                        layer.shadowOffsetX,
+                        layer.shadowOffsetY,
+                        layer.shadowColor
+                    )
+                }
             }
             // Draw text centered at 0,0
-            // Vertically center: descent - ascent
-            val fm = paint.fontMetrics
+            val fm = textPaint.fontMetrics
             val yOffset = -(fm.descent + fm.ascent) / 2f
-            canvas.drawText(textToDraw, 0f, yOffset, paint)
+            canvas.drawText(textToDraw, 0f, yOffset, textPaint)
+        }
+        
+        // Draw border if enabled
+        if (layer.hasBorder) {
+            val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = layer.borderWidth
+                color = layer.borderColor
+                alpha = (layer.opacity * 255).toInt()
+            }
+            
+            // Draw border around content bounds
+            val borderRect = RectF(
+                -contentWidth / 2f,
+                -contentHeight / 2f,
+                contentWidth / 2f,
+                contentHeight / 2f
+            )
+            canvas.drawRect(borderRect, borderPaint)
         }
         
         canvas.restore()

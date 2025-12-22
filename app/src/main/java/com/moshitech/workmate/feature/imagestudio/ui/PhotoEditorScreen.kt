@@ -1259,6 +1259,42 @@ fun PhotoEditorScreen(
                                                         )
                                                     }
                                                     
+                                                    // Scale and Rotation Controls
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        // Scale
+                                                        CompactModernSlider(
+                                                            label = "Scale",
+                                                            value = selectedSticker.scale,
+                                                            onValueChange = { newValue ->
+                                                                viewModel.updateStickerScale(selectedSticker.id, newValue, saveHistory = false)
+                                                            },
+                                                            onValueChangeFinished = {
+                                                                viewModel.updateStickerScale(selectedSticker.id, selectedSticker.scale, saveHistory = true)
+                                                            },
+                                                            valueRange = 0.1f..5f,
+                                                            unit = "x",
+                                                            modifier = Modifier.weight(1f)
+                                                        )
+                                                        
+                                                        // Rotation
+                                                        CompactModernSlider(
+                                                            label = "Rotation",
+                                                            value = selectedSticker.rotation,
+                                                            onValueChange = { newValue ->
+                                                                viewModel.updateStickerRotation(selectedSticker.id, newValue, saveHistory = false)
+                                                            },
+                                                            onValueChangeFinished = {
+                                                                viewModel.updateStickerRotation(selectedSticker.id, selectedSticker.rotation, saveHistory = true)
+                                                            },
+                                                            valueRange = 0f..360f,
+                                                            unit = "°",
+                                                            modifier = Modifier.weight(1f)
+                                                        )
+                                                    }
+                                                    
                                                     // Quick Action Buttons
                                                     Row(
                                                         modifier = Modifier.fillMaxWidth(),
