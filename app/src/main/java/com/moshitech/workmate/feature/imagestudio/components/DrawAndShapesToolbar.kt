@@ -137,6 +137,24 @@ fun PaintToolbar(
                 isSelected = uiState.selectedDrawTool == DrawTool.HIGHLIGHTER,
                 onClick = { viewModel.selectDrawTool(DrawTool.HIGHLIGHTER) }
             )
+            val context = androidx.compose.ui.platform.LocalContext.current
+            
+            ToolIcon(
+                icon = Icons.Default.BlurCircular, // NEW: Blur brush
+                label = "Blur",
+                isSelected = uiState.selectedDrawTool == DrawTool.BLUR,
+                onClick = { 
+                    android.widget.Toast.makeText(context, "Blur Tool Coming Soon!", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            )
+            ToolIcon(
+                icon = Icons.Default.Grain, // NEW: Spray paint
+                label = "Spray",
+                isSelected = uiState.selectedDrawTool == DrawTool.SPRAY,
+                onClick = { 
+                    android.widget.Toast.makeText(context, "Spray Tool Coming Soon!", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            )
             ToolIcon(
                 icon = Icons.Default.AutoFixNormal, // Placeholder for Eraser
                 label = "Eraser",

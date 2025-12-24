@@ -29,23 +29,28 @@ import com.moshitech.workmate.feature.imagestudio.viewmodel.ShapeType
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.atan2
+import kotlin.math.roundToInt // Added for coordinate mapping
 
 @Composable
 fun ShapeBoxComposable(
     layer: ShapeLayer,
     isSelected: Boolean,
+    bitmapScale: Float, // NEW
+    bitmapOffset: Offset, // NEW
     onSelect: (String) -> Unit,
     onTransform: (String, Offset, Float, Float) -> Unit,
     onDelete: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    
     Box(
         modifier = modifier
             // Standard 3.1 & 3.2: Position via offset, visual transforms via graphicsLayer
             .offset {
                 androidx.compose.ui.unit.IntOffset(
-                    (layer.x - layer.width / 2).toInt(),
-                    (layer.y - layer.height / 2).toInt()
+                    (layer.x * bitmapScale + bitmapOffset.x).roundToInt(),
+                    (layer.y * bitmapScale + bitmapOffset.y).roundToInt()
                 )
             }
             .graphicsLayer {
@@ -56,7 +61,10 @@ fun ShapeBoxComposable(
                 rotationZ = layer.rotation
                 alpha = layer.opacity
             }
-            .size(layer.width.dp, layer.height.dp) // Size is intrinsic to the box
+            .size(
+                with(density) { (layer.width * bitmapScale).toDp() }, 
+                with(density) { (layer.height * bitmapScale).toDp() }
+            ) // Scale intrinsic size correctly using Density
             // Center the pivot? GraphicsLayer default is Center.
             .pointerInput(layer.id, isSelected) {
                 detectTapGestures {
@@ -121,7 +129,7 @@ fun ShapeBoxComposable(
                     this.color = color
                     if (!layer.isFilled) {
                         this.style = androidx.compose.ui.graphics.PaintingStyle.Stroke
-                        this.strokeWidth = layer.strokeWidth
+                        this.strokeWidth = layer.strokeWidth * bitmapScale
                         this.pathEffect = pathEffect
                         this.strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
                         this.strokeJoin = androidx.compose.ui.graphics.StrokeJoin.Round
@@ -131,10 +139,10 @@ fun ShapeBoxComposable(
                 }
                 
                 if (layer.hasShadow) {
-                    shadowPaint.asFrameworkPaint().setShadowLayer(
-                        layer.shadowBlur,
-                        layer.shadowX,
-                        layer.shadowY,
+                     shadowPaint.asFrameworkPaint().setShadowLayer(
+                        layer.shadowBlur * bitmapScale,
+                        layer.shadowX * bitmapScale,
+                        layer.shadowY * bitmapScale,
                         layer.shadowColor
                     )
                 }
@@ -172,7 +180,7 @@ fun ShapeBoxComposable(
                          canvas.drawLine(start, end, shadowPaint)
                          
                          // Arrow Head
-                         val arrowSize = layer.strokeWidth * 3f + 10f
+                         val arrowSize = (layer.strokeWidth * bitmapScale) * 3f + 10f * bitmapScale
                          val arrowPath = Path().apply {
                             moveTo(end.x, end.y)
                             lineTo(end.x - arrowSize, end.y - arrowSize / 1.5f)
@@ -186,7 +194,7 @@ fun ShapeBoxComposable(
                              this.style = androidx.compose.ui.graphics.PaintingStyle.Fill
                              if (layer.hasShadow) {
                                   this.asFrameworkPaint().setShadowLayer(
-                                    layer.shadowBlur, layer.shadowX, layer.shadowY, layer.shadowColor
+                                    layer.shadowBlur * bitmapScale, layer.shadowX * bitmapScale, layer.shadowY * bitmapScale, layer.shadowColor
                                   )
                              }
                          }

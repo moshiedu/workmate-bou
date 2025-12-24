@@ -25,6 +25,8 @@ data class EditorState(
     val temperature: Float = 0f,
     val tint: Float = 0f,
     val rotationAngle: Float = 0f,
+    val flipX: Boolean = false, // NEW
+    val flipY: Boolean = false, // NEW
     val activeFilterId: String? = null,
     val activeFilterMatrix: FloatArray? = null,
     val textLayers: List<TextLayer> = emptyList(),
@@ -45,6 +47,8 @@ data class EditorState(
         if (temperature != other.temperature) return false
         if (tint != other.tint) return false
         if (rotationAngle != other.rotationAngle) return false
+        if (flipX != other.flipX) return false
+        if (flipY != other.flipY) return false
         if (activeFilterId != other.activeFilterId) return false
         if (activeFilterMatrix != null) {
             if (other.activeFilterMatrix == null) return false
@@ -66,6 +70,8 @@ data class EditorState(
         result = 31 * result + temperature.hashCode()
         result = 31 * result + tint.hashCode()
         result = 31 * result + rotationAngle.hashCode()
+        result = 31 * result + flipX.hashCode()
+        result = 31 * result + flipY.hashCode()
         result = 31 * result + (activeFilterId?.hashCode() ?: 0)
         result = 31 * result + (activeFilterMatrix?.contentHashCode() ?: 0)
         result = 31 * result + textLayers.hashCode()
@@ -204,8 +210,20 @@ data class DrawPath(
     val isHighlighter: Boolean = false,
     val isNeon: Boolean = false,
     val isMosaic: Boolean = false,
+    val isSpray: Boolean = false,  // NEW: Spray paint effect
+    val blurRadius: Float = 0f,  // NEW: Blur effect
+    val blendMode: DrawBlendMode = DrawBlendMode.NORMAL,  // NEW: Blend mode
     val strokeStyle: StrokeStyle = StrokeStyle.SOLID
 )
+
+// Blend modes for drawing
+enum class DrawBlendMode {
+    NORMAL,
+    MULTIPLY,
+    SCREEN,
+    OVERLAY,
+    ADD
+}
 
 sealed class DrawAction {
     data class Path(val path: DrawPath) : DrawAction()
@@ -245,7 +263,7 @@ sealed class Shape {
 }
 
 enum class DrawTool {
-    BRUSH, NEON, MOSAIC, HIGHLIGHTER, ERASER
+    BRUSH, NEON, MOSAIC, HIGHLIGHTER, ERASER, BLUR, SPRAY
 }
 
 enum class DrawMode {
@@ -580,30 +598,39 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
         _uiState.update { it.copy(showSaveDialog = false) }
     }
     
-    fun saveImage(filename: String, onSaved: (Uri) -> Unit) {
+    fun saveImage(filename: String, uiScale: Float? = null, onSaved: (Uri) -> Unit) {
         viewModelScope.launch {
             val state = _uiState.value
             var bitmap = state.previewBitmap ?: return@launch
             
             _uiState.update { it.copy(isSaving = true) }
 
-            // Apply Rotation and Flip (Baked for Save)
-            if (state.rotationAngle != 0f || state.flipX || state.flipY) {
-                val matrix = android.graphics.Matrix()
-                matrix.postRotate(state.rotationAngle)
-                matrix.postScale(
-                    if (state.flipX) -1f else 1f, 
-                    if (state.flipY) -1f else 1f
+            // REMOVED: Rotation and Flip now handled by CompositeRenderer via EditorState
+            
+            // Get current editor state (layers are already in bitmap coordinates)
+            val currentState = getCurrentEditorState()
+            
+            // Calculate bitmap scale relative to screen container
+            // This is critical for fixed-size layers (Stickers) to render at correct relative size
+            val containerW = _uiState.value.containerWidth
+            val containerH = _uiState.value.containerHeight
+            val bmpW = bitmap.width.toFloat()
+            val bmpH = bitmap.height.toFloat()
+            
+            // Use provided UI scale if available (exact match), otherwise fallback to calculation
+            val bitScale = uiScale ?: if (containerW > 0 && containerH > 0) {
+                kotlin.math.min(
+                    containerW.toFloat() / bmpW,
+                    containerH.toFloat() / bmpH
                 )
-                bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-            }
+            } else 1f
             
             // Use CompositeRenderer to properly render all layers with formatting
-            val currentState = getCurrentEditorState()
             bitmap = compositeRenderer.renderComposite(
                 baseImage = bitmap,
                 state = currentState,
-                cropRect = null
+                cropRect = null,
+                bitmapScale = bitScale
             )
             
             // Check Pro Quality
@@ -1214,6 +1241,7 @@ fun setRotationAngle(angle: Float) {
         hasShadow: Boolean = false
     ) {
         // Calculate center of bitmap if no coordinates provided
+        // Layers are ALWAYS stored in bitmap coordinates
         val (finalX, finalY) = if (x == -1f || y == -1f) {
             val bitmap = uiState.value.originalBitmap
             if (bitmap != null) {
@@ -1222,8 +1250,7 @@ fun setRotationAngle(angle: Float) {
                 100f to 100f
             }
         } else {
-            // Already in bitmap layout if passed explicitly, or convert?
-            // For now assume if passed explicitly it's raw, but usually it's -1.
+            // Coordinates provided explicitly
             x to y
         }
     
@@ -1342,10 +1369,15 @@ fun updateOpacity(opacity: Float) {
         // Auto-assign z-index to be on top of existing layers
         val nextZIndex = (getAllLayers().maxOfOrNull { it.zIndex } ?: -1) + 1
         
+        // Initialize in Bitmap Coordinates
+        val bitmap = _uiState.value.originalBitmap
+        val centerX = bitmap?.width?.toFloat()?.div(2f) ?: 500f
+        val centerY = bitmap?.height?.toFloat()?.div(2f) ?: 500f
+        
         val newLayer = TextLayer(
             text = "",
-            x = 90f, // Centered horizontally (screen width ~360-400dp, text width 200dp)
-            y = 400f, // Centered vertically in visible area
+            x = centerX, 
+            y = centerY,
             width = 200f,
             height = 80f,
             zIndex = nextZIndex
@@ -1737,11 +1769,16 @@ fun updateOpacity(opacity: Float) {
         // Auto-assign z-index to be on top of existing layers
         val nextZIndex = (getAllLayers().maxOfOrNull { it.zIndex } ?: -1) + 1
         
+        // Initialize in Bitmap Coordinates (layers are always in bitmap space)
+        val bitmap = _uiState.value.originalBitmap
+        val centerX = bitmap?.width?.toFloat()?.div(2f) ?: 500f
+        val centerY = bitmap?.height?.toFloat()?.div(2f) ?: 500f
+
         val newSticker = StickerLayer(
             resId = resId,
             text = text,
-            x = 400f, // Center-ish
-            y = 400f, // Center-ish
+            x = centerX, 
+            y = centerY, 
             zIndex = nextZIndex
         )
         _uiState.update { it.copy(
@@ -1852,7 +1889,8 @@ fun updateOpacity(opacity: Float) {
     }
 
     fun addShapeLayer(type: ShapeType) {
-    val bitmap = _uiState.value.previewBitmap ?: return
+    // Use ORIGINAL bitmap to define initial size/position in the correct coordinate space
+    val bitmap = _uiState.value.originalBitmap ?: _uiState.value.previewBitmap ?: return
     val bmpW = bitmap.width.toFloat()
     val bmpH = bitmap.height.toFloat()
     
@@ -2144,6 +2182,7 @@ fun updateOpacity(opacity: Float) {
         viewModelScope.launch {
             try {
                 val currentState = getCurrentEditorState()
+                
                 val croppedBitmap = compositeRenderer.renderComposite(
                     baseImage = bitmap,
                     state = currentState,
@@ -2179,6 +2218,7 @@ fun updateOpacity(opacity: Float) {
             try {
                 // 1. Render Composite (flattens layers + applies adjustments)
                 val currentState = getCurrentEditorState()
+                
                 val composite = compositeRenderer.renderComposite(
                     baseImage = bitmap,
                     state = currentState,
@@ -2213,6 +2253,7 @@ fun updateOpacity(opacity: Float) {
         viewModelScope.launch {
             try {
                 val currentState = getCurrentEditorState()
+                
                 val composite = compositeRenderer.renderComposite(bitmap, currentState, null)
                 
                 _uiState.update {
@@ -2274,6 +2315,8 @@ fun updateOpacity(opacity: Float) {
             temperature = state.temperature,
             tint = state.tint,
             rotationAngle = state.rotationAngle,
+            flipX = state.flipX,
+            flipY = state.flipY,
             activeFilterId = state.activeFilterId,
             activeFilterMatrix = state.activeFilterMatrix,
             textLayers = state.textLayers,
@@ -2281,6 +2324,90 @@ fun updateOpacity(opacity: Float) {
             shapeLayers = state.shapeLayers,
             drawActions = state.drawActions
         )
+    }
+    
+    /**
+     * Transforms an EditorState from UI coordinates to bitmap coordinates
+     * This is needed before passing to CompositeRenderer for saving
+     * 
+     * UI coordinates are affected by:
+     * - Image scaling (fit-to-screen)
+     * - Image offset (centering in container)
+     * 
+     * Bitmap coordinates are the original image pixel coordinates
+     */
+    private fun transformEditorStateToBitmapCoords(state: EditorState): EditorState {
+        val scale = getBitmapScale()
+        val (offsetX, offsetY) = getBitmapOffset()
+        
+        return state.copy(
+            textLayers = state.textLayers.map { transformTextLayer(it, scale, offsetX, offsetY) },
+            stickerLayers = state.stickerLayers.map { transformStickerLayer(it, scale, offsetX, offsetY) },
+            shapeLayers = state.shapeLayers.map { transformShapeLayer(it, scale, offsetX, offsetY) },
+            drawActions = state.drawActions.map { transformDrawAction(it, scale, offsetX, offsetY) }
+        )
+    }
+    
+    private fun transformTextLayer(layer: TextLayer, scale: Float, offsetX: Float, offsetY: Float): TextLayer {
+        return layer.copy(
+            x = (layer.x - offsetX) / scale,
+            y = (layer.y - offsetY) / scale
+        )
+    }
+    
+    private fun transformStickerLayer(layer: StickerLayer, scale: Float, offsetX: Float, offsetY: Float): StickerLayer {
+        return layer.copy(
+            x = (layer.x - offsetX) / scale,
+            y = (layer.y - offsetY) / scale
+        )
+    }
+    
+    private fun transformShapeLayer(layer: ShapeLayer, scale: Float, offsetX: Float, offsetY: Float): ShapeLayer {
+        return layer.copy(
+            x = (layer.x - offsetX) / scale,
+            y = (layer.y - offsetY) / scale
+        )
+    }
+    
+    private fun transformDrawAction(action: DrawAction, scale: Float, offsetX: Float, offsetY: Float): DrawAction {
+        return when (action) {
+            is DrawAction.Path -> {
+                val transformedPoints = action.path.points.map { point ->
+                    androidx.compose.ui.geometry.Offset(
+                        x = (point.x - offsetX) / scale,
+                        y = (point.y - offsetY) / scale
+                    )
+                }
+                DrawAction.Path(action.path.copy(points = transformedPoints))
+            }
+            is DrawAction.Shape -> {
+                val transformedShape = when (val shape = action.shape) {
+                    is Shape.Line -> shape.copy(
+                        start = androidx.compose.ui.geometry.Offset(
+                            x = (shape.start.x - offsetX) / scale,
+                            y = (shape.start.y - offsetY) / scale
+                        ),
+                        end = androidx.compose.ui.geometry.Offset(
+                            x = (shape.end.x - offsetX) / scale,
+                            y = (shape.end.y - offsetY) / scale
+                        )
+                    )
+                    is Shape.Rectangle -> shape.copy(
+                        topLeft = androidx.compose.ui.geometry.Offset(
+                            x = (shape.topLeft.x - offsetX) / scale,
+                            y = (shape.topLeft.y - offsetY) / scale
+                        )
+                    )
+                    is Shape.Circle -> shape.copy(
+                        center = androidx.compose.ui.geometry.Offset(
+                            x = (shape.center.x - offsetX) / scale,
+                            y = (shape.center.y - offsetY) / scale
+                        )
+                    )
+                }
+                DrawAction.Shape(transformedShape)
+            }
+        }
     }
     
     // ========== NEW: Layer Management Functions (Phase 2) ==========

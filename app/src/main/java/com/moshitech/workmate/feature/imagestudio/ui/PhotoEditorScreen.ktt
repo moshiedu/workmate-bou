@@ -163,7 +163,6 @@ fun PhotoEditorScreen(
     var showImageSourceDialog by remember { mutableStateOf(false) }
     var showExitConfirmDialog by remember { mutableStateOf(false) }
     var showLayerPanel by remember { mutableStateOf(false) }
-    var currentBitScale by remember { mutableStateOf(1f) } // Track UI scale for consistent saving
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Eyedropper State (Lifted for Toolbar access)
@@ -446,39 +445,23 @@ fun PhotoEditorScreen(
                     
                     // Calculate Image Fit Params
                 // Calculate Image Fit Params
-                    // Unified Logic: Calculate the target display size (Fitted to Screen)
-                    // and determine bitScale (Original -> Screen) based on that.
+                    // The Image Composable fills the "requiredSize" Box, which matches bitmapToShow dimensions.
+                    // Layers are rendered inside this Box.
+                    // So we map: Original Bitmap Coord -> Preview Bitmap Coord (Screen)
                     
                     val originalParam = uiState.originalBitmap
+                    val displayBitmap = uiState.previewBitmap ?: originalParam // bitmapToShow uses this logic
+                    
                     var bitScale = 1f
-                    
-                    // These will determine the size of the Inner Image Box
-                    var finalDisplayWidth = 0f
-                    var finalDisplayHeight = 0f
-                    
-                    if (originalParam != null && originalParam.width > 0) {
-                        val bmpW = originalParam.width.toFloat()
-                        val bmpH = originalParam.height.toFloat()
-                        
-                        // Calculate scale to FIT the image inside the BoxWithConstraints
-                        val scaleToFit = minOf(boxWidth / bmpW, boxHeight / bmpH)
-                        
-                        // Set the render size
-                        finalDisplayWidth = bmpW * scaleToFit
-                        finalDisplayHeight = bmpH * scaleToFit
-                        
-                        // bitScale is simply the scale from Original to this Fitted Size
-                        bitScale = scaleToFit
-                        
-                        // Update state to pass to Saver
-                        LaunchedEffect(bitScale) {
-                            currentBitScale = bitScale
-                        }
-                    }
-                    
-                    // No offsets needed as the Box will be sized exactly to finalDisplay*
-                    val bitOffsetX = 0f
+                    val bitOffsetX = 0f // No offset needed as we are in the centered Image Box
                     val bitOffsetY = 0f
+                    
+                    if (originalParam != null && displayBitmap != null && originalParam.width > 0) {
+                        // Direct ratio: How much is Original scaled to become Preview/Screen?
+                        // If Display is Original, scale is 1.0.
+                        // If Display is Preview (small), scale is < 1.0.
+                        bitScale = displayBitmap.width.toFloat() / originalParam.width.toFloat()
+                    }
 
 
                     // Canvas Content (Moved from original content lambda)
@@ -537,10 +520,14 @@ fun PhotoEditorScreen(
                         val bitmapToShow = if (showOriginal) uiState.originalBitmap else uiState.previewBitmap
                         if (bitmapToShow != null) {
                             val density = LocalDensity.current
-                            // Use the calculated FITTED dimensions from outer scope
-                            // This ensures the Image Box fits strictly within the screen bounds (contain mode)
-                            val displayWidth = with(density) { finalDisplayWidth.toDp() }
-                            val displayHeight = with(density) { finalDisplayHeight.toDp() }
+                            // Use bitmap dimensions directly as pixels (not DP)
+                            // This ensures layer coordinates (in pixels) match the Box's local coordinate space
+                            val displayWidthPx = bitmapToShow.width.toFloat()
+                            val displayHeightPx = bitmapToShow.height.toFloat()
+                            
+                            // Convert to Dp for Modifier.requiredSize (Compose requires Dp units)
+                            val displayWidth = with(density) { displayWidthPx.toDp() }
+                            val displayHeight = with(density) { displayHeightPx.toDp() }
 
                             Box(
                                 modifier = Modifier
@@ -553,10 +540,9 @@ fun PhotoEditorScreen(
                                         // Apply Fit Scale (bitScale) AND User Transforms (scale/offset/rotation)
                                         // This ensures the Box visual matches the user operation, 
                                         // while internal coordinates match the Bitmap (0..Width)
-                                        // Apply User Transforms (scale/offset/rotation) ONLY
-                                        // The Box itself is already sized to fit via requiredSize()
-                                        scaleX = scale * (if (uiState.flipX) -1f else 1f)
-                                        scaleY = scale * (if (uiState.flipY) -1f else 1f)
+                                        val fitScale = bitScale
+                                        scaleX = fitScale * scale * (if (uiState.flipX) -1f else 1f)
+                                        scaleY = fitScale * scale * (if (uiState.flipY) -1f else 1f)
                                         rotationZ = uiState.rotationAngle
                                         translationX = offset.x
                                         translationY = offset.y
@@ -1767,7 +1753,7 @@ fun PhotoEditorScreen(
                 confirmButton = {
                     TextButton(
                         onClick = {
-                            viewModel.saveImage(uiState.saveFilename, currentBitScale) {
+                            viewModel.saveImage(uiState.saveFilename) {
                                 navController.popBackStack()
                             }
                         },

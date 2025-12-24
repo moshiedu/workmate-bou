@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import kotlin.math.roundToInt // Added for coordinate mapping
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.Shadow
@@ -74,10 +75,12 @@ fun TextBoxComposable(
     layer: TextLayer,
     isSelected: Boolean,
     isEditing: Boolean,
+    bitmapScale: Float, // NEW: Scale factor from Bitmap -> Screen
+    bitmapOffset: Offset, // NEW: Offset from Screen (0,0) to Image (0,0)
     onSelect: (String) -> Unit,
     onEdit: (String) -> Unit,
     onTransform: (String, Offset, Float, Float) -> Unit,
-    onTransformEnd: (String) -> Unit, // New callback for history
+    onTransformEnd: (String) -> Unit,
     onTextChange: (String, String) -> Unit,
     onDuplicate: (String) -> Unit, 
     onDelete: (String) -> Unit,    
@@ -88,14 +91,15 @@ fun TextBoxComposable(
     Box(
         modifier = modifier
             .offset {
+                // Map Bitmap Coordinate -> Screen Coordinate
+                // screenX = bitmapX * scale + offsetX
                 androidx.compose.ui.unit.IntOffset(
-                    layer.x.toInt(),
-                    layer.y.toInt()
+                    (layer.x * bitmapScale + bitmapOffset.x).roundToInt(),
+                    (layer.y * bitmapScale + bitmapOffset.y).roundToInt()
                 )
             }
             .graphicsLayer {
-                // translationX = layer.x // REMOVED per contract
-                // translationY = layer.y // REMOVED per contract
+                // visual transforms
                 scaleX = layer.scale
                 scaleY = layer.scale
                 rotationZ = layer.rotation
@@ -120,7 +124,7 @@ fun TextBoxComposable(
                 }
             }
             .then(
-                if (layer.textBlur > 0f) Modifier.blur(layer.textBlur.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)
+                if (layer.textBlur > 0f) Modifier.blur((layer.textBlur * bitmapScale).dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)
                 else Modifier
             )
             // General Drag/Pinch/Rotate on the text body using custom detection for End event
@@ -233,7 +237,7 @@ fun TextBoxComposable(
                     .padding(12.dp) // Space for handles to not overlap too much
                     .drawBehind {
                         if (showBorder) {
-                            val stroke = 2.dp.toPx() / layer.scale
+                            val stroke = 2.dp.toPx() / (layer.scale * bitmapScale) // Invert scale for constant visual stroke width
                             val pathEffect = PathEffect.dashPathEffect(floatArrayOf(20f, 15f), 0f)
                             drawRoundRect(
                                 color = Color.White,
@@ -245,9 +249,9 @@ fun TextBoxComposable(
                     .background(
                         if (layer.showBackground) Color(layer.backgroundColor)
                         else Color.Transparent,
-                        RoundedCornerShape(layer.backgroundCornerRadius.dp)
+                        RoundedCornerShape((layer.backgroundCornerRadius * bitmapScale).dp)
                     )
-                    .padding(layer.backgroundPadding.dp)
+                    .padding((layer.backgroundPadding * bitmapScale).dp)
             ) {
                 val context = androidx.compose.ui.platform.LocalContext.current
                 var textureBrush by remember(layer.textureUri) { mutableStateOf<Brush?>(null) }
@@ -342,7 +346,7 @@ fun TextBoxComposable(
 
                 val textStyle = TextStyle(
                     color = effectiveColor, 
-                    fontSize = with(localDensity) { layer.fontSize.toSp() }, // Correct: Bitmap Px -> Sp
+                    fontSize = with(localDensity) { (layer.fontSize * bitmapScale).toSp() }, // Correct: Bitmap Px -> Screen Px -> Sp
                     fontFamily = when(layer.fontFamily) {
                         AppFont.DEFAULT -> androidx.compose.ui.text.font.FontFamily.Default
                         AppFont.SERIF -> androidx.compose.ui.text.font.FontFamily.Serif

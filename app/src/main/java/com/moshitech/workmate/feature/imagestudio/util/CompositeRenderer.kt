@@ -20,7 +20,8 @@ class CompositeRenderer(private val context: Context) {
     fun renderComposite(
         baseImage: Bitmap,
         state: EditorState,
-        cropRect: Rect? = null
+        cropRect: Rect? = null,
+        bitmapScale: Float = 1f // New Parameter
     ): Bitmap {
         // 1. Apply adjustments to base image
         val adjustedImage = applyAdjustments(baseImage, state)
@@ -30,23 +31,29 @@ class CompositeRenderer(private val context: Context) {
         val canvas = Canvas(composite)
         
         // 3. Render all layers in z-order (back to front)
-        renderAllLayers(canvas, state)
+        renderAllLayers(canvas, state, bitmapScale)
         
-        // 4. Apply crop if specified
-        return if (cropRect != null && isValidCropRect(cropRect, composite)) {
+        // 4. Apply Transforms (Rotate/Flip)
+        // This must happen AFTER rendering layers but BEFORE cropping
+        // so that layers rotate WITH the image.
+        val transformedImage = applyTransforms(composite, state)
+        
+        // 5. Apply crop if specified
+        // Note: cropRect is usually relative to the transformed image view
+        return if (cropRect != null && isValidCropRect(cropRect, transformedImage)) {
             Bitmap.createBitmap(
-                composite,
+                transformedImage,
                 cropRect.left,
                 cropRect.top,
                 cropRect.width(),
                 cropRect.height()
             )
         } else {
-            composite
+            transformedImage
         }
     }
     
-    private fun renderAllLayers(canvas: Canvas, state: EditorState) {
+    private fun renderAllLayers(canvas: Canvas, state: EditorState, bitmapScale: Float) {
         // Get all layers and sort by zIndex (lowest first = back to front)
         val allLayers = mutableListOf<Pair<Int, () -> Unit>>()
         
@@ -67,7 +74,7 @@ class CompositeRenderer(private val context: Context) {
         // Add sticker layers
         state.stickerLayers.forEach { layer ->
             if (layer.isVisible) {
-                allLayers.add(layer.zIndex to { renderStickerLayer(canvas, layer) })
+                allLayers.add(layer.zIndex to { renderStickerLayer(canvas, layer, bitmapScale) })
             }
         }
         
@@ -148,26 +155,50 @@ class CompositeRenderer(private val context: Context) {
         val density = context.resources.displayMetrics.density
         val paddingPx = layer.backgroundPadding * density
         val radiusPx = layer.backgroundCornerRadius * density
+        val handlePaddingPx = 12 * density
         
-        // Apply transformations using TEXT bounds as pivot (not total bounds)
-        // This matches Compose's graphicsLayer which pivots around Box content
-        canvas.translate(layer.x, layer.y)  // Move to layer position
-        canvas.translate(textWidth / 2f, textHeight / 2f)  // Offset to text center
-        canvas.rotate(layer.rotation)  // Rotate around text center
-        canvas.scale(layer.scale, layer.scale)  // Scale around text center
+        // CRITICAL FIX 1: Match UI's defaultMinSize(minWidth = 50.dp)
+        val minWidthPx = 50f * density
+        val contentWidth = kotlin.math.max(textWidth, minWidthPx)
+        val contentHeight = textHeight
         
-        // Apply 3D rotations if present (simplified - full 3D requires Camera)
-        // Note: This is a simplified version, full 3D rotation requires android.graphics.Camera
+        // CRITICAL FIX 2: Strict Container Simulation
+        // UI Structure: OuterBox -> Padding(12dp) -> Background -> Padding(bgPadding) -> Text
+        // Rotation/Scale applies to OuterBox. Pivot is Center of OuterBox.
+        val outerWidth = contentWidth + (2 * paddingPx) + (2 * handlePaddingPx)
+        val outerHeight = contentHeight + (2 * paddingPx) + (2 * handlePaddingPx)
+        
+        val pivotX = outerWidth / 2f
+        val pivotY = outerHeight / 2f
+        
+        // Step 1: Translate to Top-Left of Outer Box (layer.x, layer.y)
+        canvas.translate(layer.x, layer.y)
+        
+        // Step 2: Rotate/Scale around Pivot (Center of Outer Box)
+        canvas.translate(pivotX, pivotY)
+        canvas.rotate(layer.rotation)
+        canvas.scale(layer.scale, layer.scale)
+        canvas.translate(-pivotX, -pivotY)
+        
+        // Apply 3D rotations if present
         if (layer.rotationX != 0f || layer.rotationY != 0f) {
-            // Skew approximation for 3D effect
+            canvas.save() // Save before skew
+            canvas.translate(pivotX, pivotY)
             val skewX = layer.rotationY / 100f
             val skewY = layer.rotationX / 100f
             canvas.skew(skewX, skewY)
+            canvas.translate(-pivotX, -pivotY)
         }
+
+        // Step 3: Draw Content relative to Outer Box Top-Left
+        // Text Content Origin (Visual Top-Left of text box excluding handles)
+        // X = handlePaddingPx
+        // Y = handlePaddingPx
+        // Inside that is Background. Inside that is bgPadding.
         
-        canvas.translate(-textWidth / 2f, -textHeight / 2f)  // Back to text top-left
-        
-        // Draw background AROUND the text (padding expands outward from text bounds)
+        // Background Rect Logic
+        // Drawn relative to Outer Box Origin (0,0)
+        // Rect starts at handlePaddingPx
         if (layer.showBackground) {
             val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = layer.backgroundColor
@@ -175,19 +206,32 @@ class CompositeRenderer(private val context: Context) {
                 alpha = (layer.backgroundOpacity * 255).toInt()
             }
             
-            // Background rect expands from text bounds
             val bgRect = RectF(
-                -paddingPx,  // Left edge
-                fm.ascent - paddingPx,  // Top edge (ascent is negative)
-                textWidth + paddingPx,  // Right edge
-                fm.descent + paddingPx  // Bottom edge
+                handlePaddingPx,                                    // Left
+                handlePaddingPx,                                    // Top
+                handlePaddingPx + contentWidth + (2 * paddingPx),   // Right
+                handlePaddingPx + contentHeight + (2 * paddingPx)   // Bottom
             )
             
             canvas.drawRoundRect(bgRect, radiusPx, radiusPx, bgPaint)
         }
         
-        // Draw text at baseline (0, 0 is top-left of text bounds)
-        val baselineY = -fm.ascent  // Distance from top to baseline
+        // Text Logic
+        // Text Origin X = handlePaddingPx + paddingPx + AlignmentOffset
+        // Text Origin Y = handlePaddingPx + paddingPx + Baseline
+        
+        val alignOffset = when (layer.alignment) {
+            TextAlignment.LEFT, TextAlignment.JUSTIFY -> 0f
+            TextAlignment.CENTER -> (contentWidth - textWidth) / 2f
+            TextAlignment.RIGHT -> contentWidth - textWidth
+        }
+        
+        val textOriginX = handlePaddingPx + paddingPx + alignOffset
+        val textOriginY = handlePaddingPx + paddingPx + (-fm.ascent) // Baseline
+        
+        // Draw text at calculated origin
+        val alignOffsetPlaceholder = 0f // Already calculated into textOriginX
+
         
         // Draw glitch effect (RGB offset)
         if (layer.isGlitch) {
@@ -199,7 +243,7 @@ class CompositeRenderer(private val context: Context) {
                 alpha = (0.7f * layer.layerOpacity * 255).toInt()
                 clearShadowLayer()
             }
-            canvas.drawText(layer.text, -glitchOffset, baselineY - glitchOffset, redPaint)
+            canvas.drawText(layer.text, textOriginX - glitchOffset, textOriginY - glitchOffset, redPaint)
             
             // Cyan channel offset
             val cyanPaint = Paint(paint).apply {
@@ -207,7 +251,7 @@ class CompositeRenderer(private val context: Context) {
                 alpha = (0.7f * layer.layerOpacity * 255).toInt()
                 clearShadowLayer()
             }
-            canvas.drawText(layer.text, glitchOffset, baselineY + glitchOffset, cyanPaint)
+            canvas.drawText(layer.text, textOriginX + glitchOffset, textOriginY + glitchOffset, cyanPaint)
         }
         
         // Apply outline if enabled
@@ -218,26 +262,41 @@ class CompositeRenderer(private val context: Context) {
                 color = layer.outlineColor
                 clearShadowLayer()  // No shadow on outline
             }
-            canvas.drawText(layer.text, 0f, baselineY, outlinePaint)
+            canvas.drawText(layer.text, textOriginX, textOriginY, outlinePaint)
         }
         
         // Draw main text
-        canvas.drawText(layer.text, 0f, baselineY, paint)
+        canvas.drawText(layer.text, textOriginX, textOriginY, paint)
         
         // Draw reflection if enabled
         if (layer.reflectionOpacity > 0f) {
             canvas.save()
             
-            // Flip vertically and offset
+            // Calculate Text Bottom (absolute Y in local space)
+            // Top = handlePaddingPx + paddingPx
+            // Bottom = Top + textHeight
+            val textBottomY = handlePaddingPx + paddingPx + textHeight
+            
+            // Flip VERTICALLY around the Text Bottom axis
+            canvas.translate(0f, textBottomY)
             canvas.scale(1f, -1f)
-            canvas.translate(0f, -textHeight - layer.reflectionOffset)
+            canvas.translate(0f, -textBottomY)
+            
+            // Apply offset (move reflection further down)
+            // Since we stuck to positive Y going down, and we flipped the CONTENT relative to Bottom,
+            // The reflected "Top" is now at Bottom.
+            // We want to shift it down by offset.
+            // Since Y is flipped? No, we flipped the canvas matrix only?
+            // Actually, simply translating Y by +offset works in the standard coordinate space IF we apply it AFTER flip?
+            // Let's just translate "downwards" in the flipped space.
+            canvas.translate(0f, layer.reflectionOffset)
             
             val reflectionPaint = Paint(paint).apply {
                 alpha = (layer.reflectionOpacity * layer.layerOpacity * 255).toInt()
                 // Create gradient for fade effect
                 shader = LinearGradient(
-                    0f, 0f,
-                    0f, textHeight,
+                    0f, textOriginY,
+                    0f, textOriginY - textHeight, // Fading out towards the "bottom" of the reflection (which is visually top)
                     intArrayOf(
                         android.graphics.Color.TRANSPARENT,
                         android.graphics.Color.WHITE
@@ -247,7 +306,7 @@ class CompositeRenderer(private val context: Context) {
                 )
             }
             
-            canvas.drawText(layer.text, 0f, baselineY, reflectionPaint)
+            canvas.drawText(layer.text, textOriginX, textOriginY, reflectionPaint)
             canvas.restore()
         }
         
@@ -309,17 +368,72 @@ class CompositeRenderer(private val context: Context) {
             ShapeType.LINE -> {
                 canvas.drawLine(0f, h/2f, w, h/2f, paint)
             }
-            else -> {
-                // Placeholder for others
-                val rect = RectF(0f, 0f, w, h)
-                canvas.drawRect(rect, paint)
+            ShapeType.TRIANGLE -> {
+                val path = Path().apply {
+                    moveTo(w / 2f, 0f)      // Top center
+                    lineTo(w, h)            // Bottom right
+                    lineTo(0f, h)           // Bottom left
+                    close()
+                }
+                canvas.drawPath(path, paint)
+            }
+            ShapeType.ARROW -> {
+                val path = Path().apply {
+                    // Simple right-pointing arrow usually
+                    // But here we draw upright? Or matches icon?
+                    // Let's draw an Up Arrow since w/h are bounding box
+                    // Arrow Head
+                    moveTo(w / 2f, 0f)
+                    lineTo(w, h * 0.5f)
+                    lineTo(w * 0.7f, h * 0.5f)
+                    // Stem
+                    lineTo(w * 0.7f, h)
+                    lineTo(w * 0.3f, h)
+                    lineTo(w * 0.3f, h * 0.5f)
+                    lineTo(0f, h * 0.5f)
+                    close()
+                }
+                canvas.drawPath(path, paint)
+            }
+            ShapeType.STAR -> {
+                val path = Path()
+                val centerX = w / 2f
+                val centerY = h / 2f
+                val outerRadius = minOf(w, h) / 2f
+                val innerRadius = outerRadius * 0.382f // Standard 5-point star ratio
+                
+                for (i in 0 until 10) {
+                    val angle = Math.PI / 5 * i - Math.PI / 2 // Start at top -90deg
+                    val r = if (i % 2 == 0) outerRadius else innerRadius
+                    val x = centerX + Math.cos(angle).toFloat() * r
+                    val y = centerY + Math.sin(angle).toFloat() * r
+                    
+                    if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                }
+                path.close()
+                canvas.drawPath(path, paint)
+            }
+            ShapeType.PENTAGON -> {
+                val path = Path()
+                val centerX = w / 2f
+                val centerY = h / 2f
+                val radius = minOf(w, h) / 2f
+                
+                for (i in 0 until 5) {
+                    val angle = Math.PI * 2 / 5 * i - Math.PI / 2 // Start top
+                    val x = centerX + Math.cos(angle).toFloat() * radius
+                    val y = centerY + Math.sin(angle).toFloat() * radius
+                    if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                }
+                path.close()
+                canvas.drawPath(path, paint)
             }
         }
         
         canvas.restore()
     }
     
-    private fun renderStickerLayer(canvas: Canvas, layer: StickerLayer) {
+    private fun renderStickerLayer(canvas: Canvas, layer: StickerLayer, bitmapScale: Float) {
         canvas.save()
         
         // Load sticker content first to determine size
@@ -358,15 +472,48 @@ class CompositeRenderer(private val context: Context) {
             contentHeight = 100f
         }
         
+        // Match Compose UI Standard: Stickers are initialized at 100.dp
+        val density = context.resources.displayMetrics.density
+        // Revert: DO NOT divide by bitmapScale. 
+        // UI uses Modifier.size(100.dp) but SCALES it by bitScale in graphicsLayer.
+        // So effective size on bitmap is just 100dp.
+        val baseStickerSizePx = 100f * density
+        
+        // Calculate normalization scale (to make the sticker 100dp visually by default)
+        // effectively solving the "Huge Bitmap" issue
+        // We use the larger dimension to fit within the 100dp box (mimicking ContentScale.Fit)
+        // For Text (Emoji), UI uses 64.sp which is approx 64% of the 100dp box.
+        val targetSize = if (textToDraw != null) baseStickerSizePx * 0.64f else baseStickerSizePx
+        
+        val maxContentDim = kotlin.math.max(contentWidth, contentHeight)
+        val normalizationScale = if (maxContentDim > 0) targetSize / maxContentDim else 1f
+        
+        val normalizedWidth = contentWidth * normalizationScale
+        val normalizedHeight = contentHeight * normalizationScale
+        
         // Match Compose graphicsLayer: translate to top-left, offset to center, rotate/scale
         canvas.translate(layer.x, layer.y)  // Top-left corner
-        canvas.translate(contentWidth / 2f, contentHeight / 2f)  // Offset to center
-        canvas.rotate(layer.rotation)  // Rotate around center
         
-        val sx = if (layer.isFlipped) -layer.scale else layer.scale
-        val sy = layer.scale
-        canvas.scale(sx, sy)  // Scale around center
-        canvas.translate(-contentWidth / 2f, -contentHeight / 2f)  // Back to top-left
+        // CRITICAL FIX: Rotate around the CENTER of the 100dp CONTAINER (baseStickerSizePx)
+        // The UI pivot is at 50dp (Screen Px).
+        // To match this on Bitmap, we must convert 50dp -> Bitmap Px.
+        // Formula: baseStickerSizePx / 2
+        val boxCenter = baseStickerSizePx / 2f
+        canvas.translate(boxCenter, boxCenter)  // Offset to Container Center
+        canvas.rotate(layer.rotation)  // Rotate around Container Center
+        
+        // Apply Scales (Layer Scale + Normalization Scale)
+        val sx = (if (layer.isFlipped) -layer.scale else layer.scale) * normalizationScale
+        val sy = layer.scale * normalizationScale
+        
+        // We scale from the "raw" 0,0 center. 
+        // Since we translated to center, scaling applies to the drawing axes.
+        canvas.scale(sx, sy)
+        
+        // Translate back to top-left of the content relative to the center
+        // Since we want content CENTERED in the container:
+        // Draw Origin should be -contentWidth/2, -contentHeight/2
+        canvas.translate(-contentWidth / 2f, -contentHeight / 2f)
         
         // Create paint with opacity, shadow, and tint
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -439,13 +586,10 @@ class CompositeRenderer(private val context: Context) {
     private fun renderDrawAction(canvas: Canvas, action: DrawAction) {
         when (action) {
             is DrawAction.Path -> {
-                val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = action.path.color
-                    strokeWidth = action.path.strokeWidth
-                    style = Paint.Style.STROKE
-                    strokeCap = Paint.Cap.ROUND
-                    strokeJoin = Paint.Join.ROUND
-                }
+                val isBlur = action.path.blurRadius > 0f
+                val isSpray = action.path.isSpray
+                val isNeon = action.path.isNeon
+                val isHighlighter = action.path.isHighlighter
                 
                 val path = Path().apply {
                     if (action.path.points.isNotEmpty()) {
@@ -455,8 +599,82 @@ class CompositeRenderer(private val context: Context) {
                         }
                     }
                 }
-                
-                canvas.drawPath(path, paint)
+
+                if (isBlur) {
+                    val blurPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        color = action.path.color
+                        style = Paint.Style.STROKE
+                        strokeCap = Paint.Cap.ROUND
+                        strokeJoin = Paint.Join.ROUND
+                    }
+                    val dynamicBlurRadius = action.path.strokeWidth * 0.8f
+                    
+                    // Layer 1: Wide glow
+                    blurPaint.strokeWidth = action.path.strokeWidth + (dynamicBlurRadius * 3f)
+                    blurPaint.alpha = (Color.alpha(action.path.color) * 0.15f).toInt()
+                    canvas.drawPath(path, blurPaint)
+                    
+                    // Layer 2: Medium glow
+                    blurPaint.strokeWidth = action.path.strokeWidth + (dynamicBlurRadius * 1.5f)
+                    blurPaint.alpha = (Color.alpha(action.path.color) * 0.3f).toInt()
+                    canvas.drawPath(path, blurPaint)
+                    
+                    // Layer 3: Core
+                    blurPaint.strokeWidth = action.path.strokeWidth
+                    blurPaint.alpha = (Color.alpha(action.path.color) * 0.5f).toInt()
+                    canvas.drawPath(path, blurPaint)
+                    
+                } else if (isSpray) {
+                    val sprayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        color = action.path.color
+                        strokeWidth = action.path.strokeWidth
+                        style = Paint.Style.STROKE
+                        strokeCap = Paint.Cap.ROUND
+                        strokeJoin = Paint.Join.ROUND
+                    }
+                    val sprayJitter = action.path.strokeWidth * 0.5f
+                    
+                    // Use ComposePathEffect to simulate spray/scatter
+                    sprayPaint.pathEffect = ComposePathEffect(
+                        DiscretePathEffect(sprayJitter / 2f, sprayJitter),
+                        DashPathEffect(floatArrayOf(action.path.strokeWidth * 0.1f, action.path.strokeWidth * 1.5f), 0f)
+                    )
+                    canvas.drawPath(path, sprayPaint)
+                    
+                } else {
+                    // Standard tools (Brush, Neon, Highlighter, Eraser)
+                    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        color = action.path.color
+                        strokeWidth = action.path.strokeWidth
+                        style = Paint.Style.STROKE
+                        strokeCap = Paint.Cap.ROUND
+                        strokeJoin = Paint.Join.ROUND
+                        
+                        // Apply Neon Glow
+                        if (isNeon) {
+                           maskFilter = BlurMaskFilter(15f, BlurMaskFilter.Blur.NORMAL)
+                        }
+                        
+                        // Apply blend mode
+                        when (action.path.blendMode) {
+                            DrawBlendMode.MULTIPLY -> xfermode = PorterDuffXfermode(PorterDuff.Mode.MULTIPLY)
+                            DrawBlendMode.SCREEN -> xfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN)
+                            DrawBlendMode.OVERLAY -> xfermode = PorterDuffXfermode(PorterDuff.Mode.OVERLAY)
+                            DrawBlendMode.ADD -> xfermode = PorterDuffXfermode(PorterDuff.Mode.ADD)
+                            else -> {}
+                        }
+                    }
+                    
+                    canvas.drawPath(path, paint)
+                    
+                    // Render Neon Core
+                    if (isNeon) {
+                         paint.maskFilter = null
+                         paint.color = Color.WHITE
+                         paint.strokeWidth = action.path.strokeWidth / 3f
+                         canvas.drawPath(path, paint)
+                    }
+                }
             }
             is DrawAction.Shape -> {
                 // Shape drawing handled separately
@@ -555,5 +773,35 @@ class CompositeRenderer(private val context: Context) {
                rect.bottom <= bitmap.height &&
                rect.width() > 0 &&
                rect.height() > 0
+    }
+
+    private fun applyTransforms(bitmap: Bitmap, state: EditorState): Bitmap {
+        // If no transforms, return original
+        if (state.rotationAngle == 0f && !state.flipX && !state.flipY) {
+            return bitmap
+        }
+
+        val matrix = Matrix()
+        
+        // 1. Apply Rotation
+        if (state.rotationAngle != 0f) {
+            matrix.postRotate(state.rotationAngle)
+        }
+        
+        // 2. Apply Flip
+        if (state.flipX || state.flipY) {
+            val sx = if (state.flipX) -1f else 1f
+            val sy = if (state.flipY) -1f else 1f
+            matrix.postScale(sx, sy)
+        }
+
+        return try {
+            Bitmap.createBitmap(
+                bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true
+            )
+        } catch (e: Exception) {
+            e.printStackTrace()
+            bitmap // Fallback to original if transform fails (e.g. OOM)
+        }
     }
 }

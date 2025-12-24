@@ -28,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import kotlin.math.roundToInt // Added for coordinate mapping
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -55,6 +56,8 @@ import kotlin.math.PI
 fun StickerBoxComposable(
     layer: StickerLayer,
     isSelected: Boolean,
+    bitmapScale: Float, // NEW
+    bitmapOffset: Offset, // NEW
     onSelect: (String) -> Unit,
     onTransform: (String, androidx.compose.ui.geometry.Offset, Float, Float) -> Unit,
     onTransformEnd: (String) -> Unit, // New callback
@@ -70,17 +73,18 @@ fun StickerBoxComposable(
             // This ensures position is in bitmap coordinate space, not affected by parent scaling
             .offset {
                 androidx.compose.ui.unit.IntOffset(
-                    layer.x.toInt(),
-                    layer.y.toInt()
+                    (layer.x * bitmapScale + bitmapOffset.x).roundToInt(),
+                    (layer.y * bitmapScale + bitmapOffset.y).roundToInt()
                 )
             }
+            .size(100.dp) // CRITICAL FIX: Enforce fixed layout size so handles don't expand bounds and shift pivot
             .graphicsLayer {
                 // Remove translationX/Y - position is now handled by offset modifier
                 // translationX = layer.x  // REMOVED
                 // translationY = layer.y  // REMOVED
                 rotationZ = layer.rotation
-                scaleX = layer.scale * (if (layer.isFlipped) -1f else 1f)
-                scaleY = layer.scale
+                scaleX = layer.scale * bitmapScale * (if (layer.isFlipped) -1f else 1f)
+                scaleY = layer.scale * bitmapScale
                 alpha = layer.opacity  // Apply opacity/transparency
                 
                 // Apply shadow if enabled
@@ -199,8 +203,8 @@ fun StickerBoxComposable(
                             )
                         }
                     } else Modifier
-                )
-                // REMOVED: .padding() - was causing layout shift
+                ),
+            contentAlignment = Alignment.Center // CRITICAL FIX: Center content for correct pivot rotation
         ) {
             if (layer.text != null) {
                 // Emoji / Text Sticker
