@@ -3,7 +3,10 @@ package com.moshitech.workmate.feature.imagestudio.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -38,8 +41,9 @@ fun PhotoEditorBottomNav(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()) // Make scrollable
                 .padding(vertical = 12.dp, horizontal = 8.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+            horizontalArrangement = Arrangement.SpaceEvenly, // This behaves like 'Start' when scrolling, which is fine, or we can use generic Arrangement.spacedBy
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Crop
@@ -50,6 +54,14 @@ fun PhotoEditorBottomNav(
                 onClick = { onToolSelected(EditorTool.CROP) }
             )
             
+            // Adjust
+            BottomNavItem(
+                icon = Icons.Outlined.Tune,
+                label = "Adjust",
+                isSelected = selectedTool == EditorTool.ADJUST,
+                onClick = { onToolSelected(EditorTool.ADJUST) }
+            )
+
             // Filters
             BottomNavItem(
                 icon = Icons.Outlined.FilterVintage,
@@ -66,7 +78,21 @@ fun PhotoEditorBottomNav(
                 onClick = { onToolSelected(EditorTool.STICKERS) }
             )
             
+            // Draw
+            BottomNavItem(
+                icon = Icons.Outlined.Brush,
+                label = "Draw",
+                isSelected = selectedTool == EditorTool.DRAW,
+                onClick = { onToolSelected(EditorTool.DRAW) }
+            )
 
+            // Shapes (Moved here)
+            BottomNavItem(
+                icon = Icons.Outlined.Category, // Use generic shape icon (Category fits shapes well)
+                label = "Shapes",
+                isSelected = selectedTool == EditorTool.SHAPES,
+                onClick = { onToolSelected(EditorTool.SHAPES) }
+            )
             
             // Rotate
             BottomNavItem(
@@ -76,29 +102,14 @@ fun PhotoEditorBottomNav(
                 onClick = { onToolSelected(EditorTool.ROTATE) }
             )
             
-            // Adjust
-            BottomNavItem(
-                icon = Icons.Outlined.Tune,
-                label = "Adjust",
-                isSelected = selectedTool == EditorTool.ADJUST,
-                onClick = { onToolSelected(EditorTool.ADJUST) }
-            )
-            
-            // Text (T)
+            // Text (Coming Soon)
             BottomNavItem(
                 icon = Icons.Outlined.TextFields,
                 label = "Text",
                 customLabel = "T",
                 isSelected = selectedTool == EditorTool.TEXT,
-                onClick = { onToolSelected(EditorTool.TEXT) }
-            )
-            
-            // Draw
-            BottomNavItem(
-                icon = Icons.Outlined.Brush,
-                label = "Draw",
-                isSelected = selectedTool == EditorTool.DRAW,
-                onClick = { onToolSelected(EditorTool.DRAW) }
+                onClick = { onToolSelected(EditorTool.TEXT) },
+                isComingSoon = true // New Flag
             )
         }
     }
@@ -110,14 +121,16 @@ fun BottomNavItem(
     label: String,
     customLabel: String? = null,
     isSelected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    isComingSoon: Boolean = false // New Parameter
 ) {
     Column(
         modifier = Modifier
             .clickable(onClick = onClick)
-            .padding(horizontal = 4.dp, vertical = 2.dp), // Reduced padding
+            .padding(horizontal = 12.dp, vertical = 2.dp) // Little more spacing for scroll
+            .alpha(if (isComingSoon) 0.5f else 1f), // Visual alpha cue
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp) // Tighter spacing
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         val contentColor = if (isSelected) Color(0xFF007AFF) else Color.Gray
         
@@ -140,9 +153,9 @@ fun BottomNavItem(
         
         // Label
         Text(
-            text = label,
+            text = if(isComingSoon) "$label (Soon)" else label,
             color = contentColor,
-            fontSize = 10.sp, // Compact Label
+            fontSize = 10.sp,
             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
         )
     }

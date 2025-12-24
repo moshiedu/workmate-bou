@@ -31,34 +31,8 @@ fun DrawAndShapesToolbar(
     uiState: PhotoEditorUiState,
     viewModel: PhotoEditorViewModel
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFF1E1E1E))
-            .padding(bottom = 16.dp)
-    ) {
-        // 1. Mode Switcher (Paint | Shapes)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            horizontalArrangement = Arrangement.Center
-        ) {
-            ModeSegmentedControl(
-                selectedMode = uiState.activeDrawMode,
-                onModeSelected = { viewModel.setDrawMode(it) }
-            )
-        }
-
-        Divider(color = Color(0xFF333333))
-
-        // 2. Content based on Mode
-        if (uiState.activeDrawMode == DrawMode.PAINT) {
-            PaintToolbar(uiState, viewModel)
-        } else {
-            ShapesToolbar(uiState, viewModel)
-        }
-    }
+    // Direct call to PaintToolbar as Shapes are now separate
+    PaintToolbar(uiState, viewModel)
 }
 
 @Composable

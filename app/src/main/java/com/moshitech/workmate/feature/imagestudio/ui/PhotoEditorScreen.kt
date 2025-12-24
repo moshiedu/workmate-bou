@@ -165,6 +165,7 @@ fun PhotoEditorScreen(
     var showLayerPanel by remember { mutableStateOf(false) }
     var currentBitScale by remember { mutableStateOf(1f) } // Track UI scale for consistent saving
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     // Eyedropper State (Lifted for Toolbar access)
     var eyedropperCallback by remember { mutableStateOf<((Color) -> Unit)?>(null) }
@@ -410,21 +411,27 @@ fun PhotoEditorScreen(
                                     cropImageLauncher.launch(options)
                                 }
                             } else {
-                                currentTab = when (tool) {
-                                    com.moshitech.workmate.feature.imagestudio.components.EditorTool.FILTERS -> EditorTab.FILTERS
-                                    com.moshitech.workmate.feature.imagestudio.components.EditorTool.STICKERS -> EditorTab.STICKERS
+                                when (tool) {
+                                    com.moshitech.workmate.feature.imagestudio.components.EditorTool.FILTERS -> currentTab = EditorTab.FILTERS
+                                    com.moshitech.workmate.feature.imagestudio.components.EditorTool.STICKERS -> currentTab = EditorTab.STICKERS
                                     com.moshitech.workmate.feature.imagestudio.components.EditorTool.SHAPES -> {
+                                        currentTab = EditorTab.SHAPES
+                                        showLayerPanel = false
+                                        // Shape mode in ViewModel might still be useful for other things, but UI is now separate
                                         viewModel.setDrawMode(com.moshitech.workmate.feature.imagestudio.viewmodel.DrawMode.SHAPES)
-                                        EditorTab.DRAW
                                     }
-                                    com.moshitech.workmate.feature.imagestudio.components.EditorTool.ROTATE -> EditorTab.ROTATE
-                                    com.moshitech.workmate.feature.imagestudio.components.EditorTool.ADJUST -> EditorTab.ADJUST
-                                    com.moshitech.workmate.feature.imagestudio.components.EditorTool.TEXT -> EditorTab.TEXT
+                                    com.moshitech.workmate.feature.imagestudio.components.EditorTool.ROTATE -> currentTab = EditorTab.ROTATE
+                                    com.moshitech.workmate.feature.imagestudio.components.EditorTool.ADJUST -> currentTab = EditorTab.ADJUST
+                                    com.moshitech.workmate.feature.imagestudio.components.EditorTool.TEXT -> {
+                                        // currentTab = EditorTab.TEXT
+                                        android.widget.Toast.makeText(context, "Text Tool Coming Soon", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
                                     com.moshitech.workmate.feature.imagestudio.components.EditorTool.DRAW -> {
                                         viewModel.setDrawMode(com.moshitech.workmate.feature.imagestudio.viewmodel.DrawMode.PAINT)
-                                        EditorTab.DRAW
+                                        currentTab = EditorTab.DRAW
+                                        showLayerPanel = false
                                     }
-                                    else -> currentTab
+                                    else -> {} 
                                 }
                             }
                         }
@@ -693,7 +700,6 @@ fun PhotoEditorScreen(
                                                                                 isNeon = uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.NEON,
                                                                                 isMosaic = uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.MOSAIC,
                                                                                 isSpray = uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.SPRAY,
-                                                                                blurRadius = if (uiState.selectedDrawTool == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawTool.BLUR) 10f else 0f
                                                                             )
                                                                         )
                                                                     )
@@ -973,6 +979,7 @@ fun PhotoEditorScreen(
                                                         },
                                                         onTransformEnd = { viewModel.saveToHistory() }, 
                                                         onTextChange = { id, text -> viewModel.updateTextInline(id, text) },
+                                                        onWidthChange = { id, w -> viewModel.updateTextLayerWidth(id, w) },
                                                         onDuplicate = { viewModel.duplicateTextLayer(it) },
                                                         onDelete = { viewModel.removeTextLayer(it) },
                                                     )
@@ -997,6 +1004,9 @@ fun PhotoEditorScreen(
                                                                 panPx.y / combinedScale
                                                             )
                                                             viewModel.updateShapeLayerTransform(id, bitmapPan, zoom, rot)
+                                                        },
+                                                        onTransformEnd = { id ->
+                                                            viewModel.saveToHistory()
                                                         },
                                                         onDelete = { viewModel.deleteShapeLayer(it) }
                                                     )
@@ -1644,17 +1654,10 @@ fun PhotoEditorScreen(
                                 }
                             }
                             EditorTab.SHAPES -> {
-                                // Shapes now handled in Draw tab
-                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Text("Switching to Shapes...", color = Color.White)
-                                    LaunchedEffect(Unit) {
-                                        viewModel.setDrawMode(com.moshitech.workmate.feature.imagestudio.viewmodel.DrawMode.SHAPES)
-                                        currentTab = EditorTab.DRAW
-                                    }
-                                }
+                                com.moshitech.workmate.feature.imagestudio.components.ShapesToolbar(uiState, viewModel)
                             }
                             EditorTab.DRAW -> {
-                                com.moshitech.workmate.feature.imagestudio.components.DrawAndShapesToolbar(uiState, viewModel)
+                                com.moshitech.workmate.feature.imagestudio.components.DrawAndShapesToolbar(uiState, viewModel) // Now just Draw
                             }
                             // EditorTab.SHAPES merged into DRAW
                             EditorTab.ROTATE -> {

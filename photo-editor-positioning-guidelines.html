@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Photo Editor Layer Positioning Guidelines</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
+        h1, h2, h3 { color: #333; }
+        pre { background: #f4f4f4; padding: 10px; border-radius: 5px; overflow-x: auto; }
+        code { font-family: Consolas, monospace; }
+    </style>
+</head>
+<body>
+    <h1>Photo Editor Layer Positioning Guidelines</h1>
+
+    <h2>Overview</h2>
+    <p>These guidelines ensure pixel-perfect positioning for text, sticker, and shape layers in your layer-based photo editor. They resolve drift issues after saving/reloading by maintaining consistent coordinate systems.</p>
+
+    <h2>Core Principle: Bitmap Coordinate System</h2>
+    <ul>
+        <li>All layers (TextLayer, StickerLayer, ShapeLayer, DrawActions) MUST store positions (x, y, points, etc.) in <strong>pure bitmap pixel coordinates</strong> (relative to the original image's top-left corner).</li>
+        <li>UI gestures operate in screen/container coordinates — convert them properly using scale and offset.</li>
+    </ul>
+
+    <h2>1. ViewModel Fixes (Critical for Save Stability)</h2>
+
+    <h3>In PhotoEditorViewModel</h3>
+
+    <h4>transformEditorStateToBitmapCoords (Already Present — Use It!)</h4>
+    <p>Ensure this function transforms all layers:</p>
+    <pre><code>private fun transformEditorStateToBitmapCoords(state: EditorState): EditorState {
+    val scale = getBitmapScale()
+    val (offsetX, offsetY) = getBitmapOffset()
+    
+    return state.copy(
+        textLayers = state.textLayers.map { it.copy(
+            x = (it.x - offsetX) / scale,
+            y = (it.y - offsetY) / scale
+            // Add scale/rotation if needed for child props
+        )},
+        stickerLayers = state.stickerLayers.map { it.copy(
+            x = (it.x - offsetX) / scale,
+            y = (it.y - offsetY) / scale
+        )},
+        shapeLayers = state.shapeLayers.map { it.copy(
+            x = (it.x - offsetX) / scale,
+            y = (it.y - offsetY) / scale
+        )},
+        drawActions = state.drawActions.map { /* Transform points similarly */ }
+    )
+}</code></pre>
+
+    <h4>saveImage(), applyCrop(), applyAllLayers() — Always Use Transformed State</h4>
+    <pre><code>val currentState = getCurrentEditorState()
+val bitmapCoordsState = transformEditorStateToBitmapCoords(currentState)
+
+bitmap = compositeRenderer.renderComposite(
+    baseImage = bitmap,
+    state = bitmapCoordsState,  // ← Use this!
+    cropRect = ...,
+    bitmapScale = bitScale
+)</code></pre>
+
+    <h2>2. Composable Guidelines (TextBox, StickerBox, ShapeBox)</h2>
+
+    <h3>Positioning</h3>
+    <pre><code>.offset {
+    IntOffset(
+        (layer.x * bitmapScale + bitmapOffset.x).roundToInt(),
+        (layer.y * bitmapScale + bitmapOffset.y).roundToInt()
+    )
+}</code></pre>
+    <p>- NEVER use translationX/Y in graphicsLayer for position.</p>
+
+    <h3>Scaling & Rotation</h3>
+    <pre><code>.graphicsLayer {
+    scaleX = layer.scale * (if flipped -1 else 1)
+    scaleY = layer.scale
+    rotationZ = layer.rotation
+    alpha = layer.opacity
+}</code></pre>
+    <p>- Do NOT multiply by bitmapScale here (it's for position only).</p>
+
+    <h3>Size Handling</h3>
+    <ul>
+        <li>Text: Intrinsic (no fixed size)</li>
+        <li>Sticker: Intrinsic or fillMaxSize (no fixed dp)</li>
+        <li>Shape: .size(layer.width.toDp(), layer.height.toDp()) — raw values, no bitmapScale</li>
+    </ul>
+
+    <h3>Gesture Handling (Critical for No Drift)</h3>
+    <p>Use awaitEachGesture with:</p>
+    <ul>
+        <li>Touch slop detection</li>
+        <li>Rotation-aware pan correction:</li>
+    </ul>
+    <pre><code>val correctedPan = Offset(
+    (panChange.x * cos - panChange.y * sin) / bitmapScale,
+    (panChange.x * sin + panChange.y * cos) / bitmapScale
+)</code></pre>
+    <p>- Call onTransform with correctedPan, zoomChange, rotationChange<br>
+    - Call onTransformEnd on gesture end</p>
+
+    <h2>3. Additional Best Practices</h2>
+    <ul>
+        <li>Center content in Box for correct rotation pivot.</li>
+        <li>Use drawBehind for borders/shadows (no layout impact).</li>
+        <li>Handles: Functional delete, flip, resize (distance-based), rotate.</li>
+        <li>Shadows: Prefer Compose shadow modifier with offset trick.</li>
+    </ul>
+
+    <p>Following these ensures layers stay exactly positioned after save, zoom, rotate, or reload.</p>
+</body>
+</html>

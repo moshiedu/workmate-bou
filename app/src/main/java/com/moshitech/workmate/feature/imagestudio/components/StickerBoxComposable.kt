@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -56,263 +57,256 @@ import kotlin.math.PI
 fun StickerBoxComposable(
     layer: StickerLayer,
     isSelected: Boolean,
-    bitmapScale: Float, // NEW
-    bitmapOffset: Offset, // NEW
+    bitmapScale: Float,
+    bitmapOffset: Offset,
     onSelect: (String) -> Unit,
-    onTransform: (String, androidx.compose.ui.geometry.Offset, Float, Float) -> Unit,
-    onTransformEnd: (String) -> Unit, // New callback
+    onTransform: (String, Offset, Float, Float) -> Unit,
+    onTransformEnd: (String) -> Unit,
     onDelete: (String) -> Unit,
-    onFlip: ((String) -> Unit)? = null 
+    onFlip: ((String) -> Unit)? = null,
+    modifier: Modifier = Modifier
 ) {
-    val viewConfiguration = androidx.compose.ui.platform.LocalViewConfiguration.current
     val density = androidx.compose.ui.platform.LocalDensity.current
+    val viewConfiguration = androidx.compose.ui.platform.LocalViewConfiguration.current
 
-        Box(
-        modifier = Modifier
-            // Apply position using offset BEFORE graphicsLayer
-            // This ensures position is in bitmap coordinate space, not affected by parent scaling
+    Box(
+        modifier = modifier
+            // Position in screen coordinates using bitmap coords
             .offset {
-                androidx.compose.ui.unit.IntOffset(
+                IntOffset(
                     (layer.x * bitmapScale + bitmapOffset.x).roundToInt(),
                     (layer.y * bitmapScale + bitmapOffset.y).roundToInt()
                 )
             }
-            .size(100.dp) // CRITICAL FIX: Enforce fixed layout size so handles don't expand bounds and shift pivot
+            // Let content determine size naturally (based on scaled sticker)
+            // Do NOT use fixed .size() here!
             .graphicsLayer {
-                // Remove translationX/Y - position is now handled by offset modifier
-                // translationX = layer.x  // REMOVED
-                // translationY = layer.y  // REMOVED
+                // Visual transforms only
                 rotationZ = layer.rotation
-                scaleX = layer.scale * bitmapScale * (if (layer.isFlipped) -1f else 1f)
-                scaleY = layer.scale * bitmapScale
-                alpha = layer.opacity  // Apply opacity/transparency
-                
-                // Apply shadow if enabled
+                scaleX = layer.scale * (if (layer.isFlipped) -1f else 1f)
+                scaleY = layer.scale
+                alpha = layer.opacity
+
+                // Optional: elevation-based shadow (no offset control)
                 if (layer.hasShadow) {
                     shadowElevation = layer.shadowBlur
-                    // Note: Compose doesn't support shadow offset directly in graphicsLayer
-                    // We'll need to use a different approach for offset shadows
+                    shape = androidx.compose.ui.graphics.RectangleShape
                 }
             }
-            .pointerInput(layer.id) {
-                detectTapGestures(
-                    onTap = { onSelect(layer.id) }
-                )
-            }
-            .pointerInput(layer.id, isSelected) {
+            .pointerInput(layer.id, layer.isLocked || !isSelected) {
+                if (layer.isLocked || !isSelected) return@pointerInput
+
+                // Same robust gesture detection as TextBox
                 awaitEachGesture {
                     var zoom = 1f
                     var pan = Offset.Zero
                     var rotation = 0f
-                    
-                    awaitFirstDown(requireUnconsumed = false)
                     var pastTouchSlop = false
-                    
-                    do {
+
+                    awaitFirstDown(requireUnconsumed = false)
+
+                    while (true) {
                         val event = awaitPointerEvent()
-                        val canceled = event.changes.any { it.isConsumed }
-                        if (!canceled) {
-                            val zoomChange = event.calculateZoom()
-                            val rotationChange = event.calculateRotation()
-                            val panChange = event.calculatePan()
-                            
-                            if (!pastTouchSlop) {
-                                zoom *= zoomChange
-                                rotation += rotationChange
-                                pan += panChange
-                                
-                                val centroidSize = event.calculateCentroidSize(useCurrent = false)
-                                val zoomMotion = abs(1 - zoom) * centroidSize
-                                val rotationMotion = abs(rotation * PI.toFloat() * centroidSize / 180f)
-                                val panMotion = pan.getDistance()
-                                
-                                if (zoomMotion > viewConfiguration.touchSlop ||
-                                    rotationMotion > viewConfiguration.touchSlop ||
-                                    panMotion > viewConfiguration.touchSlop
-                                ) {
-                                    pastTouchSlop = true
-                                }
-                            }
-                            
-                            if (pastTouchSlop) {
-                                if (isSelected) {
-                                    if (zoomChange != 1f || rotationChange != 0f || panChange != Offset.Zero) {
-                                        onTransform(layer.id, panChange, zoomChange, rotationChange)
-                                    }
-                                }
-                                event.changes.forEach { 
-                                    if (it.positionChanged()) { it.consume() } 
-                                }
+                        if (event.changes.any { it.isConsumed }) break
+
+                        val zoomChange = event.calculateZoom()
+                        val rotationChange = event.calculateRotation()
+                        val panChange = event.calculatePan()
+
+                        if (!pastTouchSlop) {
+                            zoom *= zoomChange
+                            rotation += rotationChange
+                            pan += panChange
+
+                            val centroidSize = event.calculateCentroidSize(useCurrent = false)
+                            val zoomMotion = abs(1 - zoom) * centroidSize
+                            val rotationMotion = abs(rotation * Math.PI.toFloat() * centroidSize / 180f)
+                            val panMotion = pan.getDistance()
+
+                            if (zoomMotion > viewConfiguration.touchSlop ||
+                                rotationMotion > viewConfiguration.touchSlop ||
+                                panMotion > viewConfiguration.touchSlop
+                            ) {
+                                pastTouchSlop = true
                             }
                         }
-                    } while (!canceled && event.changes.any { it.pressed })
-                    
-                    // Gesture Ended
-                    if (pastTouchSlop && isSelected) {
+
+                        if (pastTouchSlop) {
+                            // Correct pan for current rotation (prevents drift)
+                            val rad = Math.toRadians(layer.rotation.toDouble())
+                            val cos = Math.cos(rad)
+                            val sin = Math.sin(rad)
+                            val correctedPan = Offset(
+                                (panChange.x * cos - panChange.y * sin).toFloat(),
+                                (panChange.x * sin + panChange.y * cos).toFloat()
+                            )
+
+                            onTransform(layer.id, correctedPan, zoomChange, rotationChange)
+                            event.changes.forEach { if (it.positionChanged()) it.consume() }
+                        }
+
+                        if (!event.changes.any { it.pressed }) break
+                    }
+
+                    if (pastTouchSlop) {
                         onTransformEnd(layer.id)
                     }
                 }
             }
-     ) {
-        // Sticker Content
+            .pointerInput(layer.id) {
+                detectTapGestures { onSelect(layer.id) }
+            }
+    ) {
+        // Sticker Visual Content
         Box(
             modifier = Modifier
+                // Center content so rotation pivot is correct
+                .size(100.dp) // Base size for the sticker content itself
+                .padding(8.dp) // Breathing room for handles
+                // Custom shadow with offset support
                 .then(
-                    // Apply shadow using drawBehind for custom shadow rendering
                     if (layer.hasShadow) {
-                        Modifier.drawBehind {
-                            val shadowColor = androidx.compose.ui.graphics.Color(layer.shadowColor)
-                            val blurRadius = layer.shadowBlur.dp.toPx()
-                            
-                            // Draw shadow by drawing the content multiple times with offset and blur
-                            // This is a simple approximation - for better quality, use BlurMaskFilter
-                            drawCircle(
-                                color = shadowColor.copy(alpha = 0.3f),
-                                radius = size.minDimension / 2 + blurRadius,
-                                center = center + androidx.compose.ui.geometry.Offset(layer.shadowOffsetX, layer.shadowOffsetY)
+                        Modifier
+                            .offset(
+                                x = with(density) { layer.shadowOffsetX.toDp() },
+                                y = with(density) { layer.shadowOffsetY.toDp() }
                             )
-                        }
+                            .shadow(
+                                elevation = layer.shadowBlur.dp,
+                                shape = androidx.compose.ui.graphics.RectangleShape,
+                                ambientColor = Color(layer.shadowColor),
+                                spotColor = Color(layer.shadowColor)
+                            )
+                            .offset(
+                                x = with(density) { -layer.shadowOffsetX.toDp() },
+                                y = with(density) { -layer.shadowOffsetY.toDp() }
+                            )
                     } else Modifier
                 )
+                // Selection dashed border (visual only)
                 .then(
-                    // CRITICAL FIX: Draw selection border using drawBehind (pure visual overlay)
-                    // DO NOT use .border() modifier as it affects layout measurement
                     if (isSelected) {
                         Modifier.drawBehind {
-                            val strokeWidth = 2.dp.toPx()
-                            val pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(
-                                floatArrayOf(10f, 10f), 0f
-                            )
                             drawRect(
-                                color = androidx.compose.ui.graphics.Color.White,
+                                color = Color.White,
                                 style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                    width = strokeWidth,
-                                    pathEffect = pathEffect
+                                    width = 2.dp.toPx(),
+                                    pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
                                 )
                             )
                         }
                     } else Modifier
                 )
+                // User-defined border
                 .then(
-                    // Apply border if enabled (non-selection border)
                     if (layer.hasBorder) {
                         Modifier.drawBehind {
                             drawRect(
-                                color = androidx.compose.ui.graphics.Color(layer.borderColor),
+                                color = Color(layer.borderColor),
                                 style = androidx.compose.ui.graphics.drawscope.Stroke(width = layer.borderWidth)
                             )
                         }
                     } else Modifier
                 ),
-            contentAlignment = Alignment.Center // CRITICAL FIX: Center content for correct pivot rotation
+            contentAlignment = Alignment.Center
         ) {
             if (layer.text != null) {
-                // Emoji / Text Sticker
                 Text(
                     text = layer.text,
-                    fontSize = 64.sp, // Base size for emoji
-                    modifier = if (layer.hasTint) {
-                        Modifier.drawWithContent {
-                            drawContent()
-                            // Draw tint overlay on top (only where content exists)
-                            drawRect(
-                                color = androidx.compose.ui.graphics.Color(layer.tintColor).copy(alpha = layer.tintStrength),
-                                blendMode = androidx.compose.ui.graphics.BlendMode.SrcAtop
-                            )
-                        }
-                    } else Modifier
-                )
-            } else if (layer.resId != 0) {
-                // Drawable Sticker  
-                Image(
-                    painter = painterResource(id = layer.resId),
-                    contentDescription = null,
-                    modifier = Modifier.size(100.dp)
+                    fontSize = 80.sp, // Adjust base size as needed
+                    color = if (layer.hasTint) Color.Unspecified else Color.Black,
+                    modifier = Modifier
                         .then(
                             if (layer.hasTint) {
                                 Modifier.drawWithContent {
                                     drawContent()
-                                    // Draw tint overlay on top (only where content exists)
                                     drawRect(
-                                        color = androidx.compose.ui.graphics.Color(layer.tintColor).copy(alpha = layer.tintStrength),
+                                        Color(layer.tintColor).copy(alpha = layer.tintStrength),
                                         blendMode = androidx.compose.ui.graphics.BlendMode.SrcAtop
                                     )
                                 }
                             } else Modifier
-                        ),
-                    contentScale = ContentScale.Fit
+                        )
+                )
+            } else if (layer.resId != 0) {
+                Image(
+                    painter = painterResource(id = layer.resId),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .matchParentSize()
+                        .then(
+                            if (layer.hasTint) {
+                                Modifier.drawWithContent {
+                                    drawContent()
+                                    drawRect(
+                                        Color(layer.tintColor).copy(alpha = layer.tintStrength),
+                                        blendMode = androidx.compose.ui.graphics.BlendMode.SrcAtop
+                                    )
+                                }
+                            } else Modifier
+                        )
                 )
             }
         }
 
-        // Selection Controls (Handles)
-        if (isSelected) {
-            // Delete Handle (Top Left)
-            Box(
+        // Selection Handles
+        if (isSelected && !layer.isLocked) {
+            val handleSize = 32.dp
+            val handleOffset = 16.dp
+
+            // Delete (Top-Left)
+            IconButton(
+                onClick = { onDelete(layer.id) },
                 modifier = Modifier
-                    .offset(x = (-12).dp, y = (-12).dp)
-                    .size(24.dp)
+                    .offset(x = -handleOffset, y = -handleOffset)
+                    .size(handleSize)
                     .background(Color.Red, CircleShape)
                     .align(Alignment.TopStart)
-                    .pointerInput(Unit) {
-                        detectTapGestures { onDelete(layer.id) }
-                    },
-                contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    Icons.Default.Close,
-                    contentDescription = "Delete",
-                    tint = Color.White,
-                    modifier = Modifier.size(14.dp)
-                )
-            }
-            
-            // Flip Handle (Top Right)
-             Box(
-                modifier = Modifier
-                    .offset(x = 12.dp, y = (-12).dp)
-                    .size(24.dp)
-                    .background(Color.Blue, CircleShape)
-                    .align(Alignment.TopEnd)
-                    .pointerInput(Unit) { // Flip logic
-                        detectTapGestures { onFlip?.invoke(layer.id) }
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                 Icon(
-                    Icons.Default.Flip, 
-                    contentDescription = "Flip",
-                    tint = Color.White,
-                    modifier = Modifier.size(14.dp)
-                )
+                Icon(Icons.Default.Close, null, tint = Color.White)
             }
 
-            // Resize Handle (Bottom Right)
+            // Flip (Top-Right)
+            if (onFlip != null) {
+                IconButton(
+                    onClick = { onFlip(layer.id) },
+                    modifier = Modifier
+                        .offset(x = handleOffset, y = -handleOffset)
+                        .size(handleSize)
+                        .background(Color(0xFF2196F3), CircleShape)
+                        .align(Alignment.TopEnd)
+                ) {
+                    Icon(Icons.Default.Flip, null, tint = Color.White)
+                }
+            }
+
+            // Resize/Rotate Handle (Bottom-Right)
             Box(
                 modifier = Modifier
-                    .offset(x = 12.dp, y = 12.dp)
-                    .size(24.dp)
-                    .background(Color.Green, CircleShape)
+                    .offset(x = handleOffset, y = handleOffset)
+                    .size(handleSize)
+                    .background(Color.White, CircleShape)
+                    .border(2.dp, Color(0xFF2196F3), CircleShape)
                     .align(Alignment.BottomEnd)
                     .pointerInput(Unit) {
                         detectDragGestures(
                             onDragEnd = { onTransformEnd(layer.id) }
                         ) { change, dragAmount ->
                             change.consume()
-                            
-                            // Scale Logic only: Dragging Outward (Positive X/Y) increases size
-                            val scaleChange = 1f + (dragAmount.x + dragAmount.y) / 200f
-                            onTransform(layer.id, androidx.compose.ui.geometry.Offset.Zero, scaleChange, 0f)
+
+                            // Better scale: use distance from center
+                            val scaleFactor = 1f + dragAmount.getDistance() / 200f
+                            val direction = dragAmount / dragAmount.getDistance()
+                            val outward = direction.x + direction.y > 0
+
+                            val finalScale = if (outward) scaleFactor else 1f / scaleFactor.coerceAtLeast(0.1f)
+                            onTransform(layer.id, Offset.Zero, finalScale, 0f)
                         }
                     },
                 contentAlignment = Alignment.Center
             ) {
-                 Icon(
-                    Icons.Default.OpenInFull, // Diagonal arrows for Resize
-                    contentDescription = "Resize",
-                    tint = Color.White,
-                    modifier = Modifier.size(14.dp)
-                )
+                Icon(Icons.Default.OpenInFull, null, tint = Color(0xFF2196F3), modifier = Modifier.size(20.dp))
             }
         }
     }

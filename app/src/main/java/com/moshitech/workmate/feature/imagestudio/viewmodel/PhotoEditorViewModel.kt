@@ -95,7 +95,7 @@ data class TextLayer(
     val isGradient: Boolean = false,
     val gradientColors: List<Int> = listOf(android.graphics.Color.BLUE, android.graphics.Color.MAGENTA),
     val gradientAngle: Float = 0f,
-    val fontSize: Float = 24f,
+    val fontSize: Float = 50f,
     val isBold: Boolean = false,
     val isItalic: Boolean = false,
     val isUnderline: Boolean = false,
@@ -103,7 +103,7 @@ data class TextLayer(
     val isAllCaps: Boolean = false,
     val isSmallCaps: Boolean = false,
     val letterSpacing: Float = 0f,
-    val lineHeight: Float = 1.2f,
+    val lineHeight: Float = 1.0f,
     val alignment: TextAlignment = TextAlignment.CENTER,
     val verticalAlignment: VerticalAlignment = VerticalAlignment.MIDDLE,
     val textOrientation: TextOrientation = TextOrientation.HORIZONTAL,
@@ -1760,6 +1760,31 @@ fun updateOpacity(opacity: Float) {
             )
         }
         saveToHistory()
+    }
+    
+    fun updateTextLayerWidth(id: String, newWidth: Float) {
+         _uiState.update { state ->
+             val updatedLayers = state.textLayers.map { layer ->
+                 if (layer.id == id) {
+                     layer.copy(width = newWidth)
+                 } else {
+                     layer
+                 }
+             }
+             state.copy(textLayers = updatedLayers)
+         }
+         // saveToHistory() // We might not want to save on every drag frame?
+         // But the UI calls it on 'onWidthChange'.
+         // The UI calls `onTransformEnd` which calls `saveToHistory`.
+         // `onWidthChange` is called DURING drag.
+         // So we should NOT call saveToHistory here if we want to avoid flooding history stacks
+         // OR if onWidthChange is only called on end?
+         // In TextBoxComposable, I implemented `detectDragGestures`.
+         // It calls `onWidthChange` on every drag event.
+         // So WE SHOULD NOT call `saveToHistory` inside this function.
+         // `onTransformEnd` is called at the end of the gesture. 
+         // `PhotoEditorScreen` hooks `onTransformEnd` -> `viewModel.saveToHistory()`.
+         // So this is correct: Just update state.
     }
     
 
