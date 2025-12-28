@@ -1,0 +1,6 @@
+    // Update mosaic intensity (0-100 UI range mapped to 0.01-0.20 scale)
+    fun updateMosaicIntensity(intensity: Float) {
+        _uiState.value = _uiState.value.copy(
+            mosaicIntensity = (intensity / 100f * 0.19f + 0.01f).coerceIn(0.01f, 0.20f)
+        )
+    }

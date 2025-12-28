@@ -78,11 +78,12 @@ sealed class Screen(val route: String) {
 @Composable
 fun WorkmateNavigation(
     navController: NavHostController = rememberNavController(),
-    mainViewModel: MainViewModel
+    mainViewModel: MainViewModel,
+    startDestination: String = Screen.Splash.route
 ) {
     NavHost(
         navController = navController,
-        startDestination = Screen.Splash.route
+        startDestination = startDestination
     ) {
         composable(Screen.Splash.route) {
             SplashScreen(navController = navController)

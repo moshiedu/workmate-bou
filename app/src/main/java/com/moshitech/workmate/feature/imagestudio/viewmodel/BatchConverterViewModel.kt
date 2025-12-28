@@ -23,7 +23,8 @@ import kotlinx.coroutines.isActive
 enum class BatchScreenState {
     INPUT,
     SUCCESS,
-    DETAIL
+    DETAIL,
+    HISTORY
 }
 
 data class ConvertedImage(
@@ -42,6 +43,11 @@ data class ConvertedImage(
     val height: Int = 0
 )
 
+data class FailedImage(
+    val uri: Uri,
+    val reason: String
+)
+
 data class BatchConverterUiState(
     val selectedImages: List<Uri> = emptyList(),
     val format: CompressFormat = CompressFormat.JPEG,
@@ -56,6 +62,7 @@ data class BatchConverterUiState(
     val message: String? = null,
     val screenState: BatchScreenState = BatchScreenState.INPUT,
     val convertedImages: List<ConvertedImage> = emptyList(),
+    val failedImages: List<FailedImage> = emptyList(),
     val selectedDetailImage: ConvertedImage? = null,
     val savedFolderUri: Uri? = null,
     val lastSavedLocation: Uri? = null,
@@ -67,11 +74,17 @@ data class BatchConverterUiState(
     val showGuide: Boolean = false,
     val currentFileProgress: Float = 0f,
     val keepMetadata: Boolean = false,
-    val presets: List<ConversionPreset> = emptyList()
+    val pdfPageSize: com.moshitech.workmate.feature.imagestudio.data.PdfPageSize = com.moshitech.workmate.feature.imagestudio.data.PdfPageSize.ORIGINAL,
+    val pdfOrientation: com.moshitech.workmate.feature.imagestudio.data.PdfOrientation = com.moshitech.workmate.feature.imagestudio.data.PdfOrientation.AUTO,
+    val presets: List<ConversionPreset> = emptyList(),
+    val history: List<com.moshitech.workmate.feature.imagestudio.data.local.ConversionHistoryEntity> = emptyList()
 )
 
 class BatchConverterViewModel(application: Application) : AndroidViewModel(application) {
     
+    private val _uiState = MutableStateFlow(BatchConverterUiState())
+    val uiState: StateFlow<BatchConverterUiState> = _uiState.asStateFlow()
+
     private var conversionJob: kotlinx.coroutines.Job? = null
 
     // Reuse existing repository for now as logic is same
@@ -94,10 +107,56 @@ class BatchConverterViewModel(application: Application) : AndroidViewModel(appli
                  }
             }
         }
+        
+        viewModelScope.launch {
+            preferencesRepository.customPresets.collect { presets ->
+                _uiState.update { it.copy(presets = presets) }
+            }
+        }
+        
+        // History Collection
+        viewModelScope.launch {
+            repository.getHistory().collect { historyList ->
+                 _uiState.update { it.copy(history = historyList) }
+            }
+        }
+    }
+    
+    // Check if file exists
+    fun isFileAvailable(uriString: String): Boolean {
+        return try {
+            val uri = Uri.parse(uriString)
+            androidx.documentfile.provider.DocumentFile.fromSingleUri(getApplication(), uri)?.exists() == true ||
+            java.io.File(uri.path ?: "").exists()
+        } catch (e: Exception) {
+            false
+        }
     }
 
-    private val _uiState = MutableStateFlow(BatchConverterUiState())
-    val uiState: StateFlow<BatchConverterUiState> = _uiState.asStateFlow()
+    fun openFile(uriString: String, context: android.content.Context) {
+        try {
+            val uri = Uri.parse(uriString)
+            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "image/*")
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            _uiState.update { it.copy(message = "Could not open file") }
+        }
+    }
+    
+    fun deleteHistoryItem(item: com.moshitech.workmate.feature.imagestudio.data.local.ConversionHistoryEntity) {
+        viewModelScope.launch {
+            repository.deleteHistoryItem(item)
+        }
+    }
+    
+    fun clearHistory() {
+        viewModelScope.launch {
+             repository.clearHistory()
+        }
+    }
 
     fun onImagesSelected(uris: List<Uri>) {
         val currentCount = _uiState.value.selectedImages.size
@@ -117,6 +176,19 @@ class BatchConverterViewModel(application: Application) : AndroidViewModel(appli
 fun removeImage(uri: Uri) {
     _uiState.update { it.copy(selectedImages = it.selectedImages - uri) }
     recalculateMaxDimensions()
+}
+
+fun moveImage(fromIndex: Int, toIndex: Int) {
+    val list = _uiState.value.selectedImages.toMutableList()
+    if (fromIndex in list.indices && toIndex in list.indices) {
+        val item = list.removeAt(fromIndex)
+        list.add(toIndex, item)
+        _uiState.update { it.copy(selectedImages = list) }
+    }
+}
+
+fun updateImageOrder(newOrder: List<Uri>) {
+    _uiState.update { it.copy(selectedImages = newOrder) }
 }
 
 private fun recalculateMaxDimensions() {
@@ -152,6 +224,10 @@ private fun recalculateMaxDimensions() {
         if (_uiState.value.maintainAspectRatio && width.isNotBlank()) {
             val widthInt = width.toIntOrNull()
             if (widthInt != null) {
+                if (widthInt > 8192) {
+                     _uiState.update { it.copy(width = "8192") }
+                     return
+                }
                 // Use 16:9 as default ratio for UI calculation
                 val calculatedHeight = (widthInt * 9 / 16).toString()
                 _uiState.update { it.copy(height = calculatedHeight) }
@@ -164,6 +240,10 @@ private fun recalculateMaxDimensions() {
         if (_uiState.value.maintainAspectRatio && height.isNotBlank()) {
             val heightInt = height.toIntOrNull()
             if (heightInt != null) {
+                if (heightInt > 8192) {
+                    _uiState.update { it.copy(height = "8192") }
+                    return
+                }
                 // Use 16:9 as default ratio for UI calculation
                 val calculatedWidth = (heightInt * 16 / 9).toString()
                 _uiState.update { it.copy(width = calculatedWidth) }
@@ -175,6 +255,14 @@ private fun recalculateMaxDimensions() {
     fun toggleTargetSizeUnit() { _uiState.update { it.copy(isTargetSizeInMb = !it.isTargetSizeInMb) } }
     fun toggleAspectRatio() { _uiState.update { it.copy(maintainAspectRatio = !it.maintainAspectRatio) } }
     fun toggleKeepMetadata() { _uiState.update { it.copy(keepMetadata = !it.keepMetadata) } }
+    
+    fun updatePdfPageSize(size: com.moshitech.workmate.feature.imagestudio.data.PdfPageSize) {
+        _uiState.update { it.copy(pdfPageSize = size) }
+    }
+    
+    fun updatePdfOrientation(orientation: com.moshitech.workmate.feature.imagestudio.data.PdfOrientation) {
+        _uiState.update { it.copy(pdfOrientation = orientation) }
+    }
     
     fun savePreset(name: String) {
         val state = _uiState.value
@@ -250,12 +338,15 @@ private fun recalculateMaxDimensions() {
                 height = if (state.height.isBlank()) null else state.height.toIntOrNull(),
                 maintainAspectRatio = state.maintainAspectRatio,
                 targetSizeKB = targetSizeKb,
-                keepMetadata = state.keepMetadata
+                keepMetadata = state.keepMetadata,
+                pdfPageSize = state.pdfPageSize,
+                pdfOrientation = state.pdfOrientation
             )
 
 
 
             val results = mutableListOf<ConvertedImage>()
+            val failures = mutableListOf<FailedImage>()
             
             // PDF Logic
             if (state.format == CompressFormat.PDF) {
@@ -290,8 +381,11 @@ private fun recalculateMaxDimensions() {
                          originalType = "Multiple",
                          sizeBytes = sizeBytes
                      ))
+                     
+                     // History removed from here. Added in saveAllToDevice
+
                  }.onFailure { e ->
-                     // Handle failure
+                     failures.add(FailedImage(Uri.EMPTY, "PDF Merge Failed: ${e.message}"))
                  }
                  
                  _uiState.update { 
@@ -300,6 +394,7 @@ private fun recalculateMaxDimensions() {
                         conversionMessage = "Done!", 
                         progress = 1f, 
                         convertedImages = results,
+                        failedImages = failures,
                         screenState = BatchScreenState.SUCCESS,
                         processedCount = if(result.isSuccess) state.selectedImages.size else 0
                     ) 
@@ -339,6 +434,10 @@ private fun recalculateMaxDimensions() {
                     val convertedUri = result.getOrThrow()
                     // Get details of converted image
                     val details = getImageDetails(convertedUri)
+                    
+                    // History removed from here. Added in saveAllToDevice
+
+
                     results.add(ConvertedImage(
                         uri = convertedUri,
                         originalUri = uri,
@@ -353,6 +452,8 @@ private fun recalculateMaxDimensions() {
                         width = details.width,
                         height = details.height
                     ))
+                } else {
+                    failures.add(FailedImage(uri, result.exceptionOrNull()?.message ?: "Unknown Error"))
                 }
                 
                 // Update progress after each item
@@ -367,9 +468,14 @@ private fun recalculateMaxDimensions() {
                         conversionMessage = null,
                         selectedImages = emptyList(),
                         convertedImages = results,
+                        failedImages = failures,
                         screenState = BatchScreenState.SUCCESS,
                         progress = 1f
                     ) 
+                }
+                
+                if (state.savedFolderUri != null) {
+                    saveAllToDevice(state.savedFolderUri)
                 }
             }
         }
@@ -386,9 +492,16 @@ private fun recalculateMaxDimensions() {
             ) 
         }
     }
+
+
+
+    fun setScreenState(state: BatchScreenState) {
+        _uiState.update { it.copy(screenState = state) }
+    }
     
-    fun saveAllToDevice(context: android.content.Context, treeUri: Uri?) {
+    fun saveAllToDevice(treeUri: Uri?) {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val context = getApplication<Application>()
             val state = _uiState.value
             var savedCount = 0
             
@@ -428,7 +541,19 @@ private fun recalculateMaxDimensions() {
                                  }
                              }
                              savedCount++
-                         }
+                             
+                             // Add to History
+                             try {
+                                 repository.addToHistory(
+                                     originalUri = image.originalUri,
+                                     outputUri = newFile.uri,
+                                     format = if (image.type == "application/pdf") CompressFormat.PDF else CompressFormat.valueOf(image.type.substringAfter("/").uppercase().let { if(it=="JPEG") "JPEG" else if(it=="PNG") "PNG" else if(it=="WEBP") "WEBP" else "JPEG" }),
+                                     sizeBytes = image.sizeBytes, // Best effort from conversion time
+                                     width = image.width,
+                                     height = image.height
+                                 )
+                             } catch (e: Exception) { e.printStackTrace() }
+                          }
 
                          // Persist location & Take Permission if needed
                          try {
@@ -474,6 +599,19 @@ private fun recalculateMaxDimensions() {
                                  resolver.update(itemUri, values, null, null)
                              }
                              savedCount++
+
+                             // Add to History
+                             try {
+                                 repository.addToHistory(
+                                     originalUri = image.originalUri,
+                                     outputUri = itemUri,
+                                     format = if (image.type == "application/pdf") CompressFormat.PDF else CompressFormat.valueOf(image.type.substringAfter("/").uppercase().let { if(it=="JPEG") "JPEG" else if(it=="PNG") "PNG" else if(it=="WEBP") "WEBP" else "JPEG" }),
+                                     sizeBytes = image.sizeBytes,
+                                     width = image.width,
+                                     height = image.height
+                                 )
+                             } catch (e: Exception) { e.printStackTrace() }
+
                          }
                      }
                  } catch (e: Exception) {
@@ -485,6 +623,26 @@ private fun recalculateMaxDimensions() {
         }
     }
     
+    fun updateOutputFolder(uri: Uri) {
+        try {
+            val takeFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            getApplication<Application>().contentResolver.takePersistableUriPermission(uri, takeFlags)
+        } catch (e: Exception) { e.printStackTrace() }
+
+        _uiState.update { it.copy(savedFolderUri = uri, lastSavedLocation = uri) }
+        viewModelScope.launch {
+            preferencesRepository.setBatchOutputFolder(uri.toString())
+        }
+    }
+
+    fun clearOutputFolder() {
+        _uiState.update { it.copy(savedFolderUri = null, lastSavedLocation = null) }
+        viewModelScope.launch {
+            preferencesRepository.setBatchOutputFolder("")
+        }
+    }
+
     fun resetState() {
         _uiState.update { 
             it.copy(
@@ -492,7 +650,8 @@ private fun recalculateMaxDimensions() {
                 convertedImages = emptyList(),
                 selectedImages = emptyList(),
                 selectedDetailImage = null,
-                lastSavedLocation = null
+                failedImages = emptyList()
+                // Keep savedFolderUri
             )
         }
     }

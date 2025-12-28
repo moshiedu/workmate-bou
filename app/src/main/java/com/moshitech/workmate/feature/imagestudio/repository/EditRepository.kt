@@ -14,6 +14,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 import kotlin.math.max
+import androidx.core.graphics.createBitmap
 
 class EditRepository(private val context: Context) {
 
@@ -50,21 +51,24 @@ class EditRepository(private val context: Context) {
         saturation: Float, // 0.0 to 2.0 (1 is default)
         filterMatrix: FloatArray? = null,
         rotationAngle: Float = 0f,
+        flipX: Boolean = false, 
+        flipY: Boolean = false,
         hue: Float = 0f,           // -180 to 180
         temperature: Float = 0f,   // -1 to 1
         tint: Float = 0f           // -1 to 1
     ): Bitmap = withContext(Dispatchers.Default) {
-        // Apply rotation first if needed
-        val rotatedBitmap = if (rotationAngle != 0f) {
+        // Apply rotation/flip first if needed
+        val rotatedBitmap = if (rotationAngle != 0f || flipX || flipY) {
             val matrix = android.graphics.Matrix().apply {
                 postRotate(rotationAngle)
+                postScale(if (flipX) -1f else 1f, if (flipY) -1f else 1f)
             }
             Bitmap.createBitmap(original, 0, 0, original.width, original.height, matrix, true)
         } else {
             original
         }
         
-        val bitmap = Bitmap.createBitmap(rotatedBitmap.width, rotatedBitmap.height, Bitmap.Config.ARGB_8888)
+        val bitmap = createBitmap(rotatedBitmap.width, rotatedBitmap.height)
         val canvas = Canvas(bitmap)
         val paint = Paint()
 

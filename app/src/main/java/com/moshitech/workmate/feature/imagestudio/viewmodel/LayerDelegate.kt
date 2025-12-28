@@ -1,0 +1,313 @@
+package com.moshitech.workmate.feature.imagestudio.viewmodel
+
+import androidx.compose.ui.geometry.Offset
+import com.moshitech.workmate.feature.imagestudio.data.Layer
+import com.moshitech.workmate.feature.imagestudio.data.LayerType
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
+import java.util.UUID
+
+class LayerDelegate(
+    private val _uiState: MutableStateFlow<PhotoEditorUiState>,
+    private val onApplyNeeded: (Boolean) -> Unit
+) {
+
+    // Helper to get all layers for Z-index calculation
+    fun getAllLayers(): List<Layer> {
+        val state = _uiState.value
+        return buildList {
+            addAll(state.textLayers.map { Layer.Text(it) })
+            addAll(state.stickerLayers.map { Layer.Sticker(it) })
+            addAll(state.shapeLayers.map { Layer.Shape(it) })
+        }
+    }
+
+    // ================= TEXT LAYERS =================
+    
+    fun addTextLayer(text: String, x: Float, y: Float, color: Int) {
+        val nextZIndex = (getAllLayers().maxOfOrNull { it.zIndex } ?: -1) + 1
+        
+        val newLayer = TextLayer(
+            text = text,
+            x = x,
+            y = y,
+            color = color,
+            zIndex = nextZIndex
+        )
+        _uiState.update { 
+            it.copy(
+                textLayers = it.textLayers + newLayer,
+                selectedTextLayerId = newLayer.id,
+                editingTextLayerId = null,
+                showFloatingToolbar = true,
+                showTextDialog = false
+            ) 
+        }
+        onApplyNeeded(true)
+    }
+
+    fun updateTextProperty(id: String, saveHistory: Boolean = true, update: (TextLayer) -> TextLayer) {
+        _uiState.update { state ->
+            val updatedLayers = state.textLayers.map { layer ->
+                if (layer.id == id) update(layer) else layer
+            }
+            state.copy(textLayers = updatedLayers)
+        }
+        if (saveHistory) onApplyNeeded(true)
+    }
+
+    fun duplicateTextLayer(id: String) {
+        val layerToDuplicate = _uiState.value.textLayers.find { it.id == id } ?: return
+        val newLayer = layerToDuplicate.copy(
+            id = UUID.randomUUID().toString(),
+            x = layerToDuplicate.x + 40f,
+            y = layerToDuplicate.y + 40f
+        )
+        _uiState.update { it.copy(
+            textLayers = it.textLayers + newLayer,
+            selectedTextLayerId = newLayer.id
+        ) }
+        onApplyNeeded(true)
+    }
+    
+    fun enterTextEditMode(id: String) {
+        val layer = _uiState.value.textLayers.find { it.id == id }
+        if (layer?.isLocked == true) return
+        
+        _uiState.update { 
+            it.copy(
+                selectedTextLayerId = id,
+                editingTextLayerId = id,
+                showFloatingToolbar = false
+            ) 
+        }
+    }
+    
+    fun exitTextEditMode() {
+        _uiState.update { 
+            it.copy(
+                editingTextLayerId = null,
+                showFloatingToolbar = _uiState.value.selectedTextLayerId != null
+            ) 
+        }
+        onApplyNeeded(true)
+    }
+    
+    fun deselectText() {
+        _uiState.update { it.copy(selectedTextLayerId = null, editingTextLayerId = null, showFloatingToolbar = false) }
+    }
+
+    // ================= STICKER LAYERS =================
+
+    fun addSticker(resId: Int = 0, text: String? = null) {
+        val nextZIndex = (getAllLayers().maxOfOrNull { it.zIndex } ?: -1) + 1
+        val bitmap = _uiState.value.originalBitmap
+        val centerX = bitmap?.width?.toFloat()?.div(2f) ?: 500f
+        val centerY = bitmap?.height?.toFloat()?.div(2f) ?: 500f
+
+        val newSticker = StickerLayer(
+            resId = resId,
+            text = text,
+            x = centerX, 
+            y = centerY, 
+            zIndex = nextZIndex
+        )
+        _uiState.update { it.copy(
+            stickerLayers = it.stickerLayers + newSticker,
+            selectedStickerLayerId = newSticker.id,
+            selectedTextLayerId = null
+        ) }
+        onApplyNeeded(true)
+    }
+
+    fun removeSticker(id: String) {
+        _uiState.update { it.copy(
+            stickerLayers = it.stickerLayers.filter { layer -> layer.id != id },
+            selectedStickerLayerId = null
+        ) }
+        onApplyNeeded(true)
+    }
+    
+    fun selectSticker(id: String) {
+         _uiState.update { it.copy(
+            selectedStickerLayerId = id,
+            selectedTextLayerId = null,
+            editingTextLayerId = null
+        ) }
+    }
+    
+    fun deselectSticker() {
+        _uiState.update { it.copy(selectedStickerLayerId = null) }
+    }
+    
+    fun flipSticker(id: String) {
+        _uiState.update { state ->
+            state.copy(
+                stickerLayers = state.stickerLayers.map { layer ->
+                    if (layer.id == id && !layer.isLocked) layer.copy(isFlipped = !layer.isFlipped)
+                    else layer
+                }
+            )
+        }
+    }
+
+    // ================= SHAPE LAYERS =================
+    
+    fun addShapeLayer(type: ShapeType) {
+        val bitmap = _uiState.value.originalBitmap ?: _uiState.value.previewBitmap ?: return
+        val bmpW = bitmap.width.toFloat()
+        val bmpH = bitmap.height.toFloat()
+        val nextZIndex = (getAllLayers().maxOfOrNull { it.zIndex } ?: -1) + 1
+        
+        val shapeSize = minOf(bmpW, bmpH) / 3f
+        val width = if (type == ShapeType.LINE || type == ShapeType.ARROW) shapeSize * 0.8f else shapeSize
+        val height = if (type == ShapeType.LINE || type == ShapeType.ARROW) 20f else shapeSize
+        
+        val centerX = bmpW / 2f
+        val centerY = bmpH / 2f
+        val x = centerX - width / 2f
+        val y = centerY - (if(type == ShapeType.LINE || type == ShapeType.ARROW) shapeSize/2f else height/2f)
+
+        val newShape = ShapeLayer(
+            type = type,
+            x = x, 
+            y = y, 
+            width = width, 
+            height = if(type == ShapeType.LINE || type == ShapeType.ARROW) shapeSize else height,
+            color = _uiState.value.currentDrawColor,
+            strokeWidth = _uiState.value.currentStrokeWidth,
+            strokeStyle = _uiState.value.currentStrokeStyle,
+            shadowColor = _uiState.value.currentShadowColor,
+            shadowBlur = _uiState.value.currentShadowBlur,
+            shadowX = _uiState.value.currentShadowX,
+            shadowY = _uiState.value.currentShadowY,
+            zIndex = nextZIndex
+        )
+        _uiState.update { 
+            it.copy(
+                shapeLayers = it.shapeLayers + newShape,
+                selectedShapeLayerId = newShape.id,
+                selectedTextLayerId = null,
+                selectedStickerLayerId = null
+            ) 
+        }
+        onApplyNeeded(true)
+    }
+
+    fun deselectShape() {
+        _uiState.update { it.copy(selectedShapeLayerId = null) }
+    }
+
+    fun duplicateShape(id: String) {
+        val shapeToDuplicate = _uiState.value.shapeLayers.find { it.id == id } ?: return
+        val newShape = shapeToDuplicate.copy(
+            id = java.util.UUID.randomUUID().toString(),
+            x = shapeToDuplicate.x + 40f,
+            y = shapeToDuplicate.y + 40f,
+            zIndex = (getAllLayers().maxOfOrNull { it.zIndex } ?: -1) + 1
+        )
+        _uiState.update { it.copy(
+            shapeLayers = it.shapeLayers + newShape,
+            selectedShapeLayerId = newShape.id
+        ) }
+        onApplyNeeded(true)
+    }
+
+    fun updateShapeLayer(id: String, saveHistory: Boolean = true, update: (ShapeLayer) -> ShapeLayer) {
+        _uiState.update { state ->
+            state.copy(
+                shapeLayers = state.shapeLayers.map { layer ->
+                    if (layer.id == id) update(layer) else layer
+                }
+            )
+        }
+        if (saveHistory) onApplyNeeded(true)
+    }
+
+    // ================= GENERAL LAYER MGMT =================
+
+    fun lockLayer(id: String, locked: Boolean) {
+        _uiState.update { state ->
+            val text = state.textLayers.map { if (it.id == id) it.copy(isLocked = locked) else it }
+            val stickers = state.stickerLayers.map { if (it.id == id) it.copy(isLocked = locked) else it }
+            val shapes = state.shapeLayers.map { if (it.id == id) it.copy(isLocked = locked) else it }
+            state.copy(textLayers = text, stickerLayers = stickers, shapeLayers = shapes)
+        }
+        onApplyNeeded(true)
+    }
+
+    fun deleteLayer(id: String, type: LayerType) {
+         _uiState.update { state ->
+            when(type) {
+                LayerType.TEXT -> state.copy(textLayers = state.textLayers.filter { it.id != id })
+                LayerType.STICKER -> state.copy(stickerLayers = state.stickerLayers.filter { it.id != id })
+                LayerType.SHAPE -> state.copy(shapeLayers = state.shapeLayers.filter { it.id != id })
+                else -> state
+            }
+         }
+         onApplyNeeded(true)
+    }
+
+    fun toggleLayerVisibility(id: String, type: LayerType) {
+        _uiState.update { state ->
+            when (type) {
+                LayerType.TEXT -> state.copy(textLayers = state.textLayers.map { if (it.id == id) it.copy(isVisible = !it.isVisible) else it })
+                LayerType.STICKER -> state.copy(stickerLayers = state.stickerLayers.map { if (it.id == id) it.copy(isVisible = !it.isVisible) else it })
+                LayerType.SHAPE -> state.copy(shapeLayers = state.shapeLayers.map { if (it.id == id) it.copy(isVisible = !it.isVisible) else it })
+                else -> state
+            }
+        }
+        onApplyNeeded(true)
+    }
+
+    fun updateLayerZIndex(id: String, type: LayerType, newZIndex: Int) {
+        _uiState.update { state ->
+            when (type) {
+                LayerType.TEXT -> state.copy(textLayers = state.textLayers.map { if (it.id == id) it.copy(zIndex = newZIndex) else it })
+                LayerType.STICKER -> state.copy(stickerLayers = state.stickerLayers.map { if (it.id == id) it.copy(zIndex = newZIndex) else it })
+                LayerType.SHAPE -> state.copy(shapeLayers = state.shapeLayers.map { if (it.id == id) it.copy(zIndex = newZIndex) else it })
+                else -> state
+            }
+        }
+        onApplyNeeded(true)
+    }
+    
+    fun renameLayer(id: String, type: LayerType, newName: String) {
+        _uiState.update { state ->
+            when (type) {
+                LayerType.TEXT -> state.copy(textLayers = state.textLayers.map { if (it.id == id) it.copy(layerName = newName) else it })
+                LayerType.STICKER -> state.copy(stickerLayers = state.stickerLayers.map { if (it.id == id) it.copy(layerName = newName) else it })
+                LayerType.SHAPE -> state.copy(shapeLayers = state.shapeLayers.map { if (it.id == id) it.copy(layerName = newName) else it })
+                else -> state
+            }
+        }
+    }
+
+    fun swapLayerZIndices(draggedId: String, targetId: String) {
+        val allLayers = getAllLayers()
+        val dragged = allLayers.find { it.id == draggedId } ?: return
+        val target = allLayers.find { it.id == targetId } ?: return
+        
+        val draggedZ = dragged.zIndex
+        val targetZ = target.zIndex
+        
+        updateLayerZIndex(draggedId, dragged.type, targetZ)
+        updateLayerZIndex(targetId, target.type, draggedZ)
+    }
+
+    fun bringToFront(id: String) {
+        val allLayers = getAllLayers()
+        val layer = allLayers.find { it.id == id } ?: return
+        val maxZIndex = allLayers.maxOfOrNull { it.zIndex } ?: 0
+        updateLayerZIndex(id, layer.type, maxZIndex + 1)
+    }
+
+    fun sendToBack(id: String) {
+        val allLayers = getAllLayers()
+        val layer = allLayers.find { it.id == id } ?: return
+        val minZIndex = allLayers.minOfOrNull { it.zIndex } ?: 0
+        updateLayerZIndex(id, layer.type, minZIndex - 1)
+    }
+    
+    private fun minOf(a: Float, b: Float): Float = kotlin.math.min(a, b)
+}

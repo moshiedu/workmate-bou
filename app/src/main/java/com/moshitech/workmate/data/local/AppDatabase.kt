@@ -37,7 +37,7 @@ import com.moshitech.workmate.feature.scanner.data.local.dao.ScannedDocumentDao
         ConversionHistoryEntity::class,
         ScannedDocumentEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 @TypeConverters(UnitCategoryConverter::class)
