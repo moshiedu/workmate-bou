@@ -46,55 +46,15 @@ fun PhotoEditorBottomNav(
             horizontalArrangement = Arrangement.SpaceEvenly, // This behaves like 'Start' when scrolling, which is fine, or we can use generic Arrangement.spacedBy
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Crop
+            // 1. Crop
             BottomNavItem(
                 icon = Icons.Outlined.Crop,
                 label = "Crop",
                 isSelected = selectedTool == EditorTool.CROP,
                 onClick = { onToolSelected(EditorTool.CROP) }
             )
-            
-            // Adjust
-            BottomNavItem(
-                icon = Icons.Outlined.Tune,
-                label = "Adjust",
-                isSelected = selectedTool == EditorTool.ADJUST,
-                onClick = { onToolSelected(EditorTool.ADJUST) }
-            )
 
-            // Filters
-            BottomNavItem(
-                icon = Icons.Outlined.FilterVintage,
-                label = "Filters",
-                isSelected = selectedTool == EditorTool.FILTERS,
-                onClick = { onToolSelected(EditorTool.FILTERS) }
-            )
-
-            // Stickers
-            BottomNavItem(
-                icon = Icons.Outlined.EmojiEmotions,
-                label = "Stickers",
-                isSelected = selectedTool == EditorTool.STICKERS,
-                onClick = { onToolSelected(EditorTool.STICKERS) }
-            )
-            
-            // Draw
-            BottomNavItem(
-                icon = Icons.Outlined.Brush,
-                label = "Draw",
-                isSelected = selectedTool == EditorTool.DRAW,
-                onClick = { onToolSelected(EditorTool.DRAW) }
-            )
-
-            // Shapes (Moved here)
-            BottomNavItem(
-                icon = Icons.Outlined.Category, // Use generic shape icon (Category fits shapes well)
-                label = "Shapes",
-                isSelected = selectedTool == EditorTool.SHAPES,
-                onClick = { onToolSelected(EditorTool.SHAPES) }
-            )
-            
-            // Rotate
+            // 2. Rotate
             BottomNavItem(
                 icon = Icons.Outlined.RotateRight,
                 label = "Rotate",
@@ -102,7 +62,47 @@ fun PhotoEditorBottomNav(
                 onClick = { onToolSelected(EditorTool.ROTATE) }
             )
             
-            // Text (Coming Soon)
+            // 3. Filters
+            BottomNavItem(
+                icon = Icons.Outlined.FilterVintage,
+                label = "Filters",
+                isSelected = selectedTool == EditorTool.FILTERS,
+                onClick = { onToolSelected(EditorTool.FILTERS) }
+            )
+
+            // 4. Adjust
+            BottomNavItem(
+                icon = Icons.Outlined.Tune,
+                label = "Adjust",
+                isSelected = selectedTool == EditorTool.ADJUST,
+                onClick = { onToolSelected(EditorTool.ADJUST) }
+            )
+            
+            // 5. Draw
+            BottomNavItem(
+                icon = Icons.Outlined.Brush,
+                label = "Draw",
+                isSelected = selectedTool == EditorTool.DRAW,
+                onClick = { onToolSelected(EditorTool.DRAW) }
+            )
+
+            // 6. Shapes
+            BottomNavItem(
+                icon = Icons.Outlined.Category, // Use generic shape icon (Category fits shapes well)
+                label = "Shapes",
+                isSelected = selectedTool == EditorTool.SHAPES,
+                onClick = { onToolSelected(EditorTool.SHAPES) }
+            )
+
+            // 7. Stickers
+            BottomNavItem(
+                icon = Icons.Outlined.EmojiEmotions,
+                label = "Stickers",
+                isSelected = selectedTool == EditorTool.STICKERS,
+                onClick = { onToolSelected(EditorTool.STICKERS) }
+            )
+            
+            // 8. Text (Coming Soon)
             BottomNavItem(
                 icon = Icons.Outlined.TextFields,
                 label = "Text",

@@ -27,6 +27,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
@@ -150,7 +152,7 @@ enum class EditorTab {
     CROP, ADJUST, FILTERS, STICKERS, STICKER_CONTROLS, SHAPES, ROTATE, TEXT, DRAW
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class)
 @Composable
 fun PhotoEditorScreen(
     navController: NavController,
@@ -158,7 +160,7 @@ fun PhotoEditorScreen(
     viewModel: PhotoEditorViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var currentTab by remember { mutableStateOf(EditorTab.TEXT) }
+    var currentTab by remember { mutableStateOf(EditorTab.FILTERS) }
     var showOriginal by remember { mutableStateOf(false) }
     var showImageSourceDialog by remember { mutableStateOf(false) }
     var showExitConfirmDialog by remember { mutableStateOf(false) }
@@ -1229,511 +1231,152 @@ fun PhotoEditorScreen(
                         .background(Color(0xFF0D121F))
                         // REMOVED verticalScroll(rememberScrollState()) here to avoid conflict with Lazy lists in tabs
                     ) {
-                         when (currentTab) {
-                            EditorTab.CROP -> {
-                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    androidx.compose.material3.Button(onClick = {
-                                        if (imageUri != null) {
-                                            viewModel.prepareImageForCropping { uri ->
-                                                val options = CropImageContractOptions(uri = uri, cropImageOptions = CropImageOptions())
-                                                cropImageLauncher.launch(options)
-                                            }
-                                        }
-                                    }) { Text("Crop Image") }
+                                // Animated Content Switching
+                        AnimatedContent(
+                            targetState = currentTab,
+                            transitionSpec = {
+                                // Define slide in/out up/down transition
+                                (slideInVertically { height -> height } + fadeIn() via
+                                        slideOutVertically { height -> height } + fadeOut())
+                                    .using(SizeTransform(clip = false))
+                            },
+                            label = "ToolbarTransition"
+                        ) { targetTab ->
+                            when (targetTab) {
+                                EditorTab.CROP -> {
+                                    // Crop handled via launcher, usually doesn't stay here, but showing placeholder or empty
                                 }
-                            }
-                            EditorTab.ADJUST -> Box(Modifier.fillMaxSize()) {
-                                AdjustTab(
-                                brightness = uiState.brightness,
-                                contrast = uiState.contrast,
-                                saturation = uiState.saturation,
-                                hue = uiState.hue,
-                                temperature = uiState.temperature,
-                                tint = uiState.tint,
-                                onBrightnessChange = viewModel::updateBrightness,
-                                onContrastChange = viewModel::updateContrast,
-                                onSaturationChange = viewModel::updateSaturation,
-                                onHueChange = viewModel::setHue,
-                                onTemperatureChange = viewModel::setTemperature,
-                                onTintChange = viewModel::setTint,
-                                onReset = viewModel::resetAdjustments
-                            )
-                            }
-                            EditorTab.FILTERS -> {
-                                com.moshitech.workmate.feature.imagestudio.components.FiltersTab(
-                                    activeFilterId = uiState.activeFilterId,
-                                    previewBitmap = uiState.originalBitmap,
-                                    onFilterSelected = viewModel::applyFilter,
-                                    onClearFilter = viewModel::clearFilter
-                                )
-                            }
-                            EditorTab.STICKERS -> {
-                                // Sub-tabs within Stickers (like WhatsApp)
-                                var stickerSubTab by remember { mutableStateOf(0) } // 0 = Picker, 1 = Controls
-                                val selectedSticker = uiState.stickerLayers.find { it.id == uiState.selectedStickerLayerId }
-                                
-                                // Auto-switch to controls when sticker is selected
-                                LaunchedEffect(uiState.selectedStickerLayerId) {
-                                    if (uiState.selectedStickerLayerId != null) {
-                                        stickerSubTab = 1 // Switch to Controls tab
-                                    }
+                                EditorTab.ADJUST -> {
+                                    AdjustTab(
+                                        brightness = uiState.brightness,
+                                        contrast = uiState.contrast,
+                                        saturation = uiState.saturation,
+                                        hue = uiState.hue,
+                                        temperature = uiState.temperature,
+                                        tint = uiState.tint,
+                                        onBrightnessChange = { viewModel.updateBrightness(it) },
+                                        onContrastChange = { viewModel.updateContrast(it) },
+                                        onSaturationChange = { viewModel.updateSaturation(it) },
+                                        onHueChange = { viewModel.setHue(it) },
+                                        onTemperatureChange = { viewModel.setTemperature(it) },
+                                        onTintChange = { viewModel.setTint(it) },
+                                        onReset = { viewModel.resetAdjustments() }
+                                    )
                                 }
-                                
-                                Column(modifier = Modifier.fillMaxSize()) {
-                                    // Sub-tab row (like WhatsApp emoji categories)
-                                    TabRow(
-                                        selectedTabIndex = stickerSubTab,
-                                        containerColor = Color(0xFF1E1E1E),
-                                        contentColor = Color.White,
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Tab(
-                                            selected = stickerSubTab == 0,
-                                            onClick = { stickerSubTab = 0 },
-                                            text = { Text("Stickers", fontSize = 14.sp) }
-                                        )
-                                        Tab(
-                                            selected = stickerSubTab == 1,
-                                            onClick = { stickerSubTab = 1 },
-                                            text = { Text("Controls", fontSize = 14.sp) }
-                                        )
+                                EditorTab.FILTERS -> {
+                                    com.moshitech.workmate.feature.imagestudio.components.FiltersTab(
+                                        uiState = uiState,
+                                        onFilterSelected = { filterId, matrix -> viewModel.applyFilter(filterId, matrix) }
+                                    )
+                                }
+                                EditorTab.STICKERS -> {
+                                    com.moshitech.workmate.feature.imagestudio.components.StickersTab(
+                                        onStickerSelected = { emoji -> viewModel.addSticker(text = emoji) },
+                                        onEmojiSelected = { emoji -> viewModel.addSticker(text = emoji) }
+                                    )
+                                }
+                                EditorTab.TEXT -> {
+                                    // Text Editor Toolbar Content
+                                    // Show toolbar if there are any text layers, not just when one is selected
+                                    val layerToEdit = if (uiState.selectedTextLayerId != null) {
+                                        uiState.textLayers.find { it.id == uiState.selectedTextLayerId }
+                                    } else {
+                                        uiState.textLayers.lastOrNull()
                                     }
-                                    
-                                    // Sub-tab content
-                                    when (stickerSubTab) {
-                                        0 -> {
-                                            // Sticker Picker
-                                            com.moshitech.workmate.feature.imagestudio.components.StickersTab(
-                                                onStickerSelected = { emoji -> 
-                                                    viewModel.addSticker(text = emoji)
-                                                    stickerSubTab = 1 // Auto-switch to controls
-                                                }
+
+                                    if (layerToEdit != null) {
+                                        Box(Modifier.fillMaxSize()) {
+                                            com.moshitech.workmate.feature.imagestudio.components.TextEditorToolbar(
+                                                layer = layerToEdit,
+                                                visible = true,
+                                                onUpdate = { updated, save -> viewModel.updateTextProperty(layerToEdit.id, save) { updated } },
+                                                onSave = { viewModel.saveToHistory() },
+                                                onRequestEyedropper = { callback -> eyedropperCallback = callback },
+                                                onRequestTexturePick = { texturePickerLauncher.launch("image/*") },
+                                                modifier = Modifier.fillMaxSize()
                                             )
                                         }
-                                        1 -> {
-                                            // Controls Panel
-                                            if (selectedSticker != null) {
-                                                Column(
-                                                    modifier = Modifier
-                                                        .fillMaxSize()
-                                                        .verticalScroll(rememberScrollState())
-                                                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                                ) {
-                                                    // Opacity Slider
-                                                    CompactModernSlider(
-                                                        label = "Opacity",
-                                                        value = selectedSticker.opacity * 100f,
-                                                        onValueChange = { newValue ->
-                                                            viewModel.updateStickerOpacity(selectedSticker.id, newValue / 100f, saveHistory = false)
-                                                        },
-                                                        onValueChangeFinished = {
-                                                            viewModel.updateStickerOpacity(selectedSticker.id, selectedSticker.opacity, saveHistory = true)
-                                                        },
-                                                        valueRange = 0f..100f,
-                                                        unit = "%"
-                                                    )
-                                                    
-                                                    // Position Controls
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth(),
-                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                                    ) {
-                                                        // Position X
-                                                        CompactModernSlider(
-                                                            label = "Position X",
-                                                            value = selectedSticker.x,
-                                                            onValueChange = { newValue ->
-                                                                viewModel.updateStickerPosition(selectedSticker.id, x = newValue, saveHistory = false)
-                                                            },
-                                                            onValueChangeFinished = {
-                                                                viewModel.updateStickerPosition(selectedSticker.id, x = selectedSticker.x, saveHistory = true)
-                                                            },
-                                                            valueRange = -500f..1500f,
-                                                            unit = "px",
-                                                            modifier = Modifier.weight(1f)
-                                                        )
-                                                        
-                                                        // Position Y
-                                                        CompactModernSlider(
-                                                            label = "Position Y",
-                                                            value = selectedSticker.y,
-                                                            onValueChange = { newValue ->
-                                                                viewModel.updateStickerPosition(selectedSticker.id, y = newValue, saveHistory = false)
-                                                            },
-                                                            onValueChangeFinished = {
-                                                                viewModel.updateStickerPosition(selectedSticker.id, y = selectedSticker.y, saveHistory = true)
-                                                            },
-                                                            valueRange = -500f..1500f,
-                                                            unit = "px",
-                                                            modifier = Modifier.weight(1f)
-                                                        )
-                                                    }
-                                                    
-                                                    // Scale and Rotation Controls
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth(),
-                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                                    ) {
-                                                        // Scale
-                                                        CompactModernSlider(
-                                                            label = "Scale",
-                                                            value = selectedSticker.scale,
-                                                            onValueChange = { newValue ->
-                                                                viewModel.updateStickerScale(selectedSticker.id, newValue, saveHistory = false)
-                                                            },
-                                                            onValueChangeFinished = {
-                                                                viewModel.updateStickerScale(selectedSticker.id, selectedSticker.scale, saveHistory = true)
-                                                            },
-                                                            valueRange = 0.1f..5f,
-                                                            unit = "x",
-                                                            modifier = Modifier.weight(1f)
-                                                        )
-                                                        
-                                                        // Rotation
-                                                        CompactModernSlider(
-                                                            label = "Rotation",
-                                                            value = selectedSticker.rotation,
-                                                            onValueChange = { newValue ->
-                                                                viewModel.updateStickerRotation(selectedSticker.id, newValue, saveHistory = false)
-                                                            },
-                                                            onValueChangeFinished = {
-                                                                viewModel.updateStickerRotation(selectedSticker.id, selectedSticker.rotation, saveHistory = true)
-                                                            },
-                                                            valueRange = 0f..360f,
-                                                            unit = "Â°",
-                                                            modifier = Modifier.weight(1f)
-                                                        )
-                                                    }
-                                                    
-                                                    // Quick Action Buttons
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth(),
-                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                                    ) {
-                                                        // Duplicate Button
-                                                        Button(
-                                                            onClick = { viewModel.duplicateSticker(selectedSticker.id) },
-                                                            modifier = Modifier.weight(1f).height(36.dp),
-                                                            colors = ButtonDefaults.buttonColors(
-                                                                containerColor = Color(0xFF007AFF)
-                                                            ),
-                                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
-                                                        ) {
-                                                            Icon(
-                                                                Icons.Default.ContentCopy,
-                                                                contentDescription = "Duplicate",
-                                                                modifier = Modifier.size(14.dp)
-                                                            )
-                                                            Spacer(modifier = Modifier.width(3.dp))
-                                                            Text("Copy", fontSize = 10.sp, maxLines = 1)
-                                                        }
-                                                        
-                                                        // Bring to Front Button
-                                                        Button(
-                                                            onClick = { viewModel.bringStickerToFront(selectedSticker.id) },
-                                                            modifier = Modifier.weight(1f).height(36.dp),
-                                                            colors = ButtonDefaults.buttonColors(
-                                                                containerColor = Color(0xFF34C759)
-                                                            ),
-                                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
-                                                        ) {
-                                                            Icon(
-                                                                Icons.Default.ArrowUpward,
-                                                                contentDescription = "To Front",
-                                                                modifier = Modifier.size(14.dp)
-                                                            )
-                                                            Spacer(modifier = Modifier.width(3.dp))
-                                                            Text("Front", fontSize = 10.sp, maxLines = 1)
-                                                        }
-                                                        
-                                                        // Send to Back Button
-                                                        Button(
-                                                            onClick = { viewModel.sendStickerToBack(selectedSticker.id) },
-                                                            modifier = Modifier.weight(1f).height(36.dp),
-                                                            colors = ButtonDefaults.buttonColors(
-                                                                containerColor = Color(0xFFFF9500)
-                                                            ),
-                                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
-                                                        ) {
-                                                            Icon(
-                                                                Icons.Default.ArrowDownward,
-                                                                contentDescription = "To Back",
-                                                                modifier = Modifier.size(14.dp)
-                                                            )
-                                                            Spacer(modifier = Modifier.width(3.dp))
-                                                            Text("Back", fontSize = 10.sp, maxLines = 1)
-                                                        }
-                                                    }
-                                                    
-                                                    Spacer(modifier = Modifier.height(16.dp))
-                                                    
-                                                    // Shadow Controls
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, bottom = 8.dp),
-                                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                                        verticalAlignment = Alignment.CenterVertically
-                                                    ) {
-                                                        Text(
-                                                            "Shadow",
-                                                            color = Color.White,
-                                                            fontWeight = FontWeight.Bold,
-                                                            fontSize = 14.sp
-                                                        )
-                                                        androidx.compose.material3.Switch(
-                                                            checked = selectedSticker.hasShadow,
-                                                            onCheckedChange = { enabled ->
-                                                                viewModel.updateStickerShadow(selectedSticker.id, hasShadow = enabled)
-                                                            }
-                                                        )
-                                                    }
-                                                    
-                                                    if (selectedSticker.hasShadow) {
-                                                        CompactModernSlider(
-                                                            label = "Blur",
-                                                            value = selectedSticker.shadowBlur,
-                                                            onValueChange = { newValue ->
-                                                                viewModel.updateStickerShadow(selectedSticker.id, shadowBlur = newValue, saveHistory = false)
-                                                            },
-                                                            onValueChangeFinished = {
-                                                                viewModel.updateStickerShadow(selectedSticker.id, shadowBlur = selectedSticker.shadowBlur, saveHistory = true)
-                                                            },
-                                                            valueRange = 0f..20f,
-                                                            unit = "px"
-                                                        )
-                                                        
-                                                        CompactModernSlider(
-                                                            label = "Offset X",
-                                                            value = selectedSticker.shadowOffsetX,
-                                                            onValueChange = { newValue ->
-                                                                viewModel.updateStickerShadow(selectedSticker.id, shadowOffsetX = newValue, saveHistory = false)
-                                                            },
-                                                            onValueChangeFinished = {
-                                                                viewModel.updateStickerShadow(selectedSticker.id, shadowOffsetX = selectedSticker.shadowOffsetX, saveHistory = true)
-                                                            },
-                                                            valueRange = -20f..20f,
-                                                            unit = "px"
-                                                        )
-                                                        
-                                                        CompactModernSlider(
-                                                            label = "Offset Y",
-                                                            value = selectedSticker.shadowOffsetY,
-                                                            onValueChange = { newValue ->
-                                                                viewModel.updateStickerShadow(selectedSticker.id, shadowOffsetY = newValue, saveHistory = false)
-                                                            },
-                                                            onValueChangeFinished = {
-                                                                viewModel.updateStickerShadow(selectedSticker.id, shadowOffsetY = selectedSticker.shadowOffsetY, saveHistory = true)
-                                                            },
-                                                            valueRange = -20f..20f,
-                                                            unit = "px"
-                                                        )
-                                                    }
-                                                    
-                                                    Spacer(modifier = Modifier.height(16.dp))
-                                                    
-                                                    // Border Controls
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, bottom = 8.dp),
-                                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                                        verticalAlignment = Alignment.CenterVertically
-                                                    ) {
-                                                        Text(
-                                                            "Border",
-                                                            color = Color.White,
-                                                            fontWeight = FontWeight.Bold,
-                                                            fontSize = 14.sp
-                                                        )
-                                                        androidx.compose.material3.Switch(
-                                                            checked = selectedSticker.hasBorder,
-                                                            onCheckedChange = { enabled ->
-                                                                viewModel.updateStickerBorder(selectedSticker.id, hasBorder = enabled)
-                                                            }
-                                                        )
-                                                    }
-                                                    
-                                                    if (selectedSticker.hasBorder) {
-                                                        CompactModernSlider(
-                                                            label = "Width",
-                                                            value = selectedSticker.borderWidth,
-                                                            onValueChange = { newValue ->
-                                                                viewModel.updateStickerBorder(selectedSticker.id, borderWidth = newValue, saveHistory = false)
-                                                            },
-                                                            onValueChangeFinished = {
-                                                                viewModel.updateStickerBorder(selectedSticker.id, borderWidth = selectedSticker.borderWidth, saveHistory = true)
-                                                            },
-                                                            valueRange = 1f..10f,
-                                                            unit = "px"
-                                                        )
-                                                    }
-                                                    
-                                                    Spacer(modifier = Modifier.height(16.dp))
-                                                    
-                                                    // Color Tint Controls
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, bottom = 8.dp),
-                                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                                        verticalAlignment = Alignment.CenterVertically
-                                                    ) {
-                                                        Text(
-                                                            "Color Tint",
-                                                            color = Color.White,
-                                                            fontWeight = FontWeight.Bold,
-                                                            fontSize = 14.sp
-                                                        )
-                                                        androidx.compose.material3.Switch(
-                                                            checked = selectedSticker.hasTint,
-                                                            onCheckedChange = { enabled ->
-                                                                viewModel.updateStickerTint(selectedSticker.id, hasTint = enabled)
-                                                            }
-                                                        )
-                                                    }
-                                                    
-                                                    if (selectedSticker.hasTint) {
-                                                        CompactModernSlider(
-                                                            label = "Strength",
-                                                            value = selectedSticker.tintStrength * 100f,
-                                                            onValueChange = { newValue ->
-                                                                viewModel.updateStickerTint(selectedSticker.id, tintStrength = newValue / 100f, saveHistory = false)
-                                                            },
-                                                            onValueChangeFinished = {
-                                                                viewModel.updateStickerTint(selectedSticker.id, tintStrength = selectedSticker.tintStrength, saveHistory = true)
-                                                            },
-                                                            valueRange = 0f..100f,
-                                                            unit = "%"
-                                                        )
-                                                    }
-                                                    
-                                                    Spacer(modifier = Modifier.height(32.dp))
-                                                }
-                                            } else {
-                                                // No sticker selected
-                                                Box(
-                                                    modifier = Modifier.fillMaxSize(),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Text(
-                                                        "Select a sticker to adjust",
-                                                        color = Color.Gray,
-                                                        fontSize = 14.sp
-                                                    )
-                                                }
-                                            }
+                                    } else {
+                                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                            Text("Select or Add Text to Edit", color = Color.Gray)
                                         }
                                     }
                                 }
-                            }
-                            EditorTab.STICKER_CONTROLS -> {
-                                // This tab is no longer needed - keeping for compatibility
-                                Box(modifier = Modifier.fillMaxSize())
-                            }
-                            EditorTab.TEXT -> {
-                                // Text Editor Toolbar Content
-                                // Show toolbar if there are any text layers, not just when one is selected
-                                val layerToEdit = if (uiState.selectedTextLayerId != null) {
-                                    uiState.textLayers.find { it.id == uiState.selectedTextLayerId }
-                                } else {
-                                    uiState.textLayers.lastOrNull()
+                                EditorTab.SHAPES -> {
+                                    com.moshitech.workmate.feature.imagestudio.components.ShapesToolbar(uiState, viewModel)
                                 }
-                                
-                                if (layerToEdit != null) {
-                                    Box(Modifier.fillMaxSize()) {
-                                        com.moshitech.workmate.feature.imagestudio.components.TextEditorToolbar(
-                                            layer = layerToEdit,
-                                            visible = true,
-                                            onUpdate = { updated, save -> viewModel.updateTextProperty(layerToEdit.id, save) { updated } },
-                                            onSave = { viewModel.saveToHistory() },
-                                            onRequestEyedropper = { callback -> eyedropperCallback = callback },
-                                            onRequestTexturePick = { texturePickerLauncher.launch("image/*") },
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
-                                } else {
-                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                        Text("Select or Add Text to Edit", color = Color.Gray)
-                                    }
+                                EditorTab.DRAW -> {
+                                    com.moshitech.workmate.feature.imagestudio.components.DrawAndShapesToolbar(uiState, viewModel) // Now just Draw
                                 }
-                            }
-                            EditorTab.SHAPES -> {
-                                com.moshitech.workmate.feature.imagestudio.components.ShapesToolbar(uiState, viewModel)
-                            }
-                            EditorTab.DRAW -> {
-                                com.moshitech.workmate.feature.imagestudio.components.DrawAndShapesToolbar(uiState, viewModel) // Now just Draw
-                            }
-                            // EditorTab.SHAPES merged into DRAW
-                            EditorTab.ROTATE -> {
-                                Column(
-                                    modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 16.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(24.dp)
-                                ) {
-                                    // Icons Area
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceAround,
-                                        verticalAlignment = Alignment.CenterVertically
+                                // EditorTab.SHAPES merged into DRAW
+                                EditorTab.ROTATE -> {
+                                    Column(
+                                        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 16.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(24.dp)
                                     ) {
-                                        // Left Rotate
-                                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { viewModel.rotate90CCW() }) {
-                                            Icon(Icons.Default.RotateLeft, "Left", tint = Color.White, modifier = Modifier.size(28.dp))
-                                            Spacer(Modifier.height(4.dp))
-                                            Text("Left", color = Color.Gray, fontSize = 12.sp)
-                                        }
-
-                                        // Right Rotate
-                                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { viewModel.rotate90CW() }) {
-                                            Icon(Icons.Default.RotateRight, "Right", tint = Color.White, modifier = Modifier.size(28.dp))
-                                            Spacer(Modifier.height(4.dp))
-                                            Text("Right", color = Color.Gray, fontSize = 12.sp)
-                                        }
-
-                                        // Flip
-                                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { viewModel.flipHorizontal() }) {
-                                            Icon(Icons.Default.SwapHoriz, "Flip", tint = Color.White, modifier = Modifier.size(28.dp))
-                                            Spacer(Modifier.height(4.dp))
-                                            Text("Flip", color = Color.Gray, fontSize = 12.sp)
-                                        }
-                                    }
-
-                                    // Slider Area
-                                    Column(Modifier.fillMaxWidth()) {
-                                        Slider(
-                                            value = uiState.rotationAngle,
-                                            onValueChange = { viewModel.setRotationAngle(it) },
-                                            valueRange = 0f..360f,
-                                            colors = SliderDefaults.colors(
-                                                thumbColor = Color(0xFF007AFF),
-                                                activeTrackColor = Color(0xFF007AFF),
-                                                inactiveTrackColor = Color(0xFF2C2C2E)
-                                            ),
-                                            thumb = {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(20.dp)
-                                                        .background(Color.White, CircleShape)
-                                                        .padding(4.dp)
-                                                        .background(Color(0xFF007AFF), CircleShape)
-                                                )
-                                            },
-                                            track = { sliderState ->
-                                                SliderDefaults.Track(
-                                                    colors = SliderDefaults.colors(
-                                                        activeTrackColor = Color(0xFF007AFF),
-                                                        inactiveTrackColor = Color(0xFF2C2C2E)
-                                                    ),
-                                                    sliderState = sliderState,
-                                                    modifier = Modifier.height(4.dp)
-                                                )
+                                        // Icons Area
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceAround,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            // Left Rotate
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { viewModel.rotate90CCW() }) {
+                                                Icon(Icons.Default.RotateLeft, "Left", tint = Color.White, modifier = Modifier.size(28.dp))
+                                                Spacer(Modifier.height(4.dp))
+                                                Text("Left", color = Color.Gray, fontSize = 12.sp)
                                             }
-                                        )
-                                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                            Text("${uiState.rotationAngle.toInt()}Â°", color = Color.Gray, fontSize = 12.sp)
+
+                                            // Right Rotate
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { viewModel.rotate90CW() }) {
+                                                Icon(Icons.Default.RotateRight, "Right", tint = Color.White, modifier = Modifier.size(28.dp))
+                                                Spacer(Modifier.height(4.dp))
+                                                Text("Right", color = Color.Gray, fontSize = 12.sp)
+                                            }
+
+                                            // Flip
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { viewModel.flipHorizontal() }) {
+                                                Icon(Icons.Default.SwapHoriz, "Flip", tint = Color.White, modifier = Modifier.size(28.dp))
+                                                Spacer(Modifier.height(4.dp))
+                                                Text("Flip", color = Color.Gray, fontSize = 12.sp)
+                                            }
+                                        }
+
+                                        // Slider Area
+                                        Column(Modifier.fillMaxWidth()) {
+                                            Slider(
+                                                value = uiState.rotationAngle,
+                                                onValueChange = { viewModel.setRotationAngle(it) },
+                                                valueRange = -45f..45f,
+                                                onValueChangeFinished = { viewModel.saveToHistory() },
+                                                 colors = SliderDefaults.colors(
+                                                    activeTrackColor = Color(0xFF007AFF),
+                                                    inactiveTrackColor = Color(0xFF2C2C2E),
+                                                    thumbColor = Color.White
+                                                )
+                                            )
+                                           Text(
+                                                "Angle: ${uiState.rotationAngle.toInt()}°",
+                                                color = Color.Gray,
+                                                fontSize = 12.sp,
+                                                modifier = Modifier.align(Alignment.CenterHorizontally)
+                                            )
+                                        }
+
+                                        // Reset Button
+                                        Button(
+                                            onClick = { viewModel.setRotationAngle(0f) },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2C2C2E))
+                                        ) {
+                                           Text("Reset", color = Color.White)
                                         }
                                     }
                                 }
+                                else -> {}
                             }
-
                         }
-                    }
+                            }
                 } // End Resizable Panel
 
                 } // End Resizable Panel Content
@@ -2158,7 +1801,6 @@ fun PhotoEditorScreen(
         }
     }
 }
-
 
 @Composable
 fun AdjustTab(

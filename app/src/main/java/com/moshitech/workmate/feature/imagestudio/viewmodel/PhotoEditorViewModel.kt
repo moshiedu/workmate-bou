@@ -978,6 +978,10 @@ fun flipVertical() {
     saveToHistory()
 }
 
+fun setRotationAngle(angle: Float) {
+    _uiState.update { it.copy(rotationAngle = angle) }
+}
+
 // Mosaic intensity control (0-100 UI range mapped to 0.20-0.01 scale)
 // Higher intensity = MORE pixelation = SMALLER scale = BIGGER blocks
 fun updateMosaicIntensity(intensity: Float) {
