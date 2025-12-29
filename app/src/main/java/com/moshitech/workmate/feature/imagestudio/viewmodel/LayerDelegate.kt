@@ -159,7 +159,8 @@ class LayerDelegate(
         val bmpH = bitmap.height.toFloat()
         val nextZIndex = (getAllLayers().maxOfOrNull { it.zIndex } ?: -1) + 1
         
-        val shapeSize = minOf(bmpW, bmpH) / 3f
+        // PicsArt Style Defaults: Centered, Light Gray, Filled, Shadow
+        val shapeSize = minOf(bmpW, bmpH) / 2f
         val width = if (type == ShapeType.LINE || type == ShapeType.ARROW) shapeSize * 0.8f else shapeSize
         val height = if (type == ShapeType.LINE || type == ShapeType.ARROW) 20f else shapeSize
         
@@ -174,13 +175,16 @@ class LayerDelegate(
             y = y, 
             width = width, 
             height = if(type == ShapeType.LINE || type == ShapeType.ARROW) shapeSize else height,
-            color = _uiState.value.currentDrawColor,
-            strokeWidth = _uiState.value.currentStrokeWidth,
-            strokeStyle = _uiState.value.currentStrokeStyle,
-            shadowColor = _uiState.value.currentShadowColor,
-            shadowBlur = _uiState.value.currentShadowBlur,
-            shadowX = _uiState.value.currentShadowX,
-            shadowY = _uiState.value.currentShadowY,
+            color = 0xFFCCCCCC.toInt(), // Light Gray Default
+            strokeWidth = 0f, // No stroke by default if filled, or small? PicsArt usually filled.
+            borderColor = android.graphics.Color.WHITE, // Default Border Color
+            strokeStyle = StrokeStyle.SOLID,
+            isFilled = true, // Default Filled
+            hasShadow = false, // Default Shadow OFF (User request: "Just solid shape")
+            shadowColor = android.graphics.Color.BLACK,
+            shadowBlur = 20f,
+            shadowX = 5f,
+            shadowY = 5f,
             zIndex = nextZIndex
         )
         _uiState.update { 
@@ -191,7 +195,50 @@ class LayerDelegate(
                 selectedStickerLayerId = null
             ) 
         }
+        android.util.Log.d("ShapeDebug", "addShapeLayer: selectedShapeLayerId = ${newShape.id}, shapeLayers.size = ${_uiState.value.shapeLayers.size}")
         onApplyNeeded(true)
+    }
+
+    fun updateShapeType(id: String, newType: ShapeType) {
+        _uiState.update { state ->
+            val layer = state.shapeLayers.find { it.id == id } ?: return@update state
+            
+            // Recalculate dimensions if switching between Line/Arrow and Box shapes to avoid distortion
+            val isLinear = newType == ShapeType.LINE || newType == ShapeType.ARROW
+            val wasLinear = layer.type == ShapeType.LINE || layer.type == ShapeType.ARROW
+            
+            var newW = layer.width
+            var newH = layer.height
+            
+            if (isLinear != wasLinear) {
+                // Reset to default aspect if changing major type category
+                val bitmap = _uiState.value.originalBitmap
+                val size = if (bitmap != null) minOf(bitmap.width.toFloat(), bitmap.height.toFloat()) / 2f else 300f
+                if (isLinear) {
+                     newW = size * 0.8f
+                     newH = 20f
+                } else {
+                     newW = size
+                     newH = size
+                }
+            }
+
+            state.copy(
+                shapeLayers = state.shapeLayers.map { 
+                    if (it.id == id) it.copy(type = newType, width = newW, height = newH) else it 
+                }
+            )
+        }
+        onApplyNeeded(true)
+    }
+
+    fun selectShapeLayer(id: String) {
+        _uiState.update { it.copy(
+            selectedShapeLayerId = id,
+            selectedTextLayerId = null,
+            editingTextLayerId = null,
+            selectedStickerLayerId = null
+        ) }
     }
 
     fun deselectShape() {

@@ -314,6 +314,8 @@ class CompositeRenderer(private val context: Context) {
     }
     
     private fun renderShapeLayer(canvas: Canvas, layer: ShapeLayer) {
+        android.util.Log.d("RenderDebug", "Rendering shape ${layer.id}: x=${layer.x}, y=${layer.y}, w=${layer.width}, h=${layer.height}, rotation=${layer.rotation}, scale=${layer.scale}")
+        
         canvas.save()
         
         // Shape size

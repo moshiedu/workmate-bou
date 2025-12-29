@@ -53,6 +53,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
 import com.moshitech.workmate.feature.imagestudio.components.DrawAndShapesToolbar
+import com.moshitech.workmate.feature.imagestudio.viewmodel.ShapeType
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.RotateLeft
 import androidx.compose.material.icons.filled.RotateRight
@@ -544,6 +545,15 @@ fun PhotoEditorScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
+                        // DESELECTION TAP
+                        .clickable(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null
+                        ) {
+                             viewModel.deselectShapeLayer()
+                             viewModel.deselectSticker()
+                             viewModel.deselectText()
+                        }
                         // ZOOM/PAN GESTURES
                         .pointerInput(Unit) {
                             detectTransformGestures { _, pan, zoom, _ ->
@@ -649,6 +659,9 @@ fun PhotoEditorScreen(
                     // Need to verify layer rendering logic - assuming Standard Layer Rendering Here
                     // Based on previous code, Layers were rendered in a Box.
                     
+                    // Calculate correct offset for Center-aligned parent
+                    val centeredOffset = Offset(-finalDisplayWidth / 2f, -finalDisplayHeight / 2f)
+
                     // Sticker Layers
                     uiState.stickerLayers.forEach { layer ->
                         if (layer.isVisible) {
@@ -657,7 +670,7 @@ fun PhotoEditorScreen(
                                     layer = layer,
                                     isSelected = uiState.selectedStickerLayerId == layer.id,
                                     bitmapScale = bitScale,
-                                    bitmapOffset = androidx.compose.ui.geometry.Offset.Zero,
+                                    bitmapOffset = centeredOffset,
                                     onSelect = { viewModel.selectSticker(it) },
                                     onTransform = { id, offset, scale, rotation ->
                                         viewModel.updateStickerTransform(id, offset, scale, rotation)
@@ -673,13 +686,13 @@ fun PhotoEditorScreen(
                      // Text Layers
                     uiState.textLayers.forEach { layer ->
                         if (layer.isVisible) {
-                           key(layer.id) {
+                            key(layer.id) {
                                 com.moshitech.workmate.feature.imagestudio.components.TextBoxComposable(
                                     layer = layer,
                                     isSelected = uiState.selectedTextLayerId == layer.id,
                                     isEditing = uiState.editingTextLayerId == layer.id,
                                     bitmapScale = bitScale,
-                                    bitmapOffset = androidx.compose.ui.geometry.Offset.Zero,
+                                    bitmapOffset = centeredOffset,
                                     onSelect = { viewModel.selectTextLayer(it) },
                                     onEdit = { viewModel.enterTextEditMode(it) },
                                     onTransform = { id, offset, scale, rotation -> 
@@ -696,8 +709,27 @@ fun PhotoEditorScreen(
                     }
                     
                     // Shape Layers and Draw Canvas (DrawCanvas missing from components, commenting out)
-                    if (uiState.activeDrawMode == com.moshitech.workmate.feature.imagestudio.viewmodel.DrawMode.SHAPES) {
-                         // Shape preview handled by dedicated layer
+                    // Shape Layers
+                    uiState.shapeLayers.forEach { layer ->
+                        if (layer.isVisible) {
+                            key(layer.id) {
+                                com.moshitech.workmate.feature.imagestudio.components.ShapeBoxComposable(
+                                    layer = layer,
+                                    isSelected = uiState.selectedShapeLayerId == layer.id,
+                                    bitmapScale = bitScale,
+                                    bitmapOffset = centeredOffset,
+                                    onSelect = { viewModel.selectShapeLayer(it) },
+                                    onTransform = { id, offset, scale, rotation ->
+                                        viewModel.updateShapeTransform(id, offset, scale, rotation)
+                                    },
+                                    onResize = { id, w, h, dx, dy ->
+                                        viewModel.updateShapeSize(id, w, h, dx, dy)
+                                    },
+                                    onTransformEnd = { viewModel.saveToHistory() },
+                                    onDelete = { viewModel.deleteShapeLayer(it) }
+                                )
+                            }
+                        }
                     }
                     
                     if (activeTool == EditorTab.DRAW || activeTool == EditorTab.SHAPES) {
@@ -919,46 +951,57 @@ fun PhotoEditorScreen(
 
             // 4. BOTTOM NAVIGATION (Fixed)
 
-            // 4. BOTTOM NAVIGATION (Fixed)
             if (activeTool == null) {
+                // MAIN TOOLBAR (Bottom)
                 com.moshitech.workmate.feature.imagestudio.components.PhotoEditorBottomNav(
-                    selectedTool = com.moshitech.workmate.feature.imagestudio.components.EditorTool.NONE, // No tool active
+                    selectedTool = com.moshitech.workmate.feature.imagestudio.components.EditorTool.NONE,
                     onToolSelected = { tool ->
-                        if (tool == com.moshitech.workmate.feature.imagestudio.components.EditorTool.CROP) {
-                            if (imageUri != null) {
-                                val options = CropImageContractOptions(uri = imageUri, cropImageOptions = CropImageOptions())
-                                cropImageLauncher.launch(options)
-                            }
-                        } else {
-                            val targetTab = when (tool) {
-                                com.moshitech.workmate.feature.imagestudio.components.EditorTool.FILTERS -> com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.FILTERS
-                                com.moshitech.workmate.feature.imagestudio.components.EditorTool.STICKERS -> com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.STICKERS
-                                com.moshitech.workmate.feature.imagestudio.components.EditorTool.SHAPES -> com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.SHAPES
-                                com.moshitech.workmate.feature.imagestudio.components.EditorTool.ROTATE -> com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.ROTATE
-                                com.moshitech.workmate.feature.imagestudio.components.EditorTool.ADJUST -> com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.ADJUST
-                                com.moshitech.workmate.feature.imagestudio.components.EditorTool.TEXT -> com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.TEXT
-                                com.moshitech.workmate.feature.imagestudio.components.EditorTool.DRAW -> com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.DRAW
-                                else -> null
-                            }
-                            
-                            if (targetTab != null) {
-                                if (targetTab == com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.DRAW) {
-                                    viewModel.setDrawMode(com.moshitech.workmate.feature.imagestudio.viewmodel.DrawMode.PAINT)
-                                    showLayerPanel = false
-                                } else if (targetTab == com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.SHAPES) {
-                                    viewModel.setDrawMode(com.moshitech.workmate.feature.imagestudio.viewmodel.DrawMode.SHAPES)
-                                    showLayerPanel = false
+                         // Map EditorTool to EditorTab
+                         val targetTab = when (tool) {
+                             com.moshitech.workmate.feature.imagestudio.components.EditorTool.CROP -> com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.CROP
+                             com.moshitech.workmate.feature.imagestudio.components.EditorTool.FILTERS -> com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.FILTERS
+                             com.moshitech.workmate.feature.imagestudio.components.EditorTool.ADJUST -> com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.ADJUST
+                             com.moshitech.workmate.feature.imagestudio.components.EditorTool.STICKERS -> com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.STICKERS 
+                             com.moshitech.workmate.feature.imagestudio.components.EditorTool.TEXT -> com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.TEXT
+                             // OVERLAY not defined? Check PhotoEditorBottomNav. Assuming it exists or mapping to NONE
+                             // com.moshitech.workmate.feature.imagestudio.components.EditorTool.OVERLAY -> com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.OVERLAY
+                             com.moshitech.workmate.feature.imagestudio.components.EditorTool.SHAPES -> com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.SHAPES
+                             com.moshitech.workmate.feature.imagestudio.components.EditorTool.DRAW -> com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.DRAW 
+                             else -> com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.NONE
+                         }
+
+                         if (targetTab != com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.NONE) {
+                            if (targetTab == com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.CROP) {
+                                if (imageUri != null) {
+                                    val options = com.canhub.cropper.CropImageContractOptions(uri = imageUri, cropImageOptions = com.canhub.cropper.CropImageOptions())
+                                    cropImageLauncher.launch(options)
+                                }
+                            } else if (targetTab == com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.TEXT) {
+                                viewModel.addTextLayer("Text")
+                                viewModel.enterTool(targetTab) // Also enter the tool to show the text editor
+                            } else if (targetTab == com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.STICKERS) {
+                                showLayerPanel = false
+                                viewModel.enterTool(targetTab)
+                            } else if (targetTab == com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.SHAPES) {
+                                viewModel.setDrawMode(com.moshitech.workmate.feature.imagestudio.viewmodel.DrawMode.SHAPES)
+                                showLayerPanel = false
+                                if (uiState.selectedShapeLayerId == null) {
+                                    viewModel.addShapeLayer(com.moshitech.workmate.feature.imagestudio.viewmodel.ShapeType.CIRCLE)
                                 }
                                 viewModel.enterTool(targetTab)
-                            } else if (tool == com.moshitech.workmate.feature.imagestudio.components.EditorTool.TEXT) {
-                                 // Special handling for Text if it wasn't mapped above, but we mapped it.
+                            } else if (targetTab == com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.DRAW) {
+                                viewModel.setDrawMode(com.moshitech.workmate.feature.imagestudio.viewmodel.DrawMode.PAINT)
+                                showLayerPanel = false
+                                viewModel.enterTool(targetTab)
+                            } else {
+                                viewModel.enterTool(targetTab)
                             }
-                        }
+                         }
                     },
                     modifier = Modifier.navigationBarsPadding() // Handle bottom inset
                 )
             }
-        }
+            }
         
         // Save Dialog - inside Scaffold where uiState is accessible
         if (uiState.showSaveDialog) {

@@ -12,8 +12,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.outlined.Category
+import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.CheckBoxOutlineBlank
+import androidx.compose.material.icons.outlined.Layers
+import androidx.compose.material.icons.outlined.Opacity
+import androidx.compose.material.icons.outlined.CropSquare
+import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material3.*
+import androidx.compose.animation.animateContentSize
 import androidx.compose.runtime.*
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.moshitech.workmate.feature.imagestudio.components.ToolIcon
 import com.moshitech.workmate.feature.imagestudio.viewmodel.*
+import com.moshitech.workmate.feature.imagestudio.viewmodel.ShapePropertyTab
 import java.util.Locale
 
 @Composable
@@ -429,83 +439,199 @@ fun ShapesToolbar(
     uiState: PhotoEditorUiState,
     viewModel: PhotoEditorViewModel
 ) {
-    if (uiState.selectedShapeLayerId != null) {
-        // Selected Shape Properties
-        ShapePropertiesPanel(uiState, viewModel)
-    } else {
-        // Add Shape Grid
-        Column(
+    // State is now persisted in ViewModel
+    val activeTab = uiState.lastActiveShapeTab
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF0D121F))
+    ) {
+        // 1. DETAIL PANEL (Upper Area) - changes based on activeTab
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp)
+                .weight(1f) // Takes remaining space (or fixed height if needed)
+                .padding(vertical = 16.dp)
         ) {
-            Text("Add Shape", color = Color.White, modifier = Modifier.padding(bottom = 8.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                 ToolIcon(
-                    icon = Icons.Outlined.CropSquare,
-                    label = "Rect",
-                    isSelected = false,
-                    onClick = { viewModel.addShapeLayer(ShapeType.RECTANGLE) }
-                )
-                ToolIcon(
-                    icon = Icons.Outlined.Circle,
-                    label = "Circle",
-                    isSelected = false,
-                    onClick = { viewModel.addShapeLayer(ShapeType.CIRCLE) }
-                )
-                ToolIcon(
-                    icon = Icons.Default.ChangeHistory, // Triangle
-                    label = "Triangle",
-                    isSelected = false,
-                    onClick = { viewModel.addShapeLayer(ShapeType.TRIANGLE) }
-                )
-                ToolIcon(
-                    icon = Icons.Default.ArrowForward,
-                    label = "Arrow",
-                    isSelected = false,
-                    onClick = { viewModel.addShapeLayer(ShapeType.ARROW) }
-                )
-                ToolIcon(
-                    icon = Icons.Default.StarBorder, // Star
-                    label = "Star",
-                    isSelected = false,
-                    onClick = { viewModel.addShapeLayer(ShapeType.STAR) }
-                )
-                ToolIcon(
-                    icon = Icons.Default.Pentagon, // Pentagon (Fallback to Star if not found?) Pentagon is in M3/M2 extended usually.
-                    // If Pentagon is missing, use Verified or similar. 
-                    // To be safe, let's use Label Important for now if Pentagon is risky 
-                    // But Icons.Outlined.Pentagon exists in newer compose.
-                    // Let's try Icons.Default.Pentagon. If it fails I'll fix.
-                    // Actually, let's use Icons.Default.Grade (Star) for Star.
-                    // For Pentagon, maybe Icons.Default.Hexagon? No.
-                    // I will use Icons.Default.Details which is Triangle-ish inverted.
-                    // Let's simply re-use ChangeHistory and rotate? No.
-                    // I will use Icons.Default.Warning (Triangle).
-                    // For Pentagon, I will use Icons.Default.Stop if I can't find it.
-                    // Actually, let's use Icons.Default.Star for Star.
-                    // And Icons.Default.ChangeHistory for Triangle.
-                    // For Pentagon, I will use Icons.Default.House! It looks like a Pentagon.
-                    label = "Pentagon",
-                    isSelected = false,
-                    onClick = { viewModel.addShapeLayer(ShapeType.PENTAGON) }
-                )
-                  ToolIcon(
-                    icon = Icons.Default.HorizontalRule, // Line
-                    label = "Line",
-                    isSelected = false,
-                    onClick = { viewModel.addShapeLayer(ShapeType.LINE) }
-                )
+            when (activeTab) {
+                ShapePropertyTab.SHAPES -> ShapeSelectionList(uiState, viewModel)
+                ShapePropertyTab.COLOR -> ShapeColorPicker(uiState, viewModel)
+                ShapePropertyTab.BORDER -> ShapeBorderControls(uiState, viewModel)
+                ShapePropertyTab.SHADOW -> ShapeShadowControls(uiState, viewModel)
+                ShapePropertyTab.OPACITY -> ShapeOpacityControls(uiState, viewModel)
             }
         }
+
+        Divider(color = Color(0xFF2C2C2E))
+
+        // 2. BOTTOM TABS (Navigation Row)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(vertical = 12.dp, horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(24.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Helper for Tab Item
+            @Composable
+            fun PropertyTab(
+                icon: androidx.compose.ui.graphics.vector.ImageVector,
+                label: String,
+                tab: ShapePropertyTab
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.clickable { viewModel.updateLastShapeTab(tab) }
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .border(
+                                width = if (activeTab == tab) 1.dp else 0.dp,
+                                color = if (activeTab == tab) Color.White else Color.Transparent,
+                                shape = RoundedCornerShape(8.dp)
+                            ), // Simple selection indicator
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            icon, 
+                            contentDescription = label, 
+                            tint = if (activeTab == tab) Color.White else Color.Gray
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = label,
+                        color = if (activeTab == tab) Color.White else Color.Gray,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+
+            PropertyTab(Icons.Outlined.Category, "Shapes", ShapePropertyTab.SHAPES)
+            PropertyTab(Icons.Outlined.Palette, "Color", ShapePropertyTab.COLOR)
+            PropertyTab(Icons.Outlined.CheckBoxOutlineBlank, "Border", ShapePropertyTab.BORDER) // Border Icon
+            PropertyTab(Icons.Outlined.Layers, "Shadow", ShapePropertyTab.SHADOW)
+            PropertyTab(Icons.Outlined.Opacity, "Opacity", ShapePropertyTab.OPACITY)
+        }
     }
+}
+
+// Removed local ShapePropertyTab enum as it is now in PhotoEditorState.kt
+
+@Composable
+fun ShapeSelectionList(uiState: PhotoEditorUiState, viewModel: PhotoEditorViewModel) {
+    // Existing horizontal list of shapes logic
+    // ... (Use code from previous ShapesToolbar)
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text("Shape Style", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.padding(start = 16.dp, bottom = 8.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+              val currentShapeId = uiState.selectedShapeLayerId
+             val currentShape = uiState.shapeLayers.find { it.id == currentShapeId }
+             
+             val onShapeClick: (ShapeType) -> Unit = { type ->
+                 if (currentShape != null) {
+                     viewModel.setShapeType(currentShape.id, type)
+                 } else {
+                     viewModel.addShapeLayer(type)
+                 }
+             }
+             
+             ToolIcon(Icons.Outlined.CropSquare, "Rect", currentShape?.type == ShapeType.RECTANGLE) { onShapeClick(ShapeType.RECTANGLE) }
+             ToolIcon(Icons.Outlined.Circle, "Circle", currentShape?.type == ShapeType.CIRCLE) { onShapeClick(ShapeType.CIRCLE) }
+             ToolIcon(Icons.Default.ChangeHistory, "Triangle", currentShape?.type == ShapeType.TRIANGLE) { onShapeClick(ShapeType.TRIANGLE) }
+             ToolIcon(Icons.Default.ArrowForward, "Arrow", currentShape?.type == ShapeType.ARROW) { onShapeClick(ShapeType.ARROW) }
+             ToolIcon(Icons.Default.StarBorder, "Star", currentShape?.type == ShapeType.STAR) { onShapeClick(ShapeType.STAR) }
+             ToolIcon(Icons.Default.Pentagon, "Pentagon", currentShape?.type == ShapeType.PENTAGON) { onShapeClick(ShapeType.PENTAGON) }
+             ToolIcon(Icons.Default.HorizontalRule, "Line", currentShape?.type == ShapeType.LINE) { onShapeClick(ShapeType.LINE) }
+        }
+    }
+}
+
+// ... Additional Composables for Color, Border, Shadow, Opacity ...
+// I will reuse/extract logic from ShapePropertiesPanel here.
+
+@Composable
+fun ShapeBorderControls(uiState: PhotoEditorUiState, viewModel: PhotoEditorViewModel) {
+    val shape = uiState.shapeLayers.find { it.id == uiState.selectedShapeLayerId } ?: return
+    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+        ModernSlider(
+            value = shape.strokeWidth,
+            onValueChange = { newValue -> viewModel.updateShapeLayer(shape.id) { it.copy(strokeWidth = newValue) } },
+            valueRange = 0f..100f,
+            label = "Stroke Width",
+            unit = "px"
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        Text("Border Color", color = Color.White)
+        Spacer(modifier = Modifier.height(8.dp))
+        com.moshitech.workmate.feature.imagestudio.components.ColorPaletteRow(
+            selectedColor = shape.borderColor,
+            onColorSelected = { newColor ->
+                viewModel.updateShapeLayer(shape.id) { 
+                    // If stroke width is 0, set it to default (e.g. 10) so user sees the border immediately
+                    val newWidth = if (it.strokeWidth == 0f) 10f else it.strokeWidth
+                    it.copy(borderColor = newColor, strokeWidth = newWidth) 
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun ShapeOpacityControls(uiState: PhotoEditorUiState, viewModel: PhotoEditorViewModel) {
+    val shape = uiState.shapeLayers.find { it.id == uiState.selectedShapeLayerId } ?: return
+    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+        ModernSlider(
+            value = shape.opacity * 100f,
+            onValueChange = { newValue -> viewModel.updateShapeLayer(shape.id) { it.copy(opacity = newValue / 100f) } },
+            valueRange = 0f..100f,
+            label = "Opacity",
+            unit = "%"
+        )
+    }
+}
+
+@Composable
+fun ShapeShadowControls(uiState: PhotoEditorUiState, viewModel: PhotoEditorViewModel) {
+     val shape = uiState.shapeLayers.find { it.id == uiState.selectedShapeLayerId } ?: return
+    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Enable Shadow", color = Color.White, modifier = Modifier.weight(1f))
+            Switch(checked = shape.hasShadow, onCheckedChange = { isChecked -> viewModel.updateShapeLayer(shape.id) { it.copy(hasShadow = isChecked) } })
+        }
+        if (shape.hasShadow) {
+            Text("Blur Radius", color = Color.White)
+            Slider(value = shape.shadowBlur, onValueChange = { newValue -> viewModel.updateShapeLayer(shape.id) { it.copy(shadowBlur = newValue) } }, valueRange = 1f..100f)
+        }
+    }
+}
+
+@Composable
+fun ShapeColorPicker(uiState: PhotoEditorUiState, viewModel: PhotoEditorViewModel) {
+     val shape = uiState.shapeLayers.find { it.id == uiState.selectedShapeLayerId } ?: return
+    // Color Palette Reuse
+    // Assuming we have a ColorPalette composable or create a simple one here
+    com.moshitech.workmate.feature.imagestudio.components.ColorPaletteRow(
+        selectedColor = if (shape.isFilled) shape.color else 0,
+        onColorSelected = { newColor ->
+            viewModel.updateShapeLayer(shape.id) { it.copy(color = newColor, isFilled = true) } // Force fill when coloring? PicsArt separates Fill vs Stroke Color usually.
+            // For now, assume changing main color.
+        }
+    )
+}
+
+private enum class ShapeSubTool {
+    EDIT, COLOR, STROKE, SHADOW, OPACITY, ARRANGE
 }
 
 @Composable
@@ -514,288 +640,260 @@ fun ShapePropertiesPanel(
     viewModel: PhotoEditorViewModel
 ) {
     val layer = uiState.shapeLayers.find { it.id == uiState.selectedShapeLayerId } ?: return
+    var activeSubTool by remember { mutableStateOf(ShapeSubTool.EDIT) }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp)
+            .padding(bottom = 16.dp)
+            .animateContentSize()
     ) {
-        // Header: Back & Title & Delete
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+        // 1. Contextual Panel (Top)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .heightIn(min = 120.dp), // Ensure minimal height for controls
+            contentAlignment = Alignment.Center
         ) {
-            TextButton(onClick = { viewModel.deselectShapeLayer() }) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Back to Add", color = Color.White)
-            }
-            
-            IconButton(onClick = { viewModel.deleteShapeLayer(layer.id) }) {
-                Icon(Icons.Default.Delete, "Delete", tint = Color.Red)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Color & Fill
-        Row(verticalAlignment = Alignment.CenterVertically) {
-             ColorPaletteRow(
-                selectedColor = layer.color,
-                onColorSelected = { viewModel.setDrawColor(it) },
-                modifier = Modifier.weight(1f)
-            )
-             Spacer(modifier = Modifier.width(8.dp))
-             // Fill Toggle
-             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                 Text("Fill", color = Color.Gray, fontSize = 10.sp)
-                 Switch(
-                     checked = layer.isFilled,
-                     onCheckedChange = { isFilled -> 
-                         viewModel.updateShapeLayer(layer.id) { it.copy(isFilled = isFilled) }
+            when (activeSubTool) {
+                ShapeSubTool.EDIT -> {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Transform", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                             // Quick Actions
+                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                 IconButton(onClick = { viewModel.duplicateShape(layer.id) }) {
+                                     Icon(Icons.Default.ContentCopy, "Duplicate", tint = Color.White)
+                                 }
+                                 Text("Copy", color = Color.Gray, fontSize = 10.sp)
+                             }
+                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                 IconButton(onClick = { viewModel.deleteShapeLayer(layer.id) }) {
+                                     Icon(Icons.Default.Delete, "Delete", tint = Color.Red)
+                                 }
+                                 Text("Delete", color = Color.Gray, fontSize = 10.sp)
+                             }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        // Sliders for precise control?
+                        // Sliders for precise control?
+                        CompactModernSlider(
+                             value = layer.rotation,
+                             onValueChange = { rotation -> viewModel.updateShapeLayer(layer.id) { it.copy(rotation = rotation) } },
+                             valueRange = 0f..360f,
+                             label = "Rotation",
+                             unit = "°"
+                        )
+                    }
+                }
+                ShapeSubTool.COLOR -> {
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Text("Fill Color", color = Color.Gray, fontSize = 12.sp)
+                            Spacer(Modifier.weight(1f))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                 Text("Fill", color = Color.White, fontSize = 12.sp)
+                                 Switch(
+                                     checked = layer.isFilled,
+                                     onCheckedChange = { isFilled -> 
+                                         viewModel.updateShapeLayer(layer.id) { it.copy(isFilled = isFilled) }
+                                     },
+                                     modifier = Modifier.scale(0.8f)
+                                 )
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        ColorPaletteRow(
+                            selectedColor = layer.color,
+                            onColorSelected = { viewModel.updateShapeLayer(layer.id) { s -> s.copy(color = it) } }
+                        )
+                    }
+                }
+                ShapeSubTool.STROKE -> {
+                    Column {
+                        Text("Stroke", color = Color.Gray, fontSize = 12.sp)
+                        Spacer(Modifier.height(8.dp))
+                        CompactModernSlider(
+                            value = layer.strokeWidth,
+                            onValueChange = { viewModel.setStrokeWidth(it) },
+                            valueRange = 1f..50f,
+                            label = "Thickness",
+                            unit = "px"
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        // Style Chips
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            StrokeStyle.entries.forEach { style ->
+                                val isSelected = layer.strokeStyle == style
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { viewModel.updateShapeStrokeStyle(layer.id, style) },
+                                    label = { Text(style.name.lowercase().replaceFirstChar { it.titlecase() }) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = Color.White,
+                                        selectedLabelColor = Color.Black,
+                                        containerColor = Color(0xFF2C2C2E),
+                                        labelColor = Color.White
+                                    ),
+                                    border = null
+                                )
+                            }
+                        }
+                    }
+                }
+                ShapeSubTool.SHADOW -> {
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Shadow", color = Color.Gray, fontSize = 12.sp)
+                            Spacer(Modifier.weight(1f))
+                             Switch(
+                                 checked = layer.hasShadow,
+                                 onCheckedChange = { checked ->
+                                      viewModel.updateShapeShadow(layer.id, checked, layer.shadowColor, layer.shadowBlur, layer.shadowX, layer.shadowY)
+                                 },
+                                 modifier = Modifier.scale(0.8f)
+                             )
+                        }
+                        if (layer.hasShadow) {
+                            Spacer(Modifier.height(8.dp))
+                            CompactModernSlider(
+                                value = layer.shadowBlur,
+                                onValueChange = { viewModel.updateShapeShadow(layer.id, true, layer.shadowColor, it, layer.shadowX, layer.shadowY, false) },
+                                onValueChangeFinished = { viewModel.saveToHistory() },
+                                valueRange = 1f..50f,
+                                label = "Blur"
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            CompactModernSlider(
+                                value = layer.shadowX,
+                                onValueChange = { viewModel.updateShapeShadow(layer.id, true, layer.shadowColor, layer.shadowBlur, it, layer.shadowY, false) },
+                                onValueChangeFinished = { viewModel.saveToHistory() },
+                                valueRange = -20f..20f,
+                                label = "Offset X"
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            CompactModernSlider(
+                                value = layer.shadowY,
+                                onValueChange = { viewModel.updateShapeShadow(layer.id, true, layer.shadowColor, layer.shadowBlur, layer.shadowX, it, false) },
+                                onValueChangeFinished = { viewModel.saveToHistory() },
+                                valueRange = -20f..20f,
+                                label = "Offset Y"
+                            )
+                        }
+                    }
+                }
+                ShapeSubTool.OPACITY -> {
+                    Column {
+                        Text("Opacity", color = Color.Gray, fontSize = 12.sp)
+                        Spacer(Modifier.height(8.dp))
+                        CompactModernSlider(
+                             value = layer.opacity * 100f,
+                             onValueChange = { viewModel.updateShapeOpacity(layer.id, it / 100f, saveHistory = false) },
+                             onValueChangeFinished = { viewModel.updateShapeOpacity(layer.id, layer.opacity, saveHistory = true) },
+                             valueRange = 0f..100f,
+                             label = "Opacity",
+                             unit = "%"
+                        )
+                    }
+                }
+                ShapeSubTool.ARRANGE -> {
+                     Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
+                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                             IconButton(onClick = { viewModel.bringShapeToFront(layer.id) }) {
+                                 Icon(Icons.Default.ArrowUpward, "Front", tint = Color.White)
+                             }
+                             Text("To Front", color = Color.White, fontSize = 10.sp)
+                         }
+                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                             IconButton(onClick = { viewModel.sendShapeToBack(layer.id) }) {
+                                 Icon(Icons.Default.ArrowDownward, "Back", tint = Color.White)
+                             }
+                             Text("To Back", color = Color.White, fontSize = 10.sp)
+                         }
                      }
-                 )
-             }
+                }
+            }
         }
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        // Stroke Style (Modern Chips)
-        Text("Stroke Style", color = Color.Gray, fontSize = 12.sp)
-        Spacer(modifier = Modifier.height(8.dp))
+
+        Divider(color = Color(0xFF2C2C2E))
+
+        // 2. Sub-Tool Navigation (Bottom)
         Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(top = 16.dp, start = 8.dp, end = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            StrokeStyle.entries.forEach { style ->
-                val isSelected = layer.strokeStyle == style
-                FilterChip(
-                    selected = isSelected,
-                    onClick = { viewModel.updateShapeStrokeStyle(layer.id, style) },
-                    label = { 
-                        Text(
-                            text = style.name.replace("_", " ").lowercase(Locale.ROOT)
-                                .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() },
-                            color = if (isSelected) Color.Black else Color.White
-                        ) 
-                    },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = Color.White,
-                        containerColor = Color(0xFF2C2C2E)
-                    ),
-                    border = null
-                )
-            }
-        }
+            SubToolItem(
+                label = "Edit",
+                icon = Icons.Outlined.Edit,
+                isSelected = activeSubTool == ShapeSubTool.EDIT
+            ) { activeSubTool = ShapeSubTool.EDIT }
 
-        Spacer(modifier = Modifier.height(16.dp))
+            SubToolItem(
+                label = "Color",
+                icon = Icons.Outlined.Palette,
+                isSelected = activeSubTool == ShapeSubTool.COLOR
+            ) { activeSubTool = ShapeSubTool.COLOR }
 
-        // Sliders: Scale and Rotation
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                // Scale
-                Column(modifier = Modifier.weight(1f)) {
-                    CompactModernSlider(
-                        value = layer.scale,
-                        onValueChange = { scale -> 
-                            viewModel.updateShapeLayer(layer.id) { it.copy(scale = scale) }
-                        },
-                        valueRange = 0.1f..5f,
-                        label = "Size",
-                        unit = "x"
-                    )
-                }
-                // Rotation
-                Column(modifier = Modifier.weight(1f)) {
-                    CompactModernSlider(
-                        value = layer.rotation,
-                        onValueChange = { rotation -> 
-                            viewModel.updateShapeLayer(layer.id) { it.copy(rotation = rotation) } 
-                        },
-                        valueRange = 0f..360f,
-                        label = "Rotation",
-                        unit = "°"
-                    )
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            // Position X & Y
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                // Position X
-                Column(modifier = Modifier.weight(1f)) {
-                    CompactModernSlider(
-                        value = layer.x,
-                        onValueChange = { viewModel.updateShapePosition(layer.id, x = it, saveHistory = false) },
-                        onValueChangeFinished = { viewModel.updateShapePosition(layer.id, x = layer.x, saveHistory = true) },
-                        valueRange = -500f..1500f,
-                        label = "Position X",
-                        unit = "px"
-                    )
-                }
-                // Position Y
-                Column(modifier = Modifier.weight(1f)) {
-                    CompactModernSlider(
-                        value = layer.y,
-                        onValueChange = { viewModel.updateShapePosition(layer.id, y = it, saveHistory = false) },
-                        onValueChangeFinished = { viewModel.updateShapePosition(layer.id, y = layer.y, saveHistory = true) },
-                        valueRange = -500f..1500f,
-                        label = "Position Y",
-                        unit = "px"
-                    )
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // strokeWidth
-            CompactModernSlider(
-                value = layer.strokeWidth,
-                onValueChange = { viewModel.setStrokeWidth(it) },
-                valueRange = 1f..50f,
-                label = "Thickness",
-                unit = "px"
-            )
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            // Opacity
-            CompactModernSlider(
-                value = layer.opacity * 100f,
-                onValueChange = { viewModel.updateShapeOpacity(layer.id, it / 100f, saveHistory = false) },
-                onValueChangeFinished = { viewModel.updateShapeOpacity(layer.id, layer.opacity, saveHistory = true) },
-                valueRange = 0f..100f,
+            SubToolItem(
+                label = "Border",
+                icon = Icons.Outlined.CheckBoxOutlineBlank,
+                isSelected = activeSubTool == ShapeSubTool.STROKE
+            ) { activeSubTool = ShapeSubTool.STROKE }
+
+            SubToolItem(
+                label = "Shadow",
+                icon = Icons.Outlined.ContentCopy, // Placeholder
+                isSelected = activeSubTool == ShapeSubTool.SHADOW
+            ) { activeSubTool = ShapeSubTool.SHADOW }
+
+            SubToolItem(
                 label = "Opacity",
-                unit = "%"
-            )
+                icon = Icons.Outlined.Opacity,
+                isSelected = activeSubTool == ShapeSubTool.OPACITY
+            ) { activeSubTool = ShapeSubTool.OPACITY }
+            
+            SubToolItem(
+                label = "Arrange",
+                icon = Icons.Outlined.Layers,
+                isSelected = activeSubTool == ShapeSubTool.ARRANGE
+            ) { activeSubTool = ShapeSubTool.ARRANGE }
         }
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        // Quick Action Buttons
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            // Duplicate Button
-            Button(
-                onClick = { viewModel.duplicateShape(layer.id) },
-                modifier = Modifier.weight(1f).height(36.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF007AFF)
-                ),
-                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
-            ) {
-                Icon(
-                    Icons.Default.ContentCopy,
-                    contentDescription = "Duplicate",
-                    modifier = Modifier.size(14.dp)
-                )
-                Spacer(modifier = Modifier.width(3.dp))
-                Text("Copy", fontSize = 10.sp, maxLines = 1)
-            }
-            
-            // Bring to Front Button
-            Button(
-                onClick = { viewModel.bringShapeToFront(layer.id) },
-                modifier = Modifier.weight(1f).height(36.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF34C759)
-                ),
-                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
-            ) {
-                Icon(
-                    Icons.Default.ArrowUpward,
-                    contentDescription = "To Front",
-                    modifier = Modifier.size(14.dp)
-                )
-                Spacer(modifier = Modifier.width(3.dp))
-                Text("Front", fontSize = 10.sp, maxLines = 1)
-            }
-            
-            // Send to Back Button
-            Button(
-                onClick = { viewModel.sendShapeToBack(layer.id) },
-                modifier = Modifier.weight(1f).height(36.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFFF9500)
-                ),
-                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
-            ) {
-                Icon(
-                    Icons.Default.ArrowDownward,
-                    contentDescription = "To Back",
-                    modifier = Modifier.size(14.dp)
-                )
-                Spacer(modifier = Modifier.width(3.dp))
-                Text("Back", fontSize = 10.sp, maxLines = 1)
-            }
-        }
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        // Shadow Controls
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Shadow", color = Color.White, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.weight(1f))
-            Switch(
-                checked = layer.hasShadow,
-                onCheckedChange = { checked ->
-                     viewModel.updateShapeShadow(layer.id, checked, layer.shadowColor, layer.shadowBlur, layer.shadowX, layer.shadowY)
-                }
-            )
-        }
-        
-        if (layer.hasShadow) {
-            Spacer(modifier = Modifier.height(8.dp))
-             CompactModernSlider(
-                value = layer.shadowBlur,
-                onValueChange = { blur ->
-                    viewModel.updateShapeShadow(layer.id, true, layer.shadowColor, blur, layer.shadowX, layer.shadowY, saveHistory = false)
-                },
-                onValueChangeFinished = {
-                    viewModel.updateShapeShadow(layer.id, true, layer.shadowColor, layer.shadowBlur, layer.shadowX, layer.shadowY, saveHistory = true)
-                },
-                valueRange = 1f..50f,
-                label = "Blur",
-                unit = "px"
-            )
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            CompactModernSlider(
-                value = layer.shadowX,
-                onValueChange = { offsetX ->
-                    viewModel.updateShapeShadow(layer.id, true, layer.shadowColor, layer.shadowBlur, offsetX, layer.shadowY, saveHistory = false)
-                },
-                onValueChangeFinished = {
-                    viewModel.updateShapeShadow(layer.id, true, layer.shadowColor, layer.shadowBlur, layer.shadowX, layer.shadowY, saveHistory = true)
-                },
-                valueRange = -20f..20f,
-                label = "Offset X",
-                unit = "px"
-            )
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            CompactModernSlider(
-                value = layer.shadowY,
-                onValueChange = { offsetY ->
-                    viewModel.updateShapeShadow(layer.id, true, layer.shadowColor, layer.shadowBlur, layer.shadowX, offsetY, saveHistory = false)
-                },
-                onValueChangeFinished = {
-                    viewModel.updateShapeShadow(layer.id, true, layer.shadowColor, layer.shadowBlur, layer.shadowX, layer.shadowY, saveHistory = true)
-                },
-                valueRange = -20f..20f,
-                label = "Offset Y",
-                unit = "px"
-            )
-        }
-        
-        Spacer(modifier = Modifier.height(32.dp)) // Bottom padding
+    }
+}
+
+@Composable
+fun SubToolItem(
+    label: String,
+    icon: ImageVector,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clickable(onClick = onClick)
+            .padding(8.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = if (isSelected) Color(0xFF2196F3) else Color.Gray,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = label,
+            color = if (isSelected) Color(0xFF2196F3) else Color.Gray,
+            fontSize = 12.sp,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+        )
     }
 }
 

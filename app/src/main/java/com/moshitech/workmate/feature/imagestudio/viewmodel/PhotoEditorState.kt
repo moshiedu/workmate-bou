@@ -299,6 +299,7 @@ data class ShapeLayer(
     val rotation: Float = 0f,
     val color: Int,
     val strokeWidth: Float,
+    val borderColor: Int = android.graphics.Color.WHITE, // Added Border Color support
     val isFilled: Boolean = false,
     val isLocked: Boolean = false,
     val strokeStyle: StrokeStyle = StrokeStyle.SOLID,
@@ -379,4 +380,15 @@ data class PhotoEditorUiState(
     val maxHistorySize: Int = 50,
     val containerWidth: Int = 1,
     val containerHeight: Int = 1,
+    
+    // Persisted Tool States
+    val lastActiveShapeTab: ShapePropertyTab = ShapePropertyTab.SHAPES
 )
+
+enum class ShapePropertyTab {
+    SHAPES,
+    COLOR,
+    BORDER,
+    SHADOW,
+    OPACITY
+}

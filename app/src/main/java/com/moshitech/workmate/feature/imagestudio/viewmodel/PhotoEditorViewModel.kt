@@ -336,6 +336,7 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
     // Modal Tool Workflow
     fun enterTool(tool: EditorTab) {
         if (tool == EditorTab.NONE) return
+        android.util.Log.d("ShapeDebug", "enterTool: tool=$tool, selectedShapeLayerId=${_uiState.value.selectedShapeLayerId}")
         val currentState = getCurrentEditorState()
         _uiState.update { 
             it.copy(
@@ -345,6 +346,7 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
                 selectedDrawTool = if (tool == EditorTab.DRAW) DrawTool.BRUSH else it.selectedDrawTool
             ) 
         }
+        android.util.Log.d("ShapeDebug", "enterTool AFTER: selectedShapeLayerId=${_uiState.value.selectedShapeLayerId}")
     }
     
     fun cancelTool() {
@@ -379,7 +381,10 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
     fun updateLayerZIndex(id: String, type: LayerType, newZIndex: Int) = layers.updateLayerZIndex(id, type, newZIndex)
     
     // Shape Facade
-    fun addShapeLayer(type: ShapeType) = layers.addShapeLayer(type)
+    fun addShapeLayer(type: ShapeType) {
+        layers.addShapeLayer(type)
+        // Note: enterTool is called by the UI after addShapeLayer completes
+    }
     fun deselectShapeLayer() = layers.deselectShape()
     fun deselectShape() = layers.deselectShape() // Alias for UI compatibility
     fun updateShapeLayer(id: String, update: (ShapeLayer) -> ShapeLayer) = layers.updateShapeLayer(id, update = update)
@@ -397,6 +402,52 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
         
     fun updateShapeStrokeStyle(id: String, style: StrokeStyle) = layers.updateShapeLayer(id) { it.copy(strokeStyle = style) }
     
+    fun updateShapeSize(id: String, widthDelta: Float, heightDelta: Float, xDelta: Float = 0f, yDelta: Float = 0f, saveHistory: Boolean = true) =
+        layers.updateShapeLayer(id, saveHistory) { 
+            // Prevent negative size
+            val newW = (it.width + widthDelta).coerceAtLeast(20f)
+            val newH = (it.height + heightDelta).coerceAtLeast(20f)
+            
+            // Apply position updates only if size change was applied (simple check)
+            // Or better: if we hit min size, don't move. 
+            // If newW is clamped, widthDelta effective is different.
+            val effectiveWDelta = newW - it.width
+            val effectiveHDelta = newH - it.height
+            
+            // If we are shrinking from left (widthDelta negative), but clamped, we shouldn't move xDelta fully.
+            // But xDelta usually comes paired with widthDelta.
+            // Let's rely on component passing consistent deltas, or recalculate.
+            // If scaling left: xDelta should contain the shift.
+            
+            it.copy(
+                width = newW, 
+                height = newH,
+                x = it.x + xDelta,
+                y = it.y + yDelta
+            )
+        }
+
+    fun updateShapeTransform(id: String, pan: androidx.compose.ui.geometry.Offset, zoom: Float, rotation: Float) =
+        layers.updateShapeLayer(id) { 
+            it.copy(
+                x = it.x + pan.x,
+                y = it.y + pan.y,
+                scale = it.scale * zoom,
+                rotation = it.rotation + rotation
+            )
+        }
+    
+    fun setShapeType(id: String, type: ShapeType) = layers.updateShapeType(id, type)
+    
+    fun selectShapeLayer(id: String) {
+        layers.selectShapeLayer(id)
+        enterTool(EditorTab.SHAPES)
+    }
+
+    fun updateLastShapeTab(tab: ShapePropertyTab) {
+        _uiState.update { it.copy(lastActiveShapeTab = tab) }
+    }
+
     // Other
     fun resetRotationChanges() {
         val snapshot = _uiState.value.toolSnapshot
@@ -588,16 +639,26 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
                 kotlin.math.min(containerW.toFloat() / bmpW, containerH.toFloat() / bmpH)
             } else 1f
             
+            // Debug logging
+            android.util.Log.d("SaveDebug", "=== SAVE IMAGE DEBUG ===")
+            android.util.Log.d("SaveDebug", "Bitmap size: ${bmpW}x${bmpH}")
+            android.util.Log.d("SaveDebug", "Container size: ${containerW}x${containerH}")
+            android.util.Log.d("SaveDebug", "UI Scale (bitScale): $bitScale")
+            android.util.Log.d("SaveDebug", "Render Scale (bitmapScale): 1f")
+            currentState.shapeLayers.forEach { shape ->
+                android.util.Log.d("SaveDebug", "Shape ${shape.id}: x=${shape.x}, y=${shape.y}, w=${shape.width}, h=${shape.height}")
+            }
+            
             // Use CompositeRenderer 
             bitmap = compositeRenderer.renderComposite(
                 baseImage = bitmap,
                 state = currentState,
                 cropRect = null,
-                bitmapScale = bitScale
+                bitmapScale = 1f // Always 1f for save - render at native bitmap resolution
             )
             
             val quality = if (MonetizationManager.isHighQualitySaveLocked()) 85 else 100
-            val uri = repository.saveBitmap(bitmap, filename, android.graphics.Bitmap.CompressFormat.JPEG, quality)
+            val uri = repository.saveBitmap(bitmap, filename, android.graphics.Bitmap.CompressFormat.PNG, quality)
             
             _uiState.update { it.copy(isSaving = false, showSaveDialog = false) }
             
