@@ -383,31 +383,22 @@ fun ShapeBoxComposable(
                 alignment = Alignment.CenterEnd,
                 isSideHandle = true,
                 onDrag = { dragAmount ->
-                     // Simple width adjustment based on X drag (ignoring rotation for basic stretch)
-                     // For better UX with rotation, we project dragAmount onto the local X axis
-                     // But for now, let's pass the raw drag and assume screen-aligned or let VM handle
-                     // Actually, if we just pass scaling factors, it's easier.
-                     // But we want to change WIDTH/HEIGHT, not SCALE.
-                     
-                     // Project drag on local X axis
-                     val rad = -Math.toRadians(layer.rotation.toDouble()) // negative to un-rotate
-                     val dx = (dragAmount.x * cos(rad) - dragAmount.y * sin(rad)).toFloat()
-                     
-                     onResize(layer.id, dx / bitmapScale, 0f, 0f, 0f)
+                     // DragAmount is already in local coordinates.
+                     // X-axis drag increases width directly.
+                     val dWidth = dragAmount.x / bitmapScale
+                     onResize(layer.id, dWidth, 0f, 0f, 0f)
                 },
                 onDragEnd = { onTransformEnd(layer.id) }
             )
-
+ 
              // Bottom Side (Height+)
             Handle(
                 alignment = Alignment.BottomCenter,
                 isSideHandle = true,
                 onDrag = { dragAmount ->
-                     // Project drag on local Y axis
-                     val rad = -Math.toRadians(layer.rotation.toDouble())
-                     val dy = (dragAmount.x * Math.sin(rad) + dragAmount.y * Math.cos(rad)).toFloat()
-                     
-                     onResize(layer.id, 0f, dy / bitmapScale, 0f, 0f)
+                     // Y-axis drag increases height directly.
+                     val dHeight = dragAmount.y / bitmapScale
+                     onResize(layer.id, 0f, dHeight, 0f, 0f)
                 },
                 onDragEnd = { onTransformEnd(layer.id) }
             )

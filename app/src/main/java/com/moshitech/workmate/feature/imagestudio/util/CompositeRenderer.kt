@@ -21,7 +21,8 @@ class CompositeRenderer(private val context: Context) {
         baseImage: Bitmap,
         state: EditorState,
         cropRect: Rect? = null,
-        bitmapScale: Float = 1f // New Parameter
+        bitmapScale: Float = 1f, // New Parameter
+        targetDensity: Float? = null // New Parameter: Use UI density for WYSIWYG
     ): Bitmap {
         // 1. Apply adjustments to base image
         val adjustedImage = applyAdjustments(baseImage, state)
@@ -31,7 +32,7 @@ class CompositeRenderer(private val context: Context) {
         val canvas = Canvas(composite)
         
         // 3. Render all layers in z-order (back to front)
-        renderAllLayers(canvas, state, bitmapScale)
+        renderAllLayers(canvas, state, bitmapScale, targetDensity)
         
         // 4. Apply Transforms (Rotate/Flip)
         // This must happen AFTER rendering layers but BEFORE cropping
@@ -53,7 +54,7 @@ class CompositeRenderer(private val context: Context) {
         }
     }
     
-    private fun renderAllLayers(canvas: Canvas, state: EditorState, bitmapScale: Float) {
+    private fun renderAllLayers(canvas: Canvas, state: EditorState, bitmapScale: Float, targetDensity: Float?) {
         // Get all layers and sort by zIndex (lowest first = back to front)
         val allLayers = mutableListOf<Pair<Int, () -> Unit>>()
         
@@ -74,7 +75,7 @@ class CompositeRenderer(private val context: Context) {
         // Add sticker layers
         state.stickerLayers.forEach { layer ->
             if (layer.isVisible) {
-                allLayers.add(layer.zIndex to { renderStickerLayer(canvas, layer, bitmapScale) })
+                allLayers.add(layer.zIndex to { renderStickerLayer(canvas, layer, bitmapScale, targetDensity) })
             }
         }
         
@@ -314,20 +315,33 @@ class CompositeRenderer(private val context: Context) {
     }
     
     private fun renderShapeLayer(canvas: Canvas, layer: ShapeLayer) {
-        android.util.Log.d("RenderDebug", "Rendering shape ${layer.id}: x=${layer.x}, y=${layer.y}, w=${layer.width}, h=${layer.height}, rotation=${layer.rotation}, scale=${layer.scale}")
-        
         canvas.save()
         
         // Shape size
         val w = layer.width
         val h = layer.height
         
-        // Match Compose graphicsLayer: translate to top-left, offset to center, rotate/scale
-        canvas.translate(layer.x, layer.y)  // Top-left corner
-        canvas.translate(w / 2f, h / 2f)  // Offset to center
-        canvas.rotate(layer.rotation)  // Rotate around center
-        canvas.scale(layer.scale, layer.scale)  // Scale around center
-        canvas.translate(-w / 2f, -h / 2f)  // Back to top-left for drawing
+        // Match UI Rendering Logic (ShapeBoxComposable)
+        // UI Logic:
+        // 1. Box dimensions are pre-scaled (w*scale, h*scale).
+        // 2. Box is positioned at (x, y) (ignoring stroke offset for now as it cancels out).
+        // 3. Rotation is applied to the Box (around the Center of the SCALED box).
+        // 4. Scale is "baked in" to the dimensions.
+        
+        // Renderer Logic Fix:
+        // 1. Translate to Top-Left (x, y)
+        // 2. Rotate around the Center of the SCALED shape
+        // 3. Scale from Top-Left
+        
+        val scaledW = w * layer.scale
+        val scaledH = h * layer.scale
+        val centerX = scaledW / 2f
+        val centerY = scaledH / 2f
+
+        canvas.translate(layer.x, layer.y)
+        canvas.rotate(layer.rotation, centerX, centerY)
+        canvas.scale(layer.scale, layer.scale)
+        // No translate(-w/2...) needed because we are scaling from 0,0 (Top-Left)
         
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = layer.color
@@ -435,7 +449,7 @@ class CompositeRenderer(private val context: Context) {
         canvas.restore()
     }
     
-    private fun renderStickerLayer(canvas: Canvas, layer: StickerLayer, bitmapScale: Float) {
+    private fun renderStickerLayer(canvas: Canvas, layer: StickerLayer, bitmapScale: Float, targetDensity: Float?) {
         canvas.save()
         
         // Load sticker content first to determine size
@@ -476,51 +490,43 @@ class CompositeRenderer(private val context: Context) {
         
         // Match Compose UI Standard: Stickers are initialized at 100.dp
         val density = context.resources.displayMetrics.density
-        // Revert: DO NOT divide by bitmapScale. 
-        // UI uses Modifier.size(100.dp) but SCALES it by bitScale in graphicsLayer.
-        // So effective size on bitmap is just 100dp.
-        val baseStickerSizePx = 100f * density
+        // Use bitmapScale to calculate the pixel size corresponding to 100dp on the screen
+        val baseSize = (100f * density) / bitmapScale
         
-        // Calculate normalization scale (to make the sticker 100dp visually by default)
-        // effectively solving the "Huge Bitmap" issue
-        // We use the larger dimension to fit within the 100dp box (mimicking ContentScale.Fit)
+        // 1. Layer Transforms (Outer Box)
+        // Move to Top-Left
+        canvas.translate(layer.x, layer.y)
+        
+        // Pivot is Center of the Box
+        val pivot = baseSize / 2f
+        
+        // Rotate around Center
+        canvas.rotate(layer.rotation, pivot, pivot)
+        
+        // Scale around Center (Layer Scale + Flip)
+        val scaleX = if (layer.isFlipped) -layer.scaleX else layer.scaleX
+        val scaleY = layer.scaleY
+        canvas.scale(scaleX, scaleY, pivot, pivot)
+        
+        // 2. Content Transforms (Inner Content)
+        // Calculate Fit Scale to fit content within the baseSize box
+        val maxDim = kotlin.math.max(contentWidth, contentHeight)
         // For Text (Emoji), UI uses 64.sp which is approx 64% of the 100dp box.
-        val targetSize = if (textToDraw != null) baseStickerSizePx * 0.64f else baseStickerSizePx
+        val targetSize = if (textToDraw != null) baseSize * 0.64f else baseSize
+        val fitScale = if (maxDim > 0) targetSize / maxDim else 1f
         
-        val maxContentDim = kotlin.math.max(contentWidth, contentHeight)
-        val normalizationScale = if (maxContentDim > 0) targetSize / maxContentDim else 1f
+        // Move to Center of Box
+        canvas.translate(pivot, pivot)
         
-        val normalizedWidth = contentWidth * normalizationScale
-        val normalizedHeight = contentHeight * normalizationScale
-        
-        // Match Compose graphicsLayer: translate to top-left, offset to center, rotate/scale
-        canvas.translate(layer.x, layer.y)  // Top-left corner
-        
-        // CRITICAL FIX: Rotate around the CENTER of the 100dp CONTAINER (baseStickerSizePx)
-        // The UI pivot is at 50dp (Screen Px).
-        // To match this on Bitmap, we must convert 50dp -> Bitmap Px.
-        // Formula: baseStickerSizePx / 2
-        val boxCenter = baseStickerSizePx / 2f
-        canvas.translate(boxCenter, boxCenter)  // Offset to Container Center
-        canvas.rotate(layer.rotation)  // Rotate around Container Center
-        
-        // Apply Scales (Layer Scale + Normalization Scale)
-        val sx = (if (layer.isFlipped) -layer.scale else layer.scale) * normalizationScale
-        val sy = layer.scale * normalizationScale
-        
-        // We scale from the "raw" 0,0 center. 
-        // Since we translated to center, scaling applies to the drawing axes.
-        canvas.scale(sx, sy)
-        
-        // Translate back to top-left of the content relative to the center
-        // Since we want content CENTERED in the container:
-        // Draw Origin should be -contentWidth/2, -contentHeight/2
-        canvas.translate(-contentWidth / 2f, -contentHeight / 2f)
+        // Apply Fit Scale
+        canvas.scale(fitScale, fitScale)
         
         // Create paint with opacity, shadow, and tint
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            // Apply opacity
+        val paint = Paint().apply {
+            isAntiAlias = true
+            isFilterBitmap = true
             alpha = (layer.opacity * 255).toInt()
+            applyBlendMode(this, layer.blendMode)
             
             // Apply shadow
             if (layer.hasShadow) {
@@ -538,11 +544,11 @@ class CompositeRenderer(private val context: Context) {
             }
         }
         
-        // Draw content centered (offset by -half)
+        // Draw Content Centered (at -width/2, -height/2 because we are at Center)
         if (bitmap != null) {
             canvas.drawBitmap(bitmap, -contentWidth / 2f, -contentHeight / 2f, paint)
         } else if (textToDraw != null) {
-            val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+             val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 this.textSize = textSize
                 this.textAlign = Paint.Align.CENTER
                 alpha = (layer.opacity * 255).toInt()
@@ -556,13 +562,13 @@ class CompositeRenderer(private val context: Context) {
                     )
                 }
             }
-            // Draw text centered at 0,0
+            // Draw text centered at 0,0 (Paint.Align.CENTER handles X, adjust Y for vertical center)
             val fm = textPaint.fontMetrics
             val yOffset = -(fm.descent + fm.ascent) / 2f
             canvas.drawText(textToDraw, 0f, yOffset, textPaint)
         }
         
-        // Draw border if enabled
+        // Draw border if enabled (Scaling applies to border too, matching UI)
         if (layer.hasBorder) {
             val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 style = Paint.Style.STROKE
@@ -580,6 +586,8 @@ class CompositeRenderer(private val context: Context) {
             )
             canvas.drawRect(borderRect, borderPaint)
         }
+        
+
         
         canvas.restore()
     }
@@ -804,6 +812,67 @@ class CompositeRenderer(private val context: Context) {
         } catch (e: Exception) {
             e.printStackTrace()
             bitmap // Fallback to original if transform fails (e.g. OOM)
+        }
+    }
+
+    private fun applyBlendMode(paint: Paint, blendMode: androidx.compose.ui.graphics.BlendMode) {
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            paint.blendMode = when (blendMode) {
+                androidx.compose.ui.graphics.BlendMode.Clear -> android.graphics.BlendMode.CLEAR
+                androidx.compose.ui.graphics.BlendMode.Src -> android.graphics.BlendMode.SRC
+                androidx.compose.ui.graphics.BlendMode.Dst -> android.graphics.BlendMode.DST
+                androidx.compose.ui.graphics.BlendMode.SrcOver -> android.graphics.BlendMode.SRC_OVER
+                androidx.compose.ui.graphics.BlendMode.DstOver -> android.graphics.BlendMode.DST_OVER
+                androidx.compose.ui.graphics.BlendMode.SrcIn -> android.graphics.BlendMode.SRC_IN
+                androidx.compose.ui.graphics.BlendMode.DstIn -> android.graphics.BlendMode.DST_IN
+                androidx.compose.ui.graphics.BlendMode.SrcOut -> android.graphics.BlendMode.SRC_OUT
+                androidx.compose.ui.graphics.BlendMode.DstOut -> android.graphics.BlendMode.DST_OUT
+                androidx.compose.ui.graphics.BlendMode.SrcAtop -> android.graphics.BlendMode.SRC_ATOP
+                androidx.compose.ui.graphics.BlendMode.DstAtop -> android.graphics.BlendMode.DST_ATOP
+                androidx.compose.ui.graphics.BlendMode.Xor -> android.graphics.BlendMode.XOR
+                androidx.compose.ui.graphics.BlendMode.Plus -> android.graphics.BlendMode.PLUS
+                androidx.compose.ui.graphics.BlendMode.Modulate -> android.graphics.BlendMode.MODULATE
+                androidx.compose.ui.graphics.BlendMode.Screen -> android.graphics.BlendMode.SCREEN
+                androidx.compose.ui.graphics.BlendMode.Overlay -> android.graphics.BlendMode.OVERLAY
+                androidx.compose.ui.graphics.BlendMode.Darken -> android.graphics.BlendMode.DARKEN
+                androidx.compose.ui.graphics.BlendMode.Lighten -> android.graphics.BlendMode.LIGHTEN
+                androidx.compose.ui.graphics.BlendMode.ColorDodge -> android.graphics.BlendMode.COLOR_DODGE
+                androidx.compose.ui.graphics.BlendMode.ColorBurn -> android.graphics.BlendMode.COLOR_BURN
+                androidx.compose.ui.graphics.BlendMode.ColorBurn -> android.graphics.BlendMode.COLOR_BURN
+                androidx.compose.ui.graphics.BlendMode.Difference -> android.graphics.BlendMode.DIFFERENCE
+                androidx.compose.ui.graphics.BlendMode.Difference -> android.graphics.BlendMode.DIFFERENCE
+                androidx.compose.ui.graphics.BlendMode.Exclusion -> android.graphics.BlendMode.EXCLUSION
+                androidx.compose.ui.graphics.BlendMode.Multiply -> android.graphics.BlendMode.MULTIPLY
+                androidx.compose.ui.graphics.BlendMode.Hue -> android.graphics.BlendMode.HUE
+                androidx.compose.ui.graphics.BlendMode.Saturation -> android.graphics.BlendMode.SATURATION
+                androidx.compose.ui.graphics.BlendMode.Color -> android.graphics.BlendMode.COLOR
+                androidx.compose.ui.graphics.BlendMode.Luminosity -> android.graphics.BlendMode.LUMINOSITY
+                else -> android.graphics.BlendMode.SRC_OVER
+            }
+        } else {
+            // Fallback for older APIs using PorterDuffXfermode
+            val mode = when (blendMode) {
+                androidx.compose.ui.graphics.BlendMode.Clear -> PorterDuff.Mode.CLEAR
+                androidx.compose.ui.graphics.BlendMode.Src -> PorterDuff.Mode.SRC
+                androidx.compose.ui.graphics.BlendMode.Dst -> PorterDuff.Mode.DST
+                androidx.compose.ui.graphics.BlendMode.SrcOver -> PorterDuff.Mode.SRC_OVER
+                androidx.compose.ui.graphics.BlendMode.DstOver -> PorterDuff.Mode.DST_OVER
+                androidx.compose.ui.graphics.BlendMode.SrcIn -> PorterDuff.Mode.SRC_IN
+                androidx.compose.ui.graphics.BlendMode.DstIn -> PorterDuff.Mode.DST_IN
+                androidx.compose.ui.graphics.BlendMode.SrcOut -> PorterDuff.Mode.SRC_OUT
+                androidx.compose.ui.graphics.BlendMode.DstOut -> PorterDuff.Mode.DST_OUT
+                androidx.compose.ui.graphics.BlendMode.SrcAtop -> PorterDuff.Mode.SRC_ATOP
+                androidx.compose.ui.graphics.BlendMode.DstAtop -> PorterDuff.Mode.DST_ATOP
+                androidx.compose.ui.graphics.BlendMode.Xor -> PorterDuff.Mode.XOR
+                androidx.compose.ui.graphics.BlendMode.Plus -> PorterDuff.Mode.ADD
+                androidx.compose.ui.graphics.BlendMode.Screen -> PorterDuff.Mode.SCREEN
+                androidx.compose.ui.graphics.BlendMode.Overlay -> PorterDuff.Mode.OVERLAY
+                androidx.compose.ui.graphics.BlendMode.Darken -> PorterDuff.Mode.DARKEN
+                androidx.compose.ui.graphics.BlendMode.Lighten -> PorterDuff.Mode.LIGHTEN
+                androidx.compose.ui.graphics.BlendMode.Multiply -> PorterDuff.Mode.MULTIPLY
+                else -> PorterDuff.Mode.SRC_OVER
+            }
+            paint.xfermode = PorterDuffXfermode(mode)
         }
     }
 }

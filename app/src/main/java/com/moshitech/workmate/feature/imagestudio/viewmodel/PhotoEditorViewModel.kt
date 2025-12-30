@@ -242,7 +242,10 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
          layers.updateTextProperty(id, saveHistory=false) { it.copy(width = newWidth) }
      }
      
-     fun selectTextLayer(id: String) = layers.enterTextEditMode(id) // Selecting usually means edit mode for text in this app context? Or just selection?
+    fun selectTextLayer(id: String) {
+        layers.enterTextEditMode(id)
+        enterTool(EditorTab.TEXT)
+    } // Selecting usually means edit mode for text in this app context? Or just selection?
      // Actually LayerDelegate has enterTextEditMode which sets selectedTextLayerId AND editingTextLayerId. 
      // PhotoEditorScreen calls selectTextLayer probably for simple selection. 
      // Let's verify usage. If it's just tap to select, likely we want to show toolbar.
@@ -276,36 +279,6 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
     fun showTextDialog() { _uiState.update { it.copy(showTextDialog = true, editingTextId = null) } }
     fun showEditTextDialog(textId: String) { _uiState.update { it.copy(showTextDialog = true, editingTextId = textId) } }
     fun dismissTextDialog() { _uiState.update { it.copy(showTextDialog = false, editingTextId = null) } }
-    
-    // Sticker Facade
-    fun addSticker(resId: Int = 0, text: String? = null) = layers.addSticker(resId, text)
-    fun removeSticker(id: String) = layers.removeSticker(id)
-    fun selectSticker(id: String) = layers.selectSticker(id)
-    fun deselectSticker() = layers.deselectSticker()
-    fun flipSticker(id: String) = layers.flipSticker(id)
-    fun duplicateSticker(id: String) = layers.addSticker( // Rough duplicate logic reuse
-        resId = _uiState.value.stickerLayers.find { it.id == id }?.resId ?: 0
-    ) 
-    // Note: DuplicateSticker needs exact copy. Delegate didn't have duplicateSticker. 
-    // I'll add `duplicateSticker` logic inline or assume basic add is enough for now.
-    
-    fun updateStickerTransform(id: String, pan: androidx.compose.ui.geometry.Offset, zoom: Float, rotation: Float) {
-        // Delegate access?
-         _uiState.update { state ->
-            state.copy(
-                stickerLayers = state.stickerLayers.map { layer ->
-                    if (layer.id == id && !layer.isLocked) {
-                        layer.copy(
-                            x = layer.x + pan.x,
-                            y = layer.y + pan.y,
-                            scale = (layer.scale * zoom).coerceIn(0.1f, 10f),
-                            rotation = layer.rotation + rotation
-                        )
-                    } else layer
-                }
-            )
-        }
-    }
     
     // Draw Facade
     fun setDrawMode(mode: DrawMode) = draw.setDrawMode(mode)
@@ -382,14 +355,17 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
     
     // Shape Facade
     fun addShapeLayer(type: ShapeType) {
-        layers.addShapeLayer(type)
-        // Note: enterTool is called by the UI after addShapeLayer completes
+        val id = layers.addShapeLayer(type)
+        selectShapeLayer(id)
     }
     fun deselectShapeLayer() = layers.deselectShape()
     fun deselectShape() = layers.deselectShape() // Alias for UI compatibility
     fun updateShapeLayer(id: String, update: (ShapeLayer) -> ShapeLayer) = layers.updateShapeLayer(id, update = update)
     fun deleteShapeLayer(id: String) = layers.deleteLayer(id, LayerType.SHAPE)
-    fun duplicateShape(id: String) = layers.duplicateShape(id)
+    fun duplicateShape(id: String) {
+        val newId = layers.duplicateShape(id)
+        selectShapeLayer(newId)
+    }
     fun bringShapeToFront(id: String) = layers.bringToFront(id)
     fun sendShapeToBack(id: String) = layers.sendToBack(id)
     
@@ -443,6 +419,34 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
         layers.selectShapeLayer(id)
         enterTool(EditorTab.SHAPES)
     }
+
+    // Sticker Facade
+    fun addSticker(resId: Int = 0, text: String? = null) {
+        val id = layers.addSticker(resId, text)
+        selectSticker(id)
+    }
+    fun removeSticker(id: String) = layers.removeSticker(id)
+    fun selectSticker(id: String) {
+        layers.selectSticker(id)
+        enterTool(EditorTab.STICKER_CONTROLS)
+    }
+    fun deselectSticker() = layers.deselectSticker()
+    fun flipSticker(id: String) = layers.flipSticker(id)
+    fun duplicateSticker(id: String) {
+        val newId = layers.addSticker(
+            resId = _uiState.value.stickerLayers.find { it.id == id }?.resId ?: 0
+        )
+        selectSticker(newId)
+    }
+    
+    fun updateStickerTransform(id: String, pan: androidx.compose.ui.geometry.Offset, scaleXChange: Float, scaleYChange: Float, rotation: Float) = 
+        layers.updateStickerTransform(id, pan, scaleXChange, scaleYChange, rotation)
+
+    fun updateStickerOpacity(id: String, opacity: Float) = layers.updateStickerOpacity(id, opacity)
+    fun updateStickerBlendMode(id: String, blendMode: androidx.compose.ui.graphics.BlendMode) = layers.updateStickerBlendMode(id, blendMode)
+    fun updateStickerBorder(id: String, hasBorder: Boolean, color: Int, width: Float) = layers.updateStickerBorder(id, hasBorder, color, width)
+    fun updateStickerShadow(id: String, hasShadow: Boolean, color: Int, blur: Float, x: Float, y: Float) = layers.updateStickerShadow(id, hasShadow, color, blur, x, y)
+
 
     fun updateLastShapeTab(tab: ShapePropertyTab) {
         _uiState.update { it.copy(lastActiveShapeTab = tab) }
@@ -621,7 +625,7 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
     fun updateSaveFilename(filename: String) { _uiState.update { it.copy(saveFilename = filename) } }
     fun dismissSaveDialog() { _uiState.update { it.copy(showSaveDialog = false) } }
     
-    fun saveImage(filename: String, uiScale: Float? = null, onSaved: (Uri) -> Unit) {
+    fun saveImage(filename: String, uiScale: Float? = null, uiDensity: Float? = null, onSaved: (Uri) -> Unit) {
         viewModelScope.launch {
             val state = _uiState.value
             var bitmap = state.previewBitmap ?: return@launch
@@ -639,22 +643,13 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
                 kotlin.math.min(containerW.toFloat() / bmpW, containerH.toFloat() / bmpH)
             } else 1f
             
-            // Debug logging
-            android.util.Log.d("SaveDebug", "=== SAVE IMAGE DEBUG ===")
-            android.util.Log.d("SaveDebug", "Bitmap size: ${bmpW}x${bmpH}")
-            android.util.Log.d("SaveDebug", "Container size: ${containerW}x${containerH}")
-            android.util.Log.d("SaveDebug", "UI Scale (bitScale): $bitScale")
-            android.util.Log.d("SaveDebug", "Render Scale (bitmapScale): 1f")
-            currentState.shapeLayers.forEach { shape ->
-                android.util.Log.d("SaveDebug", "Shape ${shape.id}: x=${shape.x}, y=${shape.y}, w=${shape.width}, h=${shape.height}")
-            }
-            
             // Use CompositeRenderer 
             bitmap = compositeRenderer.renderComposite(
                 baseImage = bitmap,
                 state = currentState,
                 cropRect = null,
-                bitmapScale = 1f // Always 1f for save - render at native bitmap resolution
+                bitmapScale = bitScale, // Use calculated bitScale to match UI rendering sizing
+                targetDensity = uiDensity // Pass UI density for exact WYSIWYG
             )
             
             val quality = if (MonetizationManager.isHighQualitySaveLocked()) 85 else 100

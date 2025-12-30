@@ -99,7 +99,7 @@ class LayerDelegate(
 
     // ================= STICKER LAYERS =================
 
-    fun addSticker(resId: Int = 0, text: String? = null) {
+    fun addSticker(resId: Int = 0, text: String? = null): String {
         val nextZIndex = (getAllLayers().maxOfOrNull { it.zIndex } ?: -1) + 1
         val bitmap = _uiState.value.originalBitmap
         val centerX = bitmap?.width?.toFloat()?.div(2f) ?: 500f
@@ -118,6 +118,7 @@ class LayerDelegate(
             selectedTextLayerId = null
         ) }
         onApplyNeeded(true)
+        return newSticker.id
     }
 
     fun removeSticker(id: String) {
@@ -151,10 +152,87 @@ class LayerDelegate(
         }
     }
 
+    fun updateStickerOpacity(id: String, opacity: Float) {
+        _uiState.update { state ->
+            state.copy(
+                stickerLayers = state.stickerLayers.map { layer ->
+                    if (layer.id == id && !layer.isLocked) layer.copy(opacity = opacity)
+                    else layer
+                }
+            )
+        }
+        onApplyNeeded(true)
+    }
+
+    fun updateStickerBlendMode(id: String, blendMode: androidx.compose.ui.graphics.BlendMode) {
+        _uiState.update { state ->
+            state.copy(
+                stickerLayers = state.stickerLayers.map { layer ->
+                    if (layer.id == id && !layer.isLocked) layer.copy(blendMode = blendMode)
+                    else layer
+                }
+            )
+        }
+        onApplyNeeded(true)
+    }
+
+    fun updateStickerShadow(id: String, hasShadow: Boolean, color: Int, blur: Float, offsetX: Float, offsetY: Float) {
+        _uiState.update { state ->
+            state.copy(
+                stickerLayers = state.stickerLayers.map { layer ->
+                    if (layer.id == id && !layer.isLocked) layer.copy(
+                        hasShadow = hasShadow,
+                        shadowColor = color,
+                        shadowBlur = blur,
+                        shadowOffsetX = offsetX,
+                        shadowOffsetY = offsetY
+                    )
+                    else layer
+                }
+            )
+        }
+        onApplyNeeded(true)
+    }
+
+    fun updateStickerBorder(id: String, hasBorder: Boolean, color: Int, width: Float) {
+        _uiState.update { state ->
+            state.copy(
+                stickerLayers = state.stickerLayers.map { layer ->
+                    if (layer.id == id && !layer.isLocked) layer.copy(
+                        hasBorder = hasBorder,
+                        borderColor = color,
+                        borderWidth = width
+                    )
+                    else layer
+                }
+            )
+        }
+        onApplyNeeded(true)
+    }
+
+    fun updateStickerTransform(id: String, pan: androidx.compose.ui.geometry.Offset, scaleXChange: Float, scaleYChange: Float, rotation: Float) {
+        _uiState.update { state ->
+            state.copy(
+                stickerLayers = state.stickerLayers.map { layer ->
+                    if (layer.id == id && !layer.isLocked) {
+                        layer.copy(
+                            x = layer.x + pan.x,
+                            y = layer.y + pan.y,
+                            scaleX = layer.scaleX * scaleXChange,
+                            scaleY = layer.scaleY * scaleYChange,
+                            rotation = layer.rotation + rotation
+                        )
+                    } else layer
+                }
+            )
+        }
+        onApplyNeeded(true)
+    }
+
     // ================= SHAPE LAYERS =================
     
-    fun addShapeLayer(type: ShapeType) {
-        val bitmap = _uiState.value.originalBitmap ?: _uiState.value.previewBitmap ?: return
+    fun addShapeLayer(type: ShapeType): String {
+        val bitmap = _uiState.value.originalBitmap ?: _uiState.value.previewBitmap ?: return ""
         val bmpW = bitmap.width.toFloat()
         val bmpH = bitmap.height.toFloat()
         val nextZIndex = (getAllLayers().maxOfOrNull { it.zIndex } ?: -1) + 1
@@ -197,6 +275,7 @@ class LayerDelegate(
         }
         android.util.Log.d("ShapeDebug", "addShapeLayer: selectedShapeLayerId = ${newShape.id}, shapeLayers.size = ${_uiState.value.shapeLayers.size}")
         onApplyNeeded(true)
+        return newShape.id
     }
 
     fun updateShapeType(id: String, newType: ShapeType) {
@@ -245,8 +324,8 @@ class LayerDelegate(
         _uiState.update { it.copy(selectedShapeLayerId = null) }
     }
 
-    fun duplicateShape(id: String) {
-        val shapeToDuplicate = _uiState.value.shapeLayers.find { it.id == id } ?: return
+    fun duplicateShape(id: String): String {
+        val shapeToDuplicate = _uiState.value.shapeLayers.find { it.id == id } ?: return ""
         val newShape = shapeToDuplicate.copy(
             id = java.util.UUID.randomUUID().toString(),
             x = shapeToDuplicate.x + 40f,
@@ -258,6 +337,7 @@ class LayerDelegate(
             selectedShapeLayerId = newShape.id
         ) }
         onApplyNeeded(true)
+        return newShape.id
     }
 
     fun updateShapeLayer(id: String, saveHistory: Boolean = true, update: (ShapeLayer) -> ShapeLayer) {

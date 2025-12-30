@@ -31,6 +31,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateCentroidSize
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Add
@@ -162,6 +166,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.unit.round
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.moshitech.workmate.feature.imagestudio.components.AdContainer
@@ -207,6 +212,16 @@ fun PhotoEditorScreen(
             }
             com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.DRAW -> {
                 // Deselect text and stickers when on Draw tab
+                viewModel.deselectText()
+                viewModel.deselectSticker()
+            }
+            com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.STICKER_CONTROLS -> {
+                // Keep stickers selected, deselect others
+                viewModel.deselectShape()
+                viewModel.deselectText()
+            }
+            com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.SHAPES -> {
+                // Keep shapes selected
                 viewModel.deselectText()
                 viewModel.deselectSticker()
             }
@@ -491,6 +506,11 @@ fun PhotoEditorScreen(
                 val boxWidth = constraints.maxWidth.toFloat()
                 val boxHeight = constraints.maxHeight.toFloat()
                 
+                // Update container size in ViewModel for coordinate calculations
+                LaunchedEffect(constraints.maxWidth, constraints.maxHeight) {
+                    viewModel.updateContainerSize(constraints.maxWidth, constraints.maxHeight)
+                }
+                
                 // Calculate Image Fit Params using Preview if available (handles rotation dimensions)
                 val activeBitmap = uiState.previewBitmap ?: uiState.originalBitmap
                 var bitScale = 1f
@@ -501,6 +521,10 @@ fun PhotoEditorScreen(
                 if (activeBitmap != null && activeBitmap.width > 0) {
                     val bmpW = activeBitmap.width.toFloat()
                     val bmpH = activeBitmap.height.toFloat()
+                    
+                    // Calculate Local Scale & Offset to ensure perfect frame-sync with UI Layout
+                    // This prevents "drift" during toolbars opening/closing (VM state lags by 1 frame)
+                    // Hoisted here to be used by both Image modifier and Layers
                     val scaleToFit = minOf(boxWidth / bmpW, boxHeight / bmpH)
                     finalDisplayWidth = bmpW * scaleToFit
                     finalDisplayHeight = bmpH * scaleToFit
@@ -508,11 +532,21 @@ fun PhotoEditorScreen(
                     
                     // Update local state if needed (removed VM call)
                     LaunchedEffect(bitScale) {
-                        /* if (currentBitScale != bitScale) {
+                        if (currentBitScale != bitScale) {
                             currentBitScale = bitScale
-                        } */
+                        }
                     }
                 }
+                
+                // Calculate centeredOffset here so it is available for Image and Layers
+                // Offset = (container - scaled_bitmap) / 2
+                val centeredOffset = Offset(
+                    (boxWidth - finalDisplayWidth) / 2f,
+                    (boxHeight - finalDisplayHeight) / 2f
+                )
+                
+                // Also define localBitScale alias for clarity in layer logic, matching bitScale but ensuring non-null flow
+                val localBitScale = bitScale
 
                 // CHECKERBOARD BACKGROUND (Integrated)
                 Box(
@@ -556,25 +590,68 @@ fun PhotoEditorScreen(
                         }
                         // ZOOM/PAN GESTURES
                         .pointerInput(Unit) {
-                            detectTransformGestures { _, pan, zoom, _ ->
-                                val newScale = (scale.value * zoom).coerceIn(0.5f, 5f)
-                                scope.launch { scale.snapTo(newScale) }
+                            awaitEachGesture {
+                                var zoom = 1f
+                                var pan = Offset.Zero
+                                var pastTouchSlop = false
                                 
-                                val newOffset = if (scale.value > 1f) {
-                                    val maxX = (boxWidth * scale.value - boxWidth) / 2
-                                    val maxY = (boxHeight * scale.value - boxHeight) / 2
-                                    Offset(
-                                        x = (offsetX.value + pan.x * scale.value).coerceIn(-maxX, maxX),
-                                        y = (offsetY.value + pan.y * scale.value).coerceIn(-maxY, maxY)
-                                    )
-                                } else {
-                                    Offset(
-                                        x = offsetX.value + pan.x,
-                                        y = offsetY.value + pan.y
-                                    )
-                                }
-                                scope.launch { offsetX.snapTo(newOffset.x) }
-                                scope.launch { offsetY.snapTo(newOffset.y) }
+                                awaitFirstDown(requireUnconsumed = false)
+                                
+                                do {
+                                    val event = awaitPointerEvent()
+                                    val canceled = event.changes.any { it.isConsumed }
+                                    if (canceled) break
+
+                                    val zoomChange = event.calculateZoom()
+                                    val panChange = event.calculatePan()
+                                    
+                                    if (!pastTouchSlop) {
+                                        zoom *= zoomChange
+                                        pan += panChange
+
+                                        val centroidSize = event.calculateCentroidSize(useCurrent = false)
+                                        val zoomMotion = kotlin.math.abs(1 - zoom) * centroidSize
+                                        val panMotion = pan.getDistance()
+
+                                        if (zoomMotion > viewConfiguration.touchSlop ||
+                                            panMotion > viewConfiguration.touchSlop
+                                        ) {
+                                            pastTouchSlop = true
+                                        }
+                                    }
+
+                                    if (pastTouchSlop) {
+                                        if (zoomChange != 1f || panChange != Offset.Zero) {
+                                            val newScale = (scale.value * zoomChange).coerceIn(0.5f, 5f)
+                                            // Apply Scale Snap
+                                            scope.launch { scale.snapTo(newScale) }
+                                            
+                                            // Apply Pan Snap
+                                            val newOffset = if (scale.value > 1f) {
+                                                val maxX = (boxWidth * scale.value - boxWidth) / 2
+                                                val maxY = (boxHeight * scale.value - boxHeight) / 2
+                                                Offset(
+                                                    x = (offsetX.value + panChange.x * scale.value).coerceIn(-maxX, maxX),
+                                                    y = (offsetY.value + panChange.y * scale.value).coerceIn(-maxY, maxY)
+                                                )
+                                            } else {
+                                                Offset(
+                                                    x = offsetX.value + panChange.x,
+                                                    y = offsetY.value + panChange.y
+                                                )
+                                            }
+                                            scope.launch { offsetX.snapTo(newOffset.x) }
+                                            scope.launch { offsetY.snapTo(newOffset.y) }
+                                            
+                                            // Consume events
+                                            event.changes.forEach {
+                                                if (it.positionChanged()) {
+                                                    it.consume()
+                                                }
+                                            }
+                                        }
+                                    }
+                                } while (!event.changes.any { it.isConsumed } && event.changes.any { it.pressed })
                             }
                         }
                         .graphicsLayer(
@@ -584,17 +661,19 @@ fun PhotoEditorScreen(
                             translationX = offsetX.value,
                             translationY = offsetY.value
                         ),
-                    contentAlignment = Alignment.Center
+                    contentAlignment = Alignment.TopStart // Force TopStart to align with manual calculations
                 ) {
                     // MAIN IMAGE
                     if (activeBitmap != null) {
                         Image(
                             bitmap = activeBitmap.asImageBitmap(),
                             contentDescription = "Editor Image",
-                            modifier = Modifier.requiredSize(
-                                width = (finalDisplayWidth / density).dp,
-                                height = (finalDisplayHeight / density).dp
-                            ),
+                            modifier = Modifier
+                                .offset { centeredOffset.round() } // Apply same manual offset as shapes
+                                .requiredSize(
+                                    width = (finalDisplayWidth / density).dp,
+                                    height = (finalDisplayHeight / density).dp
+                                ),
                             contentScale = ContentScale.FillBounds
                         )
                         val densityUnused = LocalDensity.current
@@ -659,8 +738,7 @@ fun PhotoEditorScreen(
                     // Need to verify layer rendering logic - assuming Standard Layer Rendering Here
                     // Based on previous code, Layers were rendered in a Box.
                     
-                    // Calculate correct offset for Center-aligned parent
-                    val centeredOffset = Offset(-finalDisplayWidth / 2f, -finalDisplayHeight / 2f)
+
 
                     // Sticker Layers
                     uiState.stickerLayers.forEach { layer ->
@@ -669,11 +747,11 @@ fun PhotoEditorScreen(
                                 com.moshitech.workmate.feature.imagestudio.components.StickerBoxComposable(
                                     layer = layer,
                                     isSelected = uiState.selectedStickerLayerId == layer.id,
-                                    bitmapScale = bitScale,
+                                    bitmapScale = localBitScale,
                                     bitmapOffset = centeredOffset,
                                     onSelect = { viewModel.selectSticker(it) },
-                                    onTransform = { id, offset, scale, rotation ->
-                                        viewModel.updateStickerTransform(id, offset, scale, rotation)
+                                    onTransform = { id, offset, scaleX, scaleY, rotation ->
+                                        viewModel.updateStickerTransform(id, offset, scaleX, scaleY, rotation)
                                     },
                                     onTransformEnd = { viewModel.saveToHistory() },
                                     onDelete = { viewModel.removeSticker(it) },
@@ -691,7 +769,7 @@ fun PhotoEditorScreen(
                                     layer = layer,
                                     isSelected = uiState.selectedTextLayerId == layer.id,
                                     isEditing = uiState.editingTextLayerId == layer.id,
-                                    bitmapScale = bitScale,
+                                    bitmapScale = localBitScale,
                                     bitmapOffset = centeredOffset,
                                     onSelect = { viewModel.selectTextLayer(it) },
                                     onEdit = { viewModel.enterTextEditMode(it) },
@@ -716,7 +794,7 @@ fun PhotoEditorScreen(
                                 com.moshitech.workmate.feature.imagestudio.components.ShapeBoxComposable(
                                     layer = layer,
                                     isSelected = uiState.selectedShapeLayerId == layer.id,
-                                    bitmapScale = bitScale,
+                                    bitmapScale = localBitScale,
                                     bitmapOffset = centeredOffset,
                                     onSelect = { viewModel.selectShapeLayer(it) },
                                     onTransform = { id, offset, scale, rotation ->
@@ -833,9 +911,25 @@ fun PhotoEditorScreen(
                                     )
                                 }
                                 EditorTab.STICKERS -> {
-                                    com.moshitech.workmate.feature.imagestudio.components.StickersTab(
-                                        onStickerSelected = { emoji -> viewModel.addSticker(text = emoji) }
-                                    )
+                                    // Managed by Overlay Dialog, but if we are here, we can show a placeholder or just empty
+                                    Box(Modifier.fillMaxSize()) 
+                                }
+                                EditorTab.STICKER_CONTROLS -> {
+                                    val layerToEdit = uiState.stickerLayers.find { it.id == uiState.selectedStickerLayerId }
+                                    if (layerToEdit != null) {
+                                         com.moshitech.workmate.feature.imagestudio.components.StickerEditorToolbar(
+                                            layer = layerToEdit,
+                                            onUpdateOpacity = { viewModel.updateStickerOpacity(layerToEdit.id, it) },
+                                            onUpdateBlend = { viewModel.updateStickerBlendMode(layerToEdit.id, it) },
+                                            onUpdateBorder = { has, col, w -> viewModel.updateStickerBorder(layerToEdit.id, has, col, w) },
+                                            onUpdateShadow = { has, col, blur, x, y -> viewModel.updateStickerShadow(layerToEdit.id, has, col, blur, x, y) },
+                                            onFlip = { viewModel.flipSticker(layerToEdit.id) },
+                                            onDone = { 
+                                                viewModel.deselectSticker()
+                                                viewModel.cancelTool() // Or keep tool but deselect? 
+                                            }
+                                        )
+                                    }
                                 }
                                 EditorTab.TEXT -> {
                                      val layerToEdit = if (uiState.selectedTextLayerId != null) {
@@ -1005,6 +1099,7 @@ fun PhotoEditorScreen(
         
         // Save Dialog - inside Scaffold where uiState is accessible
         if (uiState.showSaveDialog) {
+            val density = LocalDensity.current.density
             AlertDialog(
                 onDismissRequest = { viewModel.dismissSaveDialog() },
                 title = { Text("Save Image") },
@@ -1030,7 +1125,7 @@ fun PhotoEditorScreen(
                 confirmButton = {
                     TextButton(
                         onClick = {
-                            viewModel.saveImage(uiState.saveFilename, currentBitScale) {
+                            viewModel.saveImage(uiState.saveFilename, currentBitScale, density) {
                                 // Stay in screen, do not pop
                             }
                         },
@@ -1415,6 +1510,16 @@ fun PhotoEditorScreen(
                         }
                 )
             }
+        }
+        
+        // NEW: Sticker Discovery Overlay
+        if (activeTool == EditorTab.STICKERS) {
+           com.moshitech.workmate.feature.imagestudio.components.StickerDiscoveryScreen(
+               onDismiss = { viewModel.cancelTool() },
+               onStickerSelected = { emoji -> 
+                   viewModel.addSticker(text = emoji)
+               }
+           )
         }
     }
 }

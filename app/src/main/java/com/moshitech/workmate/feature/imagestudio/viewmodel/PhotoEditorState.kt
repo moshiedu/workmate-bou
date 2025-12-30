@@ -132,7 +132,8 @@ data class StickerLayer(
     val text: String? = null,
     val x: Float,
     val y: Float,
-    val scale: Float = 1f,
+    val scaleX: Float = 1f,
+    val scaleY: Float = 1f,
     val rotation: Float = 0f,
     val isFlipped: Boolean = false,
     val isLocked: Boolean = false,
@@ -155,7 +156,8 @@ data class StickerLayer(
     
     val hasTint: Boolean = false,
     val tintColor: Int = android.graphics.Color.BLUE,
-    val tintStrength: Float = 0.5f
+    val tintStrength: Float = 0.5f,
+    val blendMode: androidx.compose.ui.graphics.BlendMode = androidx.compose.ui.graphics.BlendMode.SrcOver
 )
 
 enum class AppFont {
@@ -383,7 +385,139 @@ data class PhotoEditorUiState(
     
     // Persisted Tool States
     val lastActiveShapeTab: ShapePropertyTab = ShapePropertyTab.SHAPES
-)
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as PhotoEditorUiState
+
+        if (isLoading != other.isLoading) return false
+        if (isSaving != other.isSaving) return false
+        if (brightness != other.brightness) return false
+        if (contrast != other.contrast) return false
+        if (saturation != other.saturation) return false
+        if (canUndo != other.canUndo) return false
+        if (canRedo != other.canRedo) return false
+        if (showSaveDialog != other.showSaveDialog) return false
+        if (showTextDialog != other.showTextDialog) return false
+        if (currentDrawColor != other.currentDrawColor) return false
+        if (currentStrokeWidth != other.currentStrokeWidth) return false
+        if (currentOpacity != other.currentOpacity) return false
+        if (mosaicIntensity != other.mosaicIntensity) return false
+        if (posterizeLevels != other.posterizeLevels) return false
+        if (rotationAngle != other.rotationAngle) return false
+        if (flipX != other.flipX) return false
+        if (flipY != other.flipY) return false
+        if (hue != other.hue) return false
+        if (temperature != other.temperature) return false
+        if (tint != other.tint) return false
+        if (showFloatingToolbar != other.showFloatingToolbar) return false
+        if (currentShadowColor != other.currentShadowColor) return false
+        if (currentShadowBlur != other.currentShadowBlur) return false
+        if (currentShadowX != other.currentShadowX) return false
+        if (currentShadowY != other.currentShadowY) return false
+        if (isPreviewMode != other.isPreviewMode) return false
+        if (isCropApplied != other.isCropApplied) return false
+        if (hasUnappliedLayers != other.hasUnappliedLayers) return false
+        if (maxHistorySize != other.maxHistorySize) return false
+        if (containerWidth != other.containerWidth) return false
+        if (containerHeight != other.containerHeight) return false
+        if (originalBitmap != other.originalBitmap) return false
+        if (previewBitmap != other.previewBitmap) return false
+        if (filterPreviewBitmap != other.filterPreviewBitmap) return false
+        if (activeFilterId != other.activeFilterId) return false
+        if (!activeFilterMatrix.contentEquals(other.activeFilterMatrix)) return false
+        if (message != other.message) return false
+        if (saveFilename != other.saveFilename) return false
+        if (textLayers != other.textLayers) return false
+        if (editingTextId != other.editingTextId) return false
+        if (stickerLayers != other.stickerLayers) return false
+        if (shapeLayers != other.shapeLayers) return false
+        if (drawActions != other.drawActions) return false
+        if (redoStack != other.redoStack) return false
+        if (selectedDrawTool != other.selectedDrawTool) return false
+        if (mosaicPattern != other.mosaicPattern) return false
+        if (mosaicColorMode != other.mosaicColorMode) return false
+        if (activeTool != other.activeTool) return false
+        if (toolSnapshot != other.toolSnapshot) return false
+        if (selectedTextLayerId != other.selectedTextLayerId) return false
+        if (editingTextLayerId != other.editingTextLayerId) return false
+        if (selectedStickerLayerId != other.selectedStickerLayerId) return false
+        if (selectedShapeLayerId != other.selectedShapeLayerId) return false
+        if (activeDrawMode != other.activeDrawMode) return false
+        if (currentStrokeStyle != other.currentStrokeStyle) return false
+        if (cropRect != other.cropRect) return false
+        if (originalImageBounds != other.originalImageBounds) return false
+        if (editHistory != other.editHistory) return false
+        if (lastActiveShapeTab != other.lastActiveShapeTab) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = isLoading.hashCode()
+        result = 31 * result + isSaving.hashCode()
+        result = 31 * result + brightness.hashCode()
+        result = 31 * result + contrast.hashCode()
+        result = 31 * result + saturation.hashCode()
+        result = 31 * result + canUndo.hashCode()
+        result = 31 * result + canRedo.hashCode()
+        result = 31 * result + showSaveDialog.hashCode()
+        result = 31 * result + showTextDialog.hashCode()
+        result = 31 * result + currentDrawColor
+        result = 31 * result + currentStrokeWidth.hashCode()
+        result = 31 * result + currentOpacity.hashCode()
+        result = 31 * result + mosaicIntensity.hashCode()
+        result = 31 * result + posterizeLevels
+        result = 31 * result + rotationAngle.hashCode()
+        result = 31 * result + flipX.hashCode()
+        result = 31 * result + flipY.hashCode()
+        result = 31 * result + hue.hashCode()
+        result = 31 * result + temperature.hashCode()
+        result = 31 * result + tint.hashCode()
+        result = 31 * result + showFloatingToolbar.hashCode()
+        result = 31 * result + currentShadowColor
+        result = 31 * result + currentShadowBlur.hashCode()
+        result = 31 * result + currentShadowX.hashCode()
+        result = 31 * result + currentShadowY.hashCode()
+        result = 31 * result + isPreviewMode.hashCode()
+        result = 31 * result + isCropApplied.hashCode()
+        result = 31 * result + hasUnappliedLayers.hashCode()
+        result = 31 * result + maxHistorySize
+        result = 31 * result + containerWidth
+        result = 31 * result + containerHeight
+        result = 31 * result + (originalBitmap?.hashCode() ?: 0)
+        result = 31 * result + (previewBitmap?.hashCode() ?: 0)
+        result = 31 * result + (filterPreviewBitmap?.hashCode() ?: 0)
+        result = 31 * result + (activeFilterId?.hashCode() ?: 0)
+        result = 31 * result + (activeFilterMatrix?.contentHashCode() ?: 0)
+        result = 31 * result + (message?.hashCode() ?: 0)
+        result = 31 * result + saveFilename.hashCode()
+        result = 31 * result + textLayers.hashCode()
+        result = 31 * result + (editingTextId?.hashCode() ?: 0)
+        result = 31 * result + stickerLayers.hashCode()
+        result = 31 * result + shapeLayers.hashCode()
+        result = 31 * result + drawActions.hashCode()
+        result = 31 * result + redoStack.hashCode()
+        result = 31 * result + selectedDrawTool.hashCode()
+        result = 31 * result + mosaicPattern.hashCode()
+        result = 31 * result + mosaicColorMode.hashCode()
+        result = 31 * result + (activeTool?.hashCode() ?: 0)
+        result = 31 * result + (toolSnapshot?.hashCode() ?: 0)
+        result = 31 * result + (selectedTextLayerId?.hashCode() ?: 0)
+        result = 31 * result + (editingTextLayerId?.hashCode() ?: 0)
+        result = 31 * result + (selectedStickerLayerId?.hashCode() ?: 0)
+        result = 31 * result + (selectedShapeLayerId?.hashCode() ?: 0)
+        result = 31 * result + activeDrawMode.hashCode()
+        result = 31 * result + currentStrokeStyle.hashCode()
+        result = 31 * result + (cropRect?.hashCode() ?: 0)
+        result = 31 * result + (originalImageBounds?.hashCode() ?: 0)
+        result = 31 * result + editHistory.hashCode()
+        result = 31 * result + lastActiveShapeTab.hashCode()
+        return result
+    }
+}
 
 enum class ShapePropertyTab {
     SHAPES,

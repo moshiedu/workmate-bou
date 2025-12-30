@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Flip
@@ -24,17 +23,10 @@ import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import kotlin.math.roundToInt // Added for coordinate mapping
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
@@ -51,7 +43,6 @@ import androidx.compose.ui.unit.sp
 import com.moshitech.workmate.feature.imagestudio.viewmodel.StickerLayer
 import kotlin.math.roundToInt
 import kotlin.math.abs
-import kotlin.math.PI
 
 @Composable
 fun StickerBoxComposable(
@@ -60,7 +51,7 @@ fun StickerBoxComposable(
     bitmapScale: Float,
     bitmapOffset: Offset,
     onSelect: (String) -> Unit,
-    onTransform: (String, Offset, Float, Float) -> Unit,
+    onTransform: (String, Offset, Float, Float, Float) -> Unit, // id, pan, scaleXChange, scaleYChange, rotation
     onTransformEnd: (String) -> Unit,
     onDelete: (String) -> Unit,
     onFlip: ((String) -> Unit)? = null,
@@ -78,25 +69,22 @@ fun StickerBoxComposable(
                     (layer.y * bitmapScale + bitmapOffset.y).roundToInt()
                 )
             }
-            // Let content determine size naturally (based on scaled sticker)
-            // Do NOT use fixed .size() here!
             .graphicsLayer {
-                // Visual transforms only
                 rotationZ = layer.rotation
-                scaleX = layer.scale * (if (layer.isFlipped) -1f else 1f)
-                scaleY = layer.scale
+                // Combining Flip with ScaleX
+                scaleX = layer.scaleX * (if (layer.isFlipped) -1f else 1f)
+                scaleY = layer.scaleY
                 alpha = layer.opacity
-
-                // Optional: elevation-based shadow (no offset control)
+                
                 if (layer.hasShadow) {
                     shadowElevation = layer.shadowBlur
                     shape = androidx.compose.ui.graphics.RectangleShape
                 }
             }
+            // Main Body Gesture (Pan, Zoom, Rotate - MultiTouch)
             .pointerInput(layer.id, layer.isLocked || !isSelected) {
                 if (layer.isLocked || !isSelected) return@pointerInput
 
-                // Same robust gesture detection as TextBox
                 awaitEachGesture {
                     var zoom = 1f
                     var pan = Offset.Zero
@@ -132,7 +120,7 @@ fun StickerBoxComposable(
                         }
 
                         if (pastTouchSlop) {
-                            // Correct pan for current rotation (prevents drift)
+                            // Global Shift Correction for Pan
                             val rad = Math.toRadians(layer.rotation.toDouble())
                             val cos = Math.cos(rad)
                             val sin = Math.sin(rad)
@@ -141,7 +129,8 @@ fun StickerBoxComposable(
                                 (panChange.x * sin + panChange.y * cos).toFloat()
                             )
 
-                            onTransform(layer.id, correctedPan, zoomChange, rotationChange)
+                            // Apply local zoom to both X and Y (Aspect Ratio Preserved on MultiTouch Zoom)
+                            onTransform(layer.id, correctedPan, zoomChange, zoomChange, rotationChange)
                             event.changes.forEach { if (it.positionChanged()) it.consume() }
                         }
 
@@ -160,33 +149,82 @@ fun StickerBoxComposable(
         // Sticker Visual Content
         Box(
             modifier = Modifier
-                // Center content so rotation pivot is correct
-                .size(100.dp) // Base size for the sticker content itself
-                .padding(8.dp) // Breathing room for handles
-                // Custom shadow with offset support
-                .then(
-                    if (layer.hasShadow) {
-                        Modifier
-                            .offset(
-                                x = with(density) { layer.shadowOffsetX.toDp() },
-                                y = with(density) { layer.shadowOffsetY.toDp() }
+                .size(100.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .then(
+                        if (layer.hasShadow) {
+                            Modifier
+                                .offset(
+                                    x = with(density) { layer.shadowOffsetX.toDp() },
+                                    y = with(density) { layer.shadowOffsetY.toDp() }
+                                )
+                                .shadow(
+                                    elevation = layer.shadowBlur.dp,
+                                    shape = androidx.compose.ui.graphics.RectangleShape,
+                                    ambientColor = Color(layer.shadowColor),
+                                    spotColor = Color(layer.shadowColor)
+                                )
+                                .offset(
+                                    x = with(density) { -layer.shadowOffsetX.toDp() },
+                                    y = with(density) { -layer.shadowOffsetY.toDp() }
+                                )
+                        } else Modifier
+                    )
+                    .then(
+                        if (layer.hasBorder) {
+                             Modifier.border(layer.borderWidth.dp, Color(layer.borderColor))
+                         } else Modifier
+                    )
+            ) {
+                 if (layer.text != null) {
+                     Text(
+                        text = layer.text,
+                        fontSize = 80.sp,
+                        color = if (layer.hasTint) Color.Unspecified else Color.Black,
+                        modifier = Modifier.align(Alignment.Center)
+                            .then(
+                                if (layer.hasTint) {
+                                    Modifier.drawWithContent {
+                                        drawContent()
+                                        drawRect(
+                                            Color(layer.tintColor).copy(alpha = layer.tintStrength),
+                                            blendMode = androidx.compose.ui.graphics.BlendMode.SrcAtop
+                                        )
+                                    }
+                                } else Modifier
                             )
-                            .shadow(
-                                elevation = layer.shadowBlur.dp,
-                                shape = androidx.compose.ui.graphics.RectangleShape,
-                                ambientColor = Color(layer.shadowColor),
-                                spotColor = Color(layer.shadowColor)
+                    )
+                } else if (layer.resId != 0) {
+                    Image(
+                        painter = painterResource(id = layer.resId),
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .matchParentSize()
+                            .then(
+                                if (layer.hasTint) {
+                                    Modifier.drawWithContent {
+                                        drawContent()
+                                        drawRect(
+                                            Color(layer.tintColor).copy(alpha = layer.tintStrength),
+                                            blendMode = androidx.compose.ui.graphics.BlendMode.SrcAtop
+                                        )
+                                    }
+                                } else Modifier
                             )
-                            .offset(
-                                x = with(density) { -layer.shadowOffsetX.toDp() },
-                                y = with(density) { -layer.shadowOffsetY.toDp() }
-                            )
-                    } else Modifier
-                )
-                // Selection dashed border (visual only)
-                .then(
-                    if (isSelected) {
-                        Modifier.drawBehind {
+                    )
+                }
+            }
+            
+            // Selection Overlay
+            if (isSelected) {
+                Box(
+                    modifier = Modifier.matchParentSize()
+                        .drawBehind {
                             drawRect(
                                 color = Color.White,
                                 style = androidx.compose.ui.graphics.drawscope.Stroke(
@@ -195,119 +233,192 @@ fun StickerBoxComposable(
                                 )
                             )
                         }
-                    } else Modifier
-                )
-                // User-defined border
-                .then(
-                    if (layer.hasBorder) {
-                        Modifier.drawBehind {
-                            drawRect(
-                                color = Color(layer.borderColor),
-                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = layer.borderWidth)
-                            )
-                        }
-                    } else Modifier
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            if (layer.text != null) {
-                Text(
-                    text = layer.text,
-                    fontSize = 80.sp, // Adjust base size as needed
-                    color = if (layer.hasTint) Color.Unspecified else Color.Black,
-                    modifier = Modifier
-                        .then(
-                            if (layer.hasTint) {
-                                Modifier.drawWithContent {
-                                    drawContent()
-                                    drawRect(
-                                        Color(layer.tintColor).copy(alpha = layer.tintStrength),
-                                        blendMode = androidx.compose.ui.graphics.BlendMode.SrcAtop
-                                    )
-                                }
-                            } else Modifier
-                        )
-                )
-            } else if (layer.resId != 0) {
-                Image(
-                    painter = painterResource(id = layer.resId),
-                    contentDescription = null,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .matchParentSize()
-                        .then(
-                            if (layer.hasTint) {
-                                Modifier.drawWithContent {
-                                    drawContent()
-                                    drawRect(
-                                        Color(layer.tintColor).copy(alpha = layer.tintStrength),
-                                        blendMode = androidx.compose.ui.graphics.BlendMode.SrcAtop
-                                    )
-                                }
-                            } else Modifier
-                        )
                 )
             }
         }
 
-        // Selection Handles
+        // --- HANDLES ---
         if (isSelected && !layer.isLocked) {
-            val handleSize = 32.dp
-            val handleOffset = 16.dp
-
-            // Delete (Top-Left)
-            IconButton(
-                onClick = { onDelete(layer.id) },
-                modifier = Modifier
-                    .offset(x = -handleOffset, y = -handleOffset)
-                    .size(handleSize)
-                    .background(Color.Red, CircleShape)
-                    .align(Alignment.TopStart)
+             val touchSize = 48.dp
+             val halfTouch = 24.dp
+            
+             @Composable
+             fun Handle(
+                alignment: Alignment,
+                offsetX: androidx.compose.ui.unit.Dp = 0.dp,
+                offsetY: androidx.compose.ui.unit.Dp = 0.dp,
+                icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+                iconTint: Color = Color.Black,
+                isDelete: Boolean = false,
+                onClick: (() -> Unit)? = null,
+                onDrag: ((Offset) -> Unit)? = null,
+                onDragEnd: (() -> Unit)? = null
             ) {
-                Icon(Icons.Default.Close, null, tint = Color.White)
-            }
+                val alignOffsetX = when(alignment) {
+                    Alignment.TopStart, Alignment.CenterStart, Alignment.BottomStart -> -halfTouch
+                    Alignment.TopEnd, Alignment.CenterEnd, Alignment.BottomEnd -> halfTouch
+                    else -> 0.dp
+                }
+                val alignOffsetY = when(alignment) {
+                    Alignment.TopStart, Alignment.TopCenter, Alignment.TopEnd -> -halfTouch
+                    Alignment.BottomEnd, Alignment.BottomCenter, Alignment.BottomStart -> halfTouch
+                    else -> 0.dp
+                }
 
-            // Flip (Top-Right)
-            if (onFlip != null) {
-                IconButton(
-                    onClick = { onFlip(layer.id) },
+                Box(
                     modifier = Modifier
-                        .offset(x = handleOffset, y = -handleOffset)
-                        .size(handleSize)
-                        .background(Color(0xFF2196F3), CircleShape)
-                        .align(Alignment.TopEnd)
+                        .align(alignment)
+                        .offset(x = alignOffsetX + offsetX, y = alignOffsetY + offsetY)
+                        .size(touchSize)
+                        .then(
+                            if (onDrag != null) {
+                                Modifier.pointerInput(Unit) {
+                                    detectDragGestures(
+                                        onDragEnd = { onDragEnd?.invoke() }
+                                    ) { change, dragAmount ->
+                                        change.consume()
+                                        onDrag(dragAmount)
+                                    }
+                                }
+                            } else if (onClick != null) {
+                                Modifier.pointerInput(Unit) {
+                                    detectTapGestures { onClick() }
+                                }
+                            } else Modifier
+                        ),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Flip, null, tint = Color.White)
+                    Box(
+                        modifier = Modifier
+                            .size(if (isDelete) 20.dp else 10.dp)
+                            .background(if (isDelete) Color(0xFFFF3B30) else Color.White, CircleShape)
+                            .border(if (isDelete) 2.dp else 1.dp, if (isDelete) Color.White else Color(0xFFCCCCCC), CircleShape)
+                            .shadow(2.dp, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (icon != null) {
+                            Icon(icon, null, tint = if (isDelete) Color.White else iconTint, modifier = Modifier.size(if (isDelete) 12.dp else 10.dp))
+                        }
+                    }
                 }
             }
+            
+            // Scaled Handle Drag Logic
+            fun onScaleHandleDrag(dragAmount: Offset, handleSignX: Float, handleSignY: Float, lockAspect: Boolean = false) {
+                 // 1. Inverse Rotate Drag Vector to align with Local Sticker Axes
+                 val rad = -Math.toRadians(layer.rotation.toDouble()) // Inverse Rotation
+                 val cos = Math.cos(rad)
+                 val sin = Math.sin(rad)
+                 val localDragX = (dragAmount.x * cos - dragAmount.y * sin).toFloat()
+                 val localDragY = (dragAmount.x * sin + dragAmount.y * cos).toFloat()
+                 
+                 // 2. Project onto Handle Normal Direction (from center)
+                 // If handle is Right (1, 0), and I drag Right (+x), localDragX is +ve. SignX is +ve. Product +ve -> Grow.
+                 // If handle is Left (-1, 0), and I drag Left (-x), localDragX is -ve. SignX is -ve. Product +ve -> Grow.
+                 
+                 val widthSensitivity = 100f // Pixels to double size roughly
+                 val heightSensitivity = 100f 
+                 
+                 // Calculate Delta Factors
+                 // We apply drag * sign. 
+                 // If scaleX is negative (flipped), does logic hold? 
+                 // Visual handle is "Right". "Right" in local un-flipped space is +X.
+                 // If Flipped, "Right" Visual is -X Local?
+                 // No, Flipped is scaleX = -1. Local axes are flipped?
+                 // Let's assume Handles rotate with the object. If flipped, the object is flipped visually.
+                 // But handles position logic in Box(Modifier.align) ignores render transform (flip).
+                 // So Handles are always Top/Right/Left/Bottom relative to Un-Transformed Box.
+                 // BUT the Content is Flipped.
+                 // So "Right" Handle is still +X in layout coordinates.
+                 // So we don't need to account for Flip in drag direction unless Flip affects local axes.
+                 // ScaleX being negative affects content drawing, NOT layout bounds or handle positions usually in this simple box model.
+                 
+                 val dx = localDragX * handleSignX
+                 val dy = localDragY * handleSignY
+                 
+                 var sxChange = 1f + (dx / widthSensitivity)
+                 var syChange = 1f + (dy / heightSensitivity)
+                 
+                 if (handleSignX == 0f) sxChange = 1f
+                 if (handleSignY == 0f) syChange = 1f
 
-            // Resize/Rotate Handle (Bottom-Right)
-            Box(
-                modifier = Modifier
-                    .offset(x = handleOffset, y = handleOffset)
-                    .size(handleSize)
-                    .background(Color.White, CircleShape)
-                    .border(2.dp, Color(0xFF2196F3), CircleShape)
-                    .align(Alignment.BottomEnd)
-                    .pointerInput(Unit) {
-                        detectDragGestures(
-                            onDragEnd = { onTransformEnd(layer.id) }
-                        ) { change, dragAmount ->
-                            change.consume()
-
-                            // Better scale: use distance from center
-                            val scaleFactor = 1f + dragAmount.getDistance() / 200f
-                            val direction = dragAmount / dragAmount.getDistance()
-                            val outward = direction.x + direction.y > 0
-
-                            val finalScale = if (outward) scaleFactor else 1f / scaleFactor.coerceAtLeast(0.1f)
-                            onTransform(layer.id, Offset.Zero, finalScale, 0f)
-                        }
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.OpenInFull, null, tint = Color(0xFF2196F3), modifier = Modifier.size(20.dp))
+                 if (lockAspect) {
+                     // Use the dominant axis change for both
+                     // Or average? Usually corner drag uses projected distance along diagonal.
+                     // Simply: Use MAX change.
+                     val factor = if (abs(sxChange - 1f) > abs(syChange - 1f)) sxChange else syChange
+                     sxChange = factor
+                     syChange = factor
+                 }
+                 
+                 onTransform(layer.id, Offset.Zero, sxChange, syChange, 0f)
             }
+
+            // Top-Left: Delete
+            Handle(
+                alignment = Alignment.TopStart,
+                icon = Icons.Default.Close,
+                isDelete = true,
+                onClick = { onDelete(layer.id) }
+            )
+            
+            // Top-Right: Rotate
+             Handle(
+                alignment = Alignment.TopEnd,
+                icon = Icons.Default.Refresh,
+                onDrag = { dragAmount ->
+                    val degrees = (dragAmount.x + dragAmount.y) * 0.2f
+                    onTransform(layer.id, Offset.Zero, 1f, 1f, degrees)
+                },
+                onDragEnd = { onTransformEnd(layer.id) }
+            )
+
+            // Bottom-Right: Scale (Uniform)
+            Handle(
+                alignment = Alignment.BottomEnd,
+                icon = Icons.Default.OpenInFull,
+                onDrag = { dragAmount -> onScaleHandleDrag(dragAmount, 1f, 1f, lockAspect = true) },
+                onDragEnd = { onTransformEnd(layer.id) }
+            )
+            
+             // Bottom-Left: Scale (Uniform)
+             Handle(
+                alignment = Alignment.BottomStart,
+                 // Icon? User mentioned circle.
+                onDrag = { dragAmount -> onScaleHandleDrag(dragAmount, -1f, 1f, lockAspect = true) },
+                onDragEnd = { onTransformEnd(layer.id) }
+             )
+             
+             // --- SIDES (Stretching) ---
+             
+             // Top Center - Stretch Y
+             Handle(
+                 alignment = Alignment.TopCenter,
+                 onDrag = { dragAmount -> onScaleHandleDrag(dragAmount, 0f, -1f) },
+                 onDragEnd = { onTransformEnd(layer.id) }
+             )
+             
+             // Bottom Center - Stretch Y
+             Handle(
+                 alignment = Alignment.BottomCenter,
+                 onDrag = { dragAmount -> onScaleHandleDrag(dragAmount, 0f, 1f) },
+                 onDragEnd = { onTransformEnd(layer.id) }
+             )
+             
+             // Left Center - Stretch X
+             Handle(
+                 alignment = Alignment.CenterStart,
+                 onDrag = { dragAmount -> onScaleHandleDrag(dragAmount, -1f, 0f) },
+                 onDragEnd = { onTransformEnd(layer.id) }
+             )
+             
+             // Right Center - Stretch X
+             Handle(
+                 alignment = Alignment.CenterEnd,
+                 onDrag = { dragAmount -> onScaleHandleDrag(dragAmount, 1f, 0f) },
+                 onDragEnd = { onTransformEnd(layer.id) }
+             )
         }
     }
 }
+
