@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import com.moshitech.workmate.feature.imagestudio.viewmodel.StickerLayer
 
 private enum class StickerTool(val label: String, val icon: ImageVector? = null) {
+        STICKER("Sticker"),
         OPACITY("Opacity"),
         COLOR("Color"),
         BLEND("Blend"),
@@ -48,6 +49,7 @@ fun StickerEditorToolbar(
         onUpdateShadow: (Boolean, Int, Float, Float, Float) -> Unit,
         onFlip: (Boolean) -> Unit, // isVertical
         onRotate: (Boolean) -> Unit, // isClockwise
+        onChangeSticker: () -> Unit, // NEW: Open sticker picker
         onDone: () -> Unit
 ) {
         var activeTool by remember { mutableStateOf(StickerTool.OPACITY) }
@@ -64,6 +66,20 @@ fun StickerEditorToolbar(
                         contentAlignment = Alignment.Center
                 ) {
                         when (activeTool) {
+                                StickerTool.STICKER -> {
+                                        // Show button to change sticker
+                                        Button(
+                                                onClick = onChangeSticker,
+                                                colors =
+                                                        ButtonDefaults.buttonColors(
+                                                                containerColor = Color(0xFF4CAF50)
+                                                        )
+                                        ) {
+                                                Icon(Icons.Default.Edit, "Change Sticker")
+                                                Spacer(Modifier.width(8.dp))
+                                                Text("Change Sticker")
+                                        }
+                                }
                                 StickerTool.OPACITY -> {
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                                 Text(

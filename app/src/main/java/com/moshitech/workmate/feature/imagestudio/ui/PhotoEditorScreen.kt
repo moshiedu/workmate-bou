@@ -1544,6 +1544,10 @@ fun PhotoEditorScreen(
                                                                                                                         isClockwise
                                                                                                                 )
                                                                                                 },
+                                                                                                onChangeSticker = {
+                                                                                                        // Open sticker picker to change current sticker
+                                                                                                        viewModel.enterTool(EditorTab.STICKERS)
+                                                                                                },
                                                                                                 onDone = {
                                                                                                         viewModel
                                                                                                                 .deselectSticker()

@@ -660,9 +660,7 @@ fun StickerBoxComposable(
                     onDrag = { dragAmount ->
                         // Shape-style: Uniform scaling from diagonal drag
                         val distance = (dragAmount.x + dragAmount.y) / 2f
-                        val currentSize =
-                                ((widthDp.value + heightDp.value) / 2f * density.density)
-                                        .coerceAtLeast(1f)
+                        val currentSize = ((widthPx + heightPx) / 2f).coerceAtLeast(1f)
                         val finalScale = (currentSize + distance) / currentSize
                         onTransform(layer.id, Offset.Zero, finalScale, finalScale, 0f)
                     },
@@ -675,9 +673,7 @@ fun StickerBoxComposable(
                     onDrag = { dragAmount ->
                         // Shape-style: Uniform scaling from diagonal drag (inverted X)
                         val distance = (-dragAmount.x + dragAmount.y) / 2f
-                        val currentSize =
-                                ((widthDp.value + heightDp.value) / 2f * density.density)
-                                        .coerceAtLeast(1f)
+                        val currentSize = ((widthPx + heightPx) / 2f).coerceAtLeast(1f)
                         val finalScale = (currentSize + distance) / currentSize
                         onTransform(layer.id, Offset.Zero, finalScale, finalScale, 0f)
                     },
@@ -697,7 +693,7 @@ fun StickerBoxComposable(
                                 (dragAmount.x * Math.sin(rad) + dragAmount.y * Math.cos(rad))
                                         .toFloat()
 
-                        val currentHeight = (heightDp.value * density.density).coerceAtLeast(1f)
+                        val currentHeight = heightPx.coerceAtLeast(1f)
                         val syChange = (currentHeight - dy) / currentHeight
                         val panY = dy / bitmapScale
 
@@ -713,7 +709,7 @@ fun StickerBoxComposable(
                     onDrag = { dragAmount ->
                         // Shape-style: Direct height increase
                         val dHeight = dragAmount.y / bitmapScale
-                        val currentHeight = (heightDp.value * density.density).coerceAtLeast(1f)
+                        val currentHeight = heightPx.coerceAtLeast(1f)
                         val syChange = (currentHeight + dHeight) / currentHeight
                         onTransform(layer.id, Offset.Zero, 1f, syChange, 0f)
                     },
@@ -730,7 +726,7 @@ fun StickerBoxComposable(
                                 (dragAmount.x * Math.cos(rad) - dragAmount.y * Math.sin(rad))
                                         .toFloat()
 
-                        val currentWidth = (widthDp.value * density.density).coerceAtLeast(1f)
+                        val currentWidth = widthPx.coerceAtLeast(1f)
                         val sxChange = (currentWidth - dx) / currentWidth
                         val panX = dx / bitmapScale
 
@@ -746,7 +742,7 @@ fun StickerBoxComposable(
                     onDrag = { dragAmount ->
                         // Shape-style: Direct width increase
                         val dWidth = dragAmount.x / bitmapScale
-                        val currentWidth = (widthDp.value * density.density).coerceAtLeast(1f)
+                        val currentWidth = widthPx.coerceAtLeast(1f)
                         val sxChange = (currentWidth + dWidth) / currentWidth
                         onTransform(layer.id, Offset.Zero, sxChange, 1f, 0f)
                     },
