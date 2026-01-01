@@ -160,6 +160,7 @@ fun PhotoEditorScreen(
                                 viewModel.deselectText()
                                 viewModel.deselectSticker()
                         }
+                        com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.STICKERS,
                         com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab
                                 .STICKER_CONTROLS -> {
                                 // Keep stickers selected, deselect others
@@ -1446,14 +1447,16 @@ fun PhotoEditorScreen(
                                                                                                 },
                                                                                                 onUpdateColor = {
                                                                                                         has,
-                                                                                                        col
+                                                                                                        col,
+                                                                                                        strength
                                                                                                         ->
                                                                                                         viewModel
                                                                                                                 .updateStickerTint(
                                                                                                                         layerToEdit
                                                                                                                                 .id,
                                                                                                                         has,
-                                                                                                                        col
+                                                                                                                        col,
+                                                                                                                        strength
                                                                                                                 )
                                                                                                 },
                                                                                                 onUpdateGradient = {
@@ -1478,7 +1481,8 @@ fun PhotoEditorScreen(
                                                                                                                                         layerToEdit
                                                                                                                                                 .id,
                                                                                                                                         true,
-                                                                                                                                        color.toArgb()
+                                                                                                                                        color.toArgb(),
+                                                                                                                                        layerToEdit.tintStrength // Preserve strength
                                                                                                                                 )
                                                                                                                         eyedropperCallback =
                                                                                                                                 null
@@ -1545,8 +1549,8 @@ fun PhotoEditorScreen(
                                                                                                                 )
                                                                                                 },
                                                                                                 onChangeSticker = {
-                                                                                                        // Open sticker picker to change current sticker
-                                                                                                        viewModel.enterTool(EditorTab.STICKERS)
+                                                                                                        // Open sticker picker to change currently selected sticker
+                                                                                                        viewModel.startStickerReplacement(layerToEdit.id)
                                                                                                 },
                                                                                                 onDone = {
                                                                                                         viewModel
@@ -2966,7 +2970,11 @@ fun PhotoEditorScreen(
                                 .StickerDiscoveryScreen(
                                         onDismiss = { viewModel.cancelTool() },
                                         onStickerSelected = { emoji ->
-                                                viewModel.addSticker(text = emoji)
+                                                if (viewModel.isReplacingSticker && uiState.selectedStickerLayerId != null) {
+                                                        viewModel.replaceSticker(uiState.selectedStickerLayerId!!, emoji)
+                                                } else {
+                                                        viewModel.addSticker(text = emoji)
+                                                }
                                         }
                                 )
                 }

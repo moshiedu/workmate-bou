@@ -140,16 +140,47 @@ class LayerDelegate(
                         scaleY = initialScale,
                         zIndex = nextZIndex
                 )
-        _uiState.update {
-            it.copy(
-                    stickerLayers = it.stickerLayers + newSticker,
-                    selectedStickerLayerId = newSticker.id,
-                    selectedTextLayerId = null
-            )
+        _uiState.update { state ->
+            state.copy(stickerLayers = state.stickerLayers + newSticker)
         }
         onApplyNeeded(true)
         return newSticker.id
     }
+
+    fun replaceSticker(id: String, resId: Int = 0, text: String? = null) {
+        _uiState.update { state ->
+            val stickers = state.stickerLayers.map { sticker ->
+                if (sticker.id == id) {
+                    sticker.copy(resId = resId, text = text)
+                } else {
+                    sticker
+                }
+            }
+            state.copy(stickerLayers = stickers)
+        }
+        onApplyNeeded(true)
+    }
+
+    fun updateStickerTint(id: String, hasTint: Boolean, color: Int, strength: Float = 1.0f) {
+        _uiState.update { state ->
+            val stickers =
+                    state.stickerLayers.map { sticker ->
+                        if (sticker.id == id) {
+                            sticker.copy(
+                                    hasTint = hasTint,
+                                    tintColor = color,
+                                    tintStrength = strength,
+                                    isGradient = false // Mutual exclusion
+                            )
+                        } else {
+                            sticker
+                        }
+                    }
+            state.copy(stickerLayers = stickers)
+        }
+        onApplyNeeded(true)
+    }
+
 
     fun removeSticker(id: String) {
         _uiState.update {
@@ -271,6 +302,24 @@ class LayerDelegate(
                                                 hasBorder = hasBorder,
                                                 borderColor = color,
                                                 borderWidth = width
+                                        )
+                                else layer
+                            }
+            )
+        }
+        onApplyNeeded(true)
+    }
+
+    fun updateStickerGradient(id: String, hasGradient: Boolean, colors: List<Int>) {
+        _uiState.update { state ->
+            state.copy(
+                    stickerLayers =
+                            state.stickerLayers.map { layer ->
+                                if (layer.id == id && !layer.isLocked)
+                                        layer.copy(
+                                                isGradient = hasGradient,
+                                                gradientColors = colors,
+                                                hasTint = false // Mutual exclusion
                                         )
                                 else layer
                             }

@@ -21,6 +21,11 @@ import kotlinx.coroutines.withContext
 class PhotoEditorViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = EditRepository(application)
+    
+    // State to track if we are replacing an existing sticker
+    var isReplacingSticker = false
+        private set
+    
     private val editorPreferences =
             com.moshitech.workmate.feature.imagestudio.data.EditorPreferences(application)
     private val compositeRenderer =
@@ -355,6 +360,7 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun cancelTool() {
+        isReplacingSticker = false // Reset replacement flag
         val snapshot = _uiState.value.toolSnapshot
         if (snapshot != null) {
             restoreState(snapshot) // Revert changes
@@ -363,6 +369,7 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun applyTool() {
+        isReplacingSticker = false // Reset replacement flag
         saveToHistory() // Commit changes
         _uiState.update { it.copy(activeTool = null, toolSnapshot = null) }
     }
@@ -430,6 +437,49 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
                         shadowY = y
                 )
             }
+
+    // Sticker Replacement Logic
+    fun startStickerReplacement(id: String) {
+        if (id.isBlank()) return
+        isReplacingSticker = true
+        enterTool(EditorTab.STICKERS)
+    }
+
+    fun replaceSticker(id: String, stickerStr: String) {
+        // Logic to determine if it is resId or text, similar to addSticker (simplified for now)
+        // If stickerStr starts with digit, might be resId? No, stickers are emojis or paths usually.
+        // Assuming emojis (text) for now as per StickerDiscoveryScreen
+        layers.replaceSticker(id, text = stickerStr)
+        isReplacingSticker = false
+        // Return to sticker controls
+        enterTool(EditorTab.STICKER_CONTROLS)
+    }
+
+    fun updateStickerTint(id: String, hasTint: Boolean, color: Int, strength: Float = 1.0f) =
+            layers.updateStickerTint(id, hasTint, color, strength)
+
+    fun updateStickerOpacity(id: String, opacity: Float) = layers.updateStickerOpacity(id, opacity)
+
+    fun updateStickerBlendMode(id: String, blendMode: androidx.compose.ui.graphics.BlendMode) =
+            layers.updateStickerBlendMode(id, blendMode)
+
+    fun updateStickerBorder(id: String, hasBorder: Boolean, color: Int, width: Float) =
+            layers.updateStickerBorder(id, hasBorder, color, width)
+
+    fun updateStickerShadow(
+            id: String,
+            hasShadow: Boolean,
+            color: Int,
+            blur: Float,
+            x: Float,
+            y: Float
+    ) = layers.updateStickerShadow(id, hasShadow, color, blur, x, y)
+
+    fun updateStickerGradient(id: String, hasGradient: Boolean, colors: List<Int>) =
+            layers.updateStickerGradient(id, hasGradient, colors)
+
+
+
     fun updateShapeOpacity(id: String, opacity: Float, saveHistory: Boolean = true) =
             layers.updateShapeLayer(id, saveHistory) { it.copy(opacity = opacity) }
 
@@ -515,38 +565,7 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
             rotation: Float
     ) = layers.updateStickerTransform(id, pan, scaleXChange, scaleYChange, rotation)
 
-    fun updateStickerOpacity(id: String, opacity: Float) = layers.updateStickerOpacity(id, opacity)
-    fun updateStickerBlendMode(id: String, blendMode: androidx.compose.ui.graphics.BlendMode) =
-            layers.updateStickerBlendMode(id, blendMode)
-    fun updateStickerBorder(id: String, hasBorder: Boolean, color: Int, width: Float) =
-            layers.updateStickerBorder(id, hasBorder, color, width)
-    fun updateStickerShadow(
-            id: String,
-            hasShadow: Boolean,
-            color: Int,
-            blur: Float,
-            x: Float,
-            y: Float
-    ) = layers.updateStickerShadow(id, hasShadow, color, blur, x, y)
 
-    // Gradient & Tint Facade
-    fun updateStickerTint(id: String, hasTint: Boolean, color: Int) =
-            layers.updateStickerLayer(id) {
-                it.copy(
-                        hasTint = hasTint,
-                        tintColor = color,
-                        isGradient = false
-                ) // Disable gradient if tint is set
-            }
-
-    fun updateStickerGradient(id: String, hasGradient: Boolean, colors: List<Int>) =
-            layers.updateStickerLayer(id) {
-                it.copy(
-                        isGradient = hasGradient,
-                        gradientColors = colors,
-                        hasTint = false
-                ) // Disable tint if gradient is set
-            }
 
     fun updateLastShapeTab(tab: ShapePropertyTab) {
         _uiState.update { it.copy(lastActiveShapeTab = tab) }

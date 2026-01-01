@@ -312,7 +312,58 @@ fun StickerBoxComposable(
                                                 shadow = textShadow // Native Shadow
                                         )
                                     },
-                            modifier = Modifier.align(Alignment.Center)
+                            modifier =
+                                    Modifier.align(Alignment.Center)
+                                            .graphicsLayer {
+                                                if (layer.hasTint) {
+                                                    colorFilter =
+                                                            androidx.compose.ui.graphics.ColorFilter
+                                                                    .tint(
+                                                                            Color(layer.tintColor)
+                                                                                    .copy(
+                                                                                            alpha =
+                                                                                                    layer
+                                                                                                            .tintStrength
+                                                                                    ),
+                                                                            androidx.compose.ui.graphics
+                                                                                    .BlendMode.SrcAtop
+                                                                    )
+                                                }
+                                                // Gradients for Emojis must be applied via
+                                                // drawWithContent + SrcAtop
+                                                // because standard TextStyle brush is ignored by
+                                                // Emoji renderer
+                                                if (layer.isGradient &&
+                                                                layer.gradientColors.size >= 2
+                                                ) {
+                                                    alpha = 0.99f // Force off-screen buffer
+                                                }
+                                            }
+                                            .drawWithContent {
+                                                drawContent()
+                                                if (layer.isGradient &&
+                                                                layer.gradientColors.size >= 2
+                                                ) {
+                                                    drawRect(
+                                                            brush =
+                                                                    androidx.compose.ui.graphics
+                                                                            .Brush
+                                                                            .linearGradient(
+                                                                                    colors =
+                                                                                            layer
+                                                                                                    .gradientColors
+                                                                                                    .map {
+                                                                                                        Color(
+                                                                                                                it
+                                                                                                        )
+                                                                                                    }
+                                                                            ),
+                                                            blendMode =
+                                                                    androidx.compose.ui.graphics
+                                                                            .BlendMode.SrcAtop
+                                                    )
+                                                }
+                                            }
                     )
                 } else if (layer.resId != 0) {
                     Image(
@@ -565,8 +616,10 @@ fun StickerBoxComposable(
                 // If handle is Left (-1, 0), and I drag Left (-x), localDragX is -ve. SignX is -ve.
                 // Product +ve -> Grow.
 
-                val widthSensitivity = 200f
-                val heightSensitivity = 200f
+                // Sensitivity Factor (Lower = Faster, Higher = Slower)
+                // Originally 200f, reducing to 40f makes it 5x faster
+                val widthSensitivity = 40f
+                val heightSensitivity = 40f
 
                 // Calculate Delta Factors
                 // We apply drag * sign.

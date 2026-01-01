@@ -668,11 +668,30 @@ class CompositeRenderer(private val context: Context) {
                                             null,
                                             android.graphics.Shader.TileMode.CLAMP
                                     )
-                            shader = gradient
+                            // shader = gradient (Ignored by Emojis)
+                            
+                            // To tint Emojis with gradient, we need to draw the text first,
+                            // then draw the gradient on top with SRC_ATOP xfermode.
+                            // We can't do this easily in a single drawText call.
+                            // However, we can set the colorFilter to a specific color, but that's not a gradient.
+                            
+                            // IMPORTANT: For Emojis, we simply cannot use setShader directly.
+                            // We will handle gradient drawing AFTER drawing the text (see below).
                             // Gradient overrides solid color
                         } else if (layer.hasTint) {
                             // Tint overrides default color
-                            color = layer.tintColor
+                            // Use ColorFilter for Emojis as setColor is ignored
+                            val alpha = (layer.tintStrength * 255).toInt()
+                            val red = android.graphics.Color.red(layer.tintColor)
+                            val green = android.graphics.Color.green(layer.tintColor)
+                            val blue = android.graphics.Color.blue(layer.tintColor)
+                            val tintWithAlpha = android.graphics.Color.argb(alpha, red, green, blue)
+
+                            colorFilter =
+                                    android.graphics.PorterDuffColorFilter(
+                                            tintWithAlpha,
+                                            android.graphics.PorterDuff.Mode.SRC_ATOP
+                                    )
                         }
 
                         if (layer.hasShadow) {
@@ -689,6 +708,32 @@ class CompositeRenderer(private val context: Context) {
             val fm = textPaint.fontMetrics
             val yOffset = -(fm.descent + fm.ascent) / 2f
             canvas.drawText(textToDraw, 0f, yOffset, textPaint)
+
+            // Post-Draw Gradient Overlay for Emojis
+            if (layer.isGradient && layer.gradientColors.size >= 2) {
+                val gradientPaint = Paint().apply {
+                    val colors = layer.gradientColors.map { 
+                         // Apply alpha 0.99f to avoid issues, but match stickerbox alpha
+                         android.graphics.Color.argb((255*0.9).toInt(), android.graphics.Color.red(it), android.graphics.Color.green(it), android.graphics.Color.blue(it))
+                    }.toIntArray()
+
+                    shader =
+                        android.graphics.LinearGradient(
+                            0f, -textSize / 2f, 0f, textSize / 2f,
+                            colors,
+                            null,
+                            android.graphics.Shader.TileMode.CLAMP
+                        )
+                    xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC_ATOP)
+                }
+                
+                // Draw rect covering the text area
+                canvas.drawRect(
+                    -contentWidth / 2f, -contentHeight / 2f,
+                    contentWidth / 2f, contentHeight / 2f,
+                    gradientPaint
+                )
+            }
         }
 
         // Draw border if enabled (Scaling applies to border too, matching UI)
