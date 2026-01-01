@@ -2032,6 +2032,8 @@ fun PhotoEditorScreen(
                                                                                         .viewmodel
                                                                                         .EditorTab
                                                                                         .SHAPES
+                                                                        com.moshitech.workmate.feature.imagestudio.components.EditorTool.ROTATE ->
+                                                                                com.moshitech.workmate.feature.imagestudio.viewmodel.EditorTab.ROTATE
                                                                         com.moshitech.workmate
                                                                                 .feature.imagestudio
                                                                                 .components
