@@ -17,6 +17,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroidSize
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -882,7 +883,20 @@ fun PhotoEditorScreen(
                                                                                         (finalDisplayHeight /
                                                                                                         density)
                                                                                                 .dp
-                                                                        ),
+                                                                        )
+                                                                        .pointerInput(isEyedropperActive) {
+                                                                            if (isEyedropperActive) {
+                                                                                detectTapGestures { offset ->
+                                                                                    val scaleX = activeBitmap.width / size.width.toFloat()
+                                                                                    val scaleY = activeBitmap.height / size.height.toFloat()
+                                                                                    val x = (offset.x * scaleX).toInt().coerceIn(0, activeBitmap.width - 1)
+                                                                                    val y = (offset.y * scaleY).toInt().coerceIn(0, activeBitmap.height - 1)
+                                                                                    val pixel = activeBitmap.getPixel(x, y)
+                                                                                    val color = Color(pixel)
+                                                                                    eyedropperCallback?.invoke(color)
+                                                                                }
+                                                                            }
+                                                                        },
                                                         contentScale = ContentScale.FillBounds
                                                 )
                                                 val densityUnused = LocalDensity.current
