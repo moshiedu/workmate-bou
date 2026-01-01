@@ -40,6 +40,7 @@ private enum class StickerTool(val label: String, val icon: ImageVector? = null)
 @Composable
 fun StickerEditorToolbar(
     layer: StickerLayer,
+    isEyedropperActive: Boolean, // New parameter
     onUpdateOpacity: (Float) -> Unit,
     onUpdateColor: (Boolean, Int, Float) -> Unit,
     onUpdateGradient: (Boolean, List<Int>) -> Unit,
@@ -87,26 +88,13 @@ fun StickerEditorToolbar(
                 }
 
                 StickerTool.OPACITY -> {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            "Opacity: ${(layer.opacity * 100).toInt()}%",
-                            color = Color.White,
-                            fontSize = 12.sp
-                        )
-                        Slider(
-                            value = layer.opacity,
-                            onValueChange = onUpdateOpacity,
-                            valueRange = 0f..1f,
-                            colors =
-                                SliderDefaults.colors(
-                                    thumbColor = Color.White,
-                                    activeTrackColor =
-                                        Color.White,
-                                    inactiveTrackColor =
-                                        Color.Gray
-                                )
-                        )
-                    }
+                    ModernSlider(
+                        value = layer.opacity * 100f,
+                        onValueChange = { onUpdateOpacity(it / 100f) },
+                        valueRange = 0f..100f,
+                        label = "Opacity",
+                        unit = "%"
+                    )
                 }
 
                 StickerTool.COLOR -> {
@@ -197,27 +185,14 @@ fun StickerEditorToolbar(
 
                             if (layer.hasTint) {
                                 // TINT STRENGTH SLIDER
-                                Column(modifier = Modifier.padding(vertical = 8.dp)) {
-                                    Text(
-                                        "Intensity: ${(layer.tintStrength * 100).toInt()}%",
-                                        color = Color.White,
-                                        fontSize = 12.sp,
-                                        modifier = Modifier.padding(start = 16.dp)
-                                    )
-                                    Slider(
-                                        value = layer.tintStrength,
-                                        onValueChange = { strength ->
-                                            onUpdateIntensity(strength)
-                                        },
-                                        valueRange = 0f..1f,
-                                        colors = SliderDefaults.colors(
-                                            thumbColor = Color.White,
-                                            activeTrackColor = Color.White,
-                                            inactiveTrackColor = Color.Gray
-                                        ),
-                                        modifier = Modifier.padding(horizontal = 8.dp)
-                                    )
-                                }
+                                ModernSlider(
+                                    value = layer.tintStrength * 100f,
+                                    onValueChange = { onUpdateIntensity(it / 100f) },
+                                    valueRange = 0f..100f,
+                                    label = "Intensity",
+                                    unit = "%",
+                                    modifier = Modifier.padding(horizontal = 8.dp)
+                                )
 
                                 Spacer(
                                     modifier =
@@ -247,7 +222,7 @@ fun StickerEditorToolbar(
                                                     36.dp
                                                 )
                                                 .background(
-                                                    Color.DarkGray,
+                                                    if (isEyedropperActive) Color(0xFF4CAF50) else Color.DarkGray, // Green when active
                                                     CircleShape
                                                 )
                                                 .clickable {
@@ -395,27 +370,14 @@ fun StickerEditorToolbar(
 
                             // Gradient Intensity Slider (Added per user request)
                             if (layer.isGradient) {
-                                Column(modifier = Modifier.padding(vertical = 8.dp)) {
-                                    Text(
-                                        "Intensity: ${(layer.tintStrength * 100).toInt()}%",
-                                        color = Color.White,
-                                        fontSize = 12.sp,
-                                        modifier = Modifier.padding(start = 16.dp)
-                                    )
-                                    Slider(
-                                        value = layer.tintStrength,
-                                        onValueChange = { strength ->
-                                            onUpdateIntensity(strength)
-                                        },
-                                        valueRange = 0f..1f,
-                                        colors = SliderDefaults.colors(
-                                            thumbColor = Color.White,
-                                            activeTrackColor = Color.White,
-                                            inactiveTrackColor = Color.Gray
-                                        ),
-                                        modifier = Modifier.padding(horizontal = 8.dp)
-                                    )
-                                }
+                                ModernSlider(
+                                    value = layer.tintStrength * 100f,
+                                    onValueChange = { onUpdateIntensity(it / 100f) },
+                                    valueRange = 0f..100f,
+                                    label = "Intensity",
+                                    unit = "%",
+                                    modifier = Modifier.padding(horizontal = 8.dp)
+                                )
                             }
 
                             Row(
@@ -594,16 +556,18 @@ fun StickerEditorToolbar(
                         if (layer.hasBorder) {
                             Spacer(modifier = Modifier.height(8.dp))
                             // Simple Width Slider
-                            Slider(
+                            ModernSlider(
                                 value = layer.borderWidth,
-                                onValueChange = {
+                                onValueChange = { width ->
                                     onUpdateBorder(
                                         true,
                                         layer.borderColor,
-                                        it
+                                        width
                                     )
                                 },
-                                valueRange = 0f..20f
+                                valueRange = 0f..20f,
+                                label = "Thickness",
+                                unit = "px"
                             )
                             // Simple Color Row (Mock)
                             Row(
@@ -804,32 +768,6 @@ fun StickerEditorToolbar(
             }
         }
 
-        // --- BOTTOM ACTION ROW (Cancel/Done) ---
-        // Optional: If this toolbar replaces the main nav, we need a Done button.
-        // If it's just a selection state, clicking outside handles it.
-        // But users like explicit "Done".
 
-        Divider(color = Color(0xFF2C2C2C))
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = "Cancel", // Actually just deselect
-                color = Color.White,
-                modifier =
-                    Modifier.clickable {
-                        onDone()
-                    } // Usually Cancel would revert, but for now just close
-            )
-            Icon(
-                Icons.Default.Done,
-                "Done",
-                tint = Color.White,
-                modifier = Modifier.clickable { onDone() }
-            )
-        }
     }
 }

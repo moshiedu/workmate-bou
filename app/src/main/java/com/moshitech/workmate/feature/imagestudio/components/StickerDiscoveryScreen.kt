@@ -1,5 +1,6 @@
 package com.moshitech.workmate.feature.imagestudio.components
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -18,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role.Companion.Image
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -29,14 +31,15 @@ data class StickerCategory(val id: String, val name: String)
 
 data class StickerItem(
         val id: String,
-        val emoji: String,
+        val emoji: String?, // Nullable for Image based stickers
+        val resId: Int? = null, // Resource ID for Image stickers
         val categoryId: String,
         val tags: List<String>,
         val isPremium: Boolean = false
 )
 
 @Composable
-fun StickerDiscoveryScreen(onDismiss: () -> Unit, onStickerSelected: (String) -> Unit) {
+fun StickerDiscoveryScreen(onDismiss: () -> Unit, onStickerSelected: (String?, Int?) -> Unit) {
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("All") }
 
@@ -44,6 +47,8 @@ fun StickerDiscoveryScreen(onDismiss: () -> Unit, onStickerSelected: (String) ->
         listOf(
                 StickerCategory("All", "All"),
                 StickerCategory("Recent", "Recent"),
+                StickerCategory("Realistic", "Realistic"), // New Category
+                StickerCategory("Islamic", "Islamic"), // New Category
                 StickerCategory("Emoji", "Emoji"),
                 StickerCategory("Love", "Love"),
                 StickerCategory("Cool", "Cool"),
@@ -54,114 +59,151 @@ fun StickerDiscoveryScreen(onDismiss: () -> Unit, onStickerSelected: (String) ->
 
     val stickers = remember {
         listOf(
+                // --- Realistic ---
+                StickerItem("201", null, com.moshitech.workmate.R.drawable.sticker_real_flower, "Realistic", listOf("flower", "rose", "nature")),
+                StickerItem("202", null, com.moshitech.workmate.R.drawable.sticker_real_cat, "Realistic", listOf("cat", "animal", "pet")),
+                StickerItem("203", null, com.moshitech.workmate.R.drawable.sticker_real_car, "Realistic", listOf("car", "vehicle", "sport")),
+                StickerItem("204", null, com.moshitech.workmate.R.drawable.sticker_real_pizza, "Realistic", listOf("pizza", "food", "yummy")),
+
                 // --- Emotions & Faces ---
-                StickerItem("1", "😀", "Emoji", listOf("smile", "happy")),
-                StickerItem("2", "😂", "Emoji", listOf("laugh", "joy")),
-                StickerItem("3", "🥰", "Emoji", listOf("love", "hearts")),
-                StickerItem("4", "😎", "Cool", listOf("sunglasses", "cool")),
-                StickerItem("5", "🤔", "Emoji", listOf("thinking")),
-                StickerItem("6", "😭", "Emoji", listOf("cry", "sad")),
-                StickerItem("7", "🤯", "Emoji", listOf("mindblown")),
-                StickerItem("8", "😱", "Emoji", listOf("scream", "shock")),
-                StickerItem("9", "🤬", "Emoji", listOf("angry", "mad")),
-                StickerItem("10", "🤡", "Emoji", listOf("clown", "funny")),
-                StickerItem("11", "👻", "Spooky", listOf("ghost", "halloween")),
-                StickerItem("12", "💀", "Spooky", listOf("skull", "death")),
-                StickerItem("13", "👽", "Space", listOf("alien", "ufo")),
-                StickerItem("14", "🤖", "Cool", listOf("robot", "tech")),
-                StickerItem("15", "💩", "Emoji", listOf("poop", "funny")),
+                StickerItem("1", "😀", null, "Emoji", listOf("smile", "happy")),
+                StickerItem("2", "😂", null, "Emoji", listOf("laugh", "joy")),
+                StickerItem("3", "🥰", null, "Emoji", listOf("love", "hearts")),
+
+                // --- Islamic ---
+                StickerItem("101", "🕌", null, "Islamic", listOf("mosque", "masjid", "islam", "prayer")),
+                StickerItem("102", "🕋", null, "Islamic", listOf("kaaba", "mecca", "islam", "hajj")),
+                StickerItem("103", "📿", null, "Islamic", listOf("tasbih", "beads", "worship", "dhikr")),
+                StickerItem("104", "🤲", null, "Islamic", listOf("dua", "pray", "hands")),
+                StickerItem("105", "🌙", null, "Islamic", listOf("moon", "crescent", "ramadan", "night")),
+                StickerItem("106", "⭐", null, "Islamic", listOf("star", "light")),
+                StickerItem("107", "🕯️", null, "Islamic", listOf("candle", "light")),
+                StickerItem("108", "🛐", null, "Islamic", listOf("pray", "mat", "worship")),
+                StickerItem("109", "🐫", null, "Islamic", listOf("camel", "desert")),
+                StickerItem("110", "🌴", null, "Islamic", listOf("palm", "dates", "tree")),
+                StickerItem("111", "⛺", null, "Islamic", listOf("tent", "desert")),
+                StickerItem("112", "🏜️", null, "Islamic", listOf("desert", "sand")),
+                StickerItem("113", "✨", null, "Islamic", listOf("sparkle", "light", "nur")),
+                StickerItem("114", "🟢", null, "Islamic", listOf("green", "circle")),
+                StickerItem("115", "📖", null, "Islamic", listOf("book", "quran", "read")),
+                StickerItem("116", "﷽", null, "Islamic", listOf("bismillah", "calligraphy")),
+                StickerItem("117", "ﷲ", null, "Islamic", listOf("allah", "god", "calligraphy")),
+                StickerItem("118", "ﷻ", null, "Islamic", listOf("jalla", "jalaluhu", "calligraphy")),
+                StickerItem("119", "ﷺ", null, "Islamic", listOf("pbuh", "prophet", "calligraphy")),
+                StickerItem("120", "ﷴ", null, "Islamic", listOf("muhammad", "prophet", "calligraphy")),
+                StickerItem("121", "۞", null, "Islamic", listOf("symbol", "star", "quran")),
+                StickerItem("122", "☪️", null, "Islamic", listOf("star", "moon", "symbol")),
+                StickerItem("123", "☝️", null, "Islamic", listOf("one", "tawhid", "finger")),
+                StickerItem("124", "👳", null, "Islamic", listOf("man", "turban")),
+                StickerItem("125", "🧕", null, "Islamic", listOf("woman", "hijab")),
+                StickerItem("128", "🤝", null, "Islamic", listOf("salam", "shake", "peace")),
+                StickerItem("129", "🌄", null, "Islamic", listOf("sunrise", "fajr")),
+                StickerItem("130", "🌇", null, "Islamic", listOf("sunset", "maghrib")),
+                StickerItem("132", "🥛", null, "Islamic", listOf("milk", "sunnah")),
+                StickerItem("133", "🍵", null, "Islamic", listOf("tea", "chai")),
+                StickerItem("134", "🌹", null, "Islamic", listOf("rose", "flower")),
+                StickerItem("135", "💐", null, "Islamic", listOf("flowers", "bouquet")),
+
+                StickerItem("4", "😎", null, "Cool", listOf("sunglasses", "cool")),
+                StickerItem("5", "🤔", null, "Emoji", listOf("thinking")),
+                StickerItem("6", "😭", null, "Emoji", listOf("cry", "sad")),
+                StickerItem("7", "🤯", null, "Emoji", listOf("mindblown")),
+                StickerItem("8", "😱", null, "Emoji", listOf("scream", "shock")),
+                StickerItem("9", "🤬", null, "Emoji", listOf("angry", "mad")),
+                StickerItem("10", "🤡", null, "Emoji", listOf("clown", "funny")),
+                StickerItem("11", "👻", null, "Spooky", listOf("ghost", "halloween")),
+                StickerItem("12", "💀", null, "Spooky", listOf("skull", "death")),
+                StickerItem("13", "👽", null, "Space", listOf("alien", "ufo")),
+                StickerItem("14", "🤖", null, "Cool", listOf("robot", "tech")),
+                StickerItem("15", "💩", null, "Emoji", listOf("poop", "funny")),
 
                 // --- Love & Hearts ---
-                StickerItem("16", "❤️", "Love", listOf("heart", "red")),
-                StickerItem("17", "🧡", "Love", listOf("heart", "orange")),
-                StickerItem("18", "💛", "Love", listOf("heart", "yellow")),
-                StickerItem("19", "💚", "Love", listOf("heart", "green")),
-                StickerItem("20", "💙", "Love", listOf("heart", "blue")),
-                StickerItem("21", "💜", "Love", listOf("heart", "purple")),
-                StickerItem("22", "🖤", "Love", listOf("heart", "black")),
-                StickerItem("23", "🤍", "Love", listOf("heart", "white")),
-                StickerItem("24", "💔", "Love", listOf("heart", "break")),
-                StickerItem("25", "💘", "Love", listOf("heart", "arrow")),
+                StickerItem("16", "❤️", null, "Love", listOf("heart", "red")),
+                StickerItem("17", "🧡", null, "Love", listOf("heart", "orange")),
+                StickerItem("18", "💛", null, "Love", listOf("heart", "yellow")),
+                StickerItem("19", "💚", null, "Love", listOf("heart", "green")),
+                StickerItem("20", "💙", null, "Love", listOf("heart", "blue")),
+                StickerItem("21", "💜", null, "Love", listOf("heart", "purple")),
+                StickerItem("22", "🖤", null, "Love", listOf("heart", "black")),
+                StickerItem("23", "🤍", null, "Love", listOf("heart", "white")),
+                StickerItem("24", "💔", null, "Love", listOf("heart", "break")),
+                StickerItem("25", "💘", null, "Love", listOf("heart", "arrow")),
 
                 // --- Celestial & Cool ---
-                StickerItem("26", "✨", "Cool", listOf("sparkles", "shine")),
-                StickerItem("27", "🌟", "Cool", listOf("star", "glow")),
-                StickerItem("28", "💫", "Cool", listOf("dizzy", "star")),
-                StickerItem("29", "🌙", "Nature", listOf("moon", "night")),
-                StickerItem("30", "☀️", "Nature", listOf("sun", "day")),
-                StickerItem("31", "⚡", "Cool", listOf("bolt", "power")),
-                StickerItem("32", "❄️", "Nature", listOf("snow", "ice")),
-                StickerItem("33", "🔥", "Cool", listOf("fire", "hot")),
-                StickerItem("34", "🌈", "Nature", listOf("rainbow", "color")),
+                StickerItem("26", "✨", null, "Cool", listOf("sparkles", "shine")),
+                StickerItem("27", "🌟", null, "Cool", listOf("star", "glow")),
+                StickerItem("28", "💫", null, "Cool", listOf("dizzy", "star")),
+                StickerItem("29", "🌙", null, "Nature", listOf("moon", "night")),
+                StickerItem("30", "☀️", null, "Nature", listOf("sun", "day")),
+                StickerItem("31", "⚡", null, "Cool", listOf("bolt", "power")),
+                StickerItem("32", "❄️", null, "Nature", listOf("snow", "ice")),
+                StickerItem("33", "🔥", null, "Cool", listOf("fire", "hot")),
+                StickerItem("34", "🌈", null, "Nature", listOf("rainbow", "color")),
 
                 // --- Kaomoji ---
-                StickerItem("35", "(^_^)", "Emoji", listOf("kaomoji", "happy")),
-                StickerItem("36", "(>_<)", "Emoji", listOf("kaomoji", "upset")),
-                StickerItem("37", "¯\\_(ツ)_/¯", "Emoji", listOf("kaomoji", "shrug")),
-                StickerItem("38", "(•_•)", "Emoji", listOf("kaomoji", "neutral")),
-                StickerItem("39", "(⌐■_■)", "Cool", listOf("kaomoji", "glasses")),
-                StickerItem("40", "ʕ•ᴥ•ʔ", "Emoji", listOf("kaomoji", "bear")),
+                StickerItem("35", "(^_^)", null, "Emoji", listOf("kaomoji", "happy")),
+                StickerItem("36", "(>_<)", null, "Emoji", listOf("kaomoji", "upset")),
+                StickerItem("37", "¯\\_(ツ)_/¯", null, "Emoji", listOf("kaomoji", "shrug")),
+                StickerItem("38", "(•_•)", null, "Emoji", listOf("kaomoji", "neutral")),
+                StickerItem("39", "(⌐■_■)", null, "Cool", listOf("kaomoji", "glasses")),
+                StickerItem("40", "ʕ•ᴥ•ʔ", null, "Emoji", listOf("kaomoji", "bear")),
 
                 // --- Hand Signs ---
-                StickerItem("41", "👍", "Emoji", listOf("thumbs", "up")),
-                StickerItem("42", "👎", "Emoji", listOf("thumbs", "down")),
-                StickerItem("43", "👋", "Emoji", listOf("wave", "hello")),
-                StickerItem("44", "🙌", "Party", listOf("hands", "celebrate")),
-                StickerItem("45", "🫶", "Love", listOf("heart", "hands")),
-                StickerItem("46", "✌️", "Cool", listOf("peace", "victory")),
+                StickerItem("41", "👍", null, "Emoji", listOf("thumbs", "up")),
+                StickerItem("42", "👎", null, "Emoji", listOf("thumbs", "down")),
+                StickerItem("43", "👋", null, "Emoji", listOf("wave", "hello")),
+                StickerItem("44", "🙌", null, "Party", listOf("hands", "celebrate")),
+                StickerItem("45", "🫶", null, "Love", listOf("heart", "hands")),
+                StickerItem("46", "✌️", null, "Cool", listOf("peace", "victory")),
 
                 // --- Text Bubbles ---
-                StickerItem("47", "💬", "Text", listOf("bubble", "speech")),
-                StickerItem("48", "💭", "Text", listOf("bubble", "thought")),
-                StickerItem("49", "🗯️", "Text", listOf("bubble", "shout")),
-                StickerItem("50", "💤", "Text", listOf("sleep", "zzz")),
-                StickerItem("51", "💢", "Text", listOf("anger", "vein")),
-                StickerItem("52", "💥", "Cool", listOf("boom", "pow")),
-                StickerItem("53", "💯", "Cool", listOf("100", "score")),
+                StickerItem("47", "💬", null, "Text", listOf("bubble", "speech")),
+                StickerItem("48", "💭", null, "Text", listOf("bubble", "thought")),
+                StickerItem("49", "🗯️", null, "Text", listOf("bubble", "shout")),
+                StickerItem("50", "💤", null, "Text", listOf("sleep", "zzz")),
+                StickerItem("51", "💢", null, "Text", listOf("anger", "vein")),
+                StickerItem("52", "💥", null, "Cool", listOf("boom", "pow")),
+                StickerItem("53", "💯", null, "Cool", listOf("100", "score")),
 
                 // --- Party & Objects ---
-                StickerItem("54", "🎉", "Party", listOf("celebrate", "popper")),
-                StickerItem("55", "🎈", "Party", listOf("balloon")),
-                StickerItem("56", "🎁", "Party", listOf("gift", "present")),
-                StickerItem("57", "🎂", "Food", listOf("cake", "birthday")),
-                StickerItem("58", "🏆", "Cool", listOf("trophy", "win")),
-                StickerItem("59", "👑", "Cool", listOf("crown", "royal")),
-                StickerItem("60", "💎", "Cool", listOf("gem", "rich")),
-                StickerItem("61", "💍", "Love", listOf("ring", "wedding")),
-                StickerItem("62", "💄", "Cool", listOf("makeup", "beauty")),
-                StickerItem("63", "🕶️", "Cool", listOf("glasses", "fashion")),
-                StickerItem("64", "📷", "Cool", listOf("camera", "photo")),
-                StickerItem("65", "🎧", "Cool", listOf("headphones", "music")),
-                StickerItem("66", "🎵", "Cool", listOf("music", "note")),
-                StickerItem("67", "🎮", "Cool", listOf("game", "play")),
-                StickerItem("68", "📱", "Cool", listOf("phone", "tech")),
-                StickerItem("69", "💻", "Cool", listOf("laptop", "tech")),
-                StickerItem("70", "💡", "Cool", listOf("idea", "light")),
-                StickerItem("71", "🚀", "Cool", listOf("rocket", "space")),
-                StickerItem("72", "🚗", "Cool", listOf("car", "drive")),
-                StickerItem("73", "✈️", "Cool", listOf("plane", "travel")),
+                StickerItem("54", "🎉", null, "Party", listOf("celebrate", "popper")),
+                StickerItem("55", "🎈", null, "Party", listOf("balloon")),
+                StickerItem("56", "🎁", null, "Party", listOf("gift", "present")),
+                StickerItem("57", "🎂", null, "Food", listOf("cake", "birthday")),
+                StickerItem("58", "🏆", null, "Cool", listOf("trophy", "win")),
+                StickerItem("59", "👑", null, "Cool", listOf("crown", "royal")),
+                StickerItem("60", "💎", null, "Cool", listOf("gem", "rich")),
+                StickerItem("61", "💍", null, "Love", listOf("ring", "wedding")),
+                StickerItem("62", "💄", null, "Cool", listOf("makeup", "beauty")),
+                StickerItem("63", "🕶️", null, "Cool", listOf("glasses", "fashion")),
+                StickerItem("64", "📷", null, "Cool", listOf("camera", "photo")),
+                StickerItem("65", "🎧", null, "Cool", listOf("headphones", "music")),
+                StickerItem("66", "🎵", null, "Cool", listOf("music", "note")),
+                StickerItem("67", "🎮", null, "Cool", listOf("game", "play")),
+                StickerItem("68", "📱", null, "Cool", listOf("phone", "tech")),
+                StickerItem("69", "💻", null, "Cool", listOf("laptop", "tech")),
+                StickerItem("70", "💡", null, "Cool", listOf("idea", "light")),
+                StickerItem("71", "🚀", null, "Cool", listOf("rocket", "space")),
+                StickerItem("72", "🚗", null, "Cool", listOf("car", "drive")),
+                StickerItem("73", "✈️", null, "Cool", listOf("plane", "travel")),
 
                 // --- Animals ---
-                StickerItem("74", "🐶", "Animal", listOf("dog", "puppy")),
-                StickerItem("75", "🐱", "Animal", listOf("cat", "kitten")),
-                StickerItem("76", "🐰", "Animal", listOf("rabbit", "bunny")),
-                StickerItem("77", "🦊", "Animal", listOf("fox", "wild")),
-                StickerItem("78", "🐻", "Animal", listOf("bear", "wild")),
-                StickerItem("79", "🐼", "Animal", listOf("panda", "bear")),
-                StickerItem("80", "🐯", "Animal", listOf("tiger", "cat")),
-                StickerItem("81", "🦁", "Animal", listOf("lion", "cat")),
-                StickerItem("82", "🐷", "Animal", listOf("pig", "farm")),
-                StickerItem("83", "🦄", "Animal", listOf("unicorn", "magic")),
-                StickerItem("84", "🦋", "Animal", listOf("butterfly", "pretty")),
+                StickerItem("74", "🐶", null, "Animal", listOf("dog", "puppy")),
+                StickerItem("75", "🐱", null, "Animal", listOf("cat", "kitten")),
+                StickerItem("76", "🐰", null, "Animal", listOf("rabbit", "bunny")),
+                StickerItem("77", "🦊", null, "Animal", listOf("fox", "wild")),
+                StickerItem("78", "🐻", null, "Animal", listOf("bear", "wild")),
+                StickerItem("79", "🐼", null, "Animal", listOf("panda", "bear")),
+                StickerItem("80", "🐯", null, "Animal", listOf("tiger", "cat")),
+                StickerItem("81", "🦁", null, "Animal", listOf("lion", "cat")),
+                StickerItem("82", "🐷", null, "Animal", listOf("pig", "farm")),
+                StickerItem("83", "🦄", null, "Animal", listOf("unicorn", "magic")),
+                StickerItem("84", "🦋", null, "Animal", listOf("butterfly", "pretty")),
 
                 // --- Food ---
-                StickerItem("85", "🍕", "Food", listOf("pizza")),
-                StickerItem("86", "🍔", "Food", listOf("burger")),
-                StickerItem("87", "🍟", "Food", listOf("fries")),
-                StickerItem("88", "🍦", "Food", listOf("ice", "cream")),
-                StickerItem("89", "🍩", "Food", listOf("donut")),
-                StickerItem("90", "🍺", "Food", listOf("beer", "drink")),
-                StickerItem("91", "☕", "Food", listOf("coffee"))
+                StickerItem("89", "🍩", null, "Food", listOf("donut")),
+                StickerItem("90", "🍺", null, "Food", listOf("beer", "drink")),
+                StickerItem("91", "☕", null, "Food", listOf("coffee"))
         )
     }
 
@@ -288,12 +330,25 @@ fun StickerDiscoveryScreen(onDismiss: () -> Unit, onStickerSelected: (String) ->
                     Box(
                             modifier =
                                     Modifier.aspectRatio(1f)
-                                            .clip(RoundedCornerShape(12.dp))
+                                            .clip(RoundedCornerShape(8.dp))
                                             .background(Color(0xFF1E1E1E))
-                                            .clickable { onStickerSelected(sticker.emoji) },
+                                            .clickable { onStickerSelected(sticker.emoji, sticker.resId) }
+                                            .padding(8.dp),
                             contentAlignment = Alignment.Center
                     ) {
-                        Text(text = sticker.emoji, fontSize = 40.sp)
+                        if (sticker.resId != null) {
+                            Image(
+                                painter = androidx.compose.ui.res.painterResource(id = sticker.resId),
+                                contentDescription = sticker.tags.firstOrNull(),
+                                modifier = Modifier.size(64.dp)
+                            )
+                        } else if (sticker.emoji != null) {
+                            Text(
+                                text = sticker.emoji,
+                                fontSize = 32.sp,
+                                modifier = Modifier.padding(8.dp)
+                            )
+                        }
                         if (sticker.isPremium) {
                             Box(
                                     modifier =

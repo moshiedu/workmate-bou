@@ -187,6 +187,10 @@ fun PhotoEditorScreen(
         LaunchedEffect(isEyedropperActive) {
                 if (isEyedropperActive) {
                         viewModel.clearMessage() // Clear any previous messages
+                        snackbarHostState.showSnackbar(
+                            message = "Tap on the image to pick a color",
+                            duration = androidx.compose.material3.SnackbarDuration.Short
+                        )
                 }
         }
 
@@ -1069,11 +1073,11 @@ fun PhotoEditorScreen(
                                                                                                         it
                                                                                                 )
                                                                                 },
-                                                                                onFlip = {
-                                                                                        viewModel
-                                                                                                .flipSticker(
-                                                                                                        it
-                                                                                                )
+                                                                                 onFlip = {
+                                                                                        viewModel.flipSticker(it)
+                                                                                },
+                                                                                onRotate = { id, clockwise ->
+                                                                                        viewModel.rotateSticker90(id, clockwise)
                                                                                 }
                                                                         )
                                                         }
@@ -1451,6 +1455,7 @@ fun PhotoEditorScreen(
                                                                                         .StickerEditorToolbar(
                                                                                                 layer =
                                                                                                         layerToEdit,
+                                                                                                isEyedropperActive = isEyedropperActive,
                                                                                                 onUpdateOpacity = {
                                                                                                         viewModel
                                                                                                                 .updateStickerOpacity(
@@ -2993,11 +2998,15 @@ fun PhotoEditorScreen(
                         com.moshitech.workmate.feature.imagestudio.components
                                 .StickerDiscoveryScreen(
                                         onDismiss = { viewModel.cancelTool() },
-                                        onStickerSelected = { emoji ->
-                                                if (viewModel.isReplacingSticker && uiState.selectedStickerLayerId != null) {
-                                                        viewModel.replaceSticker(uiState.selectedStickerLayerId!!, emoji)
-                                                } else {
-                                                        viewModel.addSticker(text = emoji)
+                                        onStickerSelected = { emoji, resId ->
+                                                if (resId != null) {
+                                                    viewModel.addSticker(resId = resId)
+                                                } else if (emoji != null) {
+                                                    if (viewModel.isReplacingSticker && uiState.selectedStickerLayerId != null) {
+                                                            viewModel.replaceSticker(uiState.selectedStickerLayerId!!, emoji)
+                                                    } else {
+                                                            viewModel.addSticker(text = emoji)
+                                                    }
                                                 }
                                         }
                                 )

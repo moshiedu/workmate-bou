@@ -67,6 +67,7 @@ fun StickerBoxComposable(
         onTransformEnd: (String) -> Unit,
         onDelete: (String) -> Unit,
         onFlip: ((String) -> Unit)? = null,
+        onRotate: ((String, Boolean) -> Unit)? = null,
         modifier: Modifier = Modifier
 ) {
     val density = androidx.compose.ui.platform.LocalDensity.current
@@ -700,6 +701,7 @@ fun StickerBoxComposable(
             Handle(
                     alignment = Alignment.TopEnd,
                     icon = Icons.Default.Refresh,
+                    onClick = { onRotate?.invoke(layer.id, true) },
                     onDrag = { dragAmount ->
                         val degrees = (dragAmount.x + dragAmount.y) * 0.2f
                         onTransform(layer.id, Offset.Zero, 1f, 1f, degrees)
