@@ -358,6 +358,7 @@ fun StickerBoxComposable(
                                                                                                         )
                                                                                                     }
                                                                             ),
+                                                            alpha = layer.tintStrength, // Apply Intensity Slider
                                                             blendMode =
                                                                     androidx.compose.ui.graphics
                                                                             .BlendMode.SrcAtop

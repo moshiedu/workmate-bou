@@ -181,6 +181,21 @@ class LayerDelegate(
         onApplyNeeded(true)
     }
 
+    fun updateStickerIntensity(id: String, strength: Float) {
+        _uiState.update { state ->
+            val stickers =
+                    state.stickerLayers.map { sticker ->
+                        if (sticker.id == id) {
+                            sticker.copy(tintStrength = strength)
+                        } else {
+                            sticker
+                        }
+                    }
+            state.copy(stickerLayers = stickers)
+        }
+        onApplyNeeded(true)
+    }
+
 
     fun removeSticker(id: String) {
         _uiState.update {

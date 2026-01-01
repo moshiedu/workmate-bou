@@ -713,8 +713,9 @@ class CompositeRenderer(private val context: Context) {
             if (layer.isGradient && layer.gradientColors.size >= 2) {
                 val gradientPaint = Paint().apply {
                     val colors = layer.gradientColors.map { 
-                         // Apply alpha 0.99f to avoid issues, but match stickerbox alpha
-                         android.graphics.Color.argb((255*0.9).toInt(), android.graphics.Color.red(it), android.graphics.Color.green(it), android.graphics.Color.blue(it))
+                         // Use tintStrength for alpha to allow details to show through
+                         val alpha = (layer.tintStrength * 255).toInt()
+                         android.graphics.Color.argb(alpha, android.graphics.Color.red(it), android.graphics.Color.green(it), android.graphics.Color.blue(it))
                     }.toIntArray()
 
                     shader =
@@ -725,6 +726,9 @@ class CompositeRenderer(private val context: Context) {
                             android.graphics.Shader.TileMode.CLAMP
                         )
                     xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC_ATOP)
+                    
+                    // Also set paint alpha for good measure, though shader colors handle it usually
+                    this.alpha = (layer.tintStrength * 255).toInt() 
                 }
                 
                 // Draw rect covering the text area

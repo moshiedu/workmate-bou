@@ -458,6 +458,9 @@ class PhotoEditorViewModel(application: Application) : AndroidViewModel(applicat
     fun updateStickerTint(id: String, hasTint: Boolean, color: Int, strength: Float = 1.0f) =
             layers.updateStickerTint(id, hasTint, color, strength)
 
+    fun updateStickerIntensity(id: String, strength: Float) =
+            layers.updateStickerIntensity(id, strength)
+
     fun updateStickerOpacity(id: String, opacity: Float) = layers.updateStickerOpacity(id, opacity)
 
     fun updateStickerBlendMode(id: String, blendMode: androidx.compose.ui.graphics.BlendMode) =

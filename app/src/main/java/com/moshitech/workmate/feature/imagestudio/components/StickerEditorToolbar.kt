@@ -49,6 +49,7 @@ fun StickerEditorToolbar(
     onUpdateShadow: (Boolean, Int, Float, Float, Float) -> Unit,
     onFlip: (Boolean) -> Unit, // isVertical
     onRotate: (Boolean) -> Unit, // isClockwise
+    onUpdateIntensity: (Float) -> Unit, // NEW: Intensity Update
     onChangeSticker: () -> Unit, // NEW: Open sticker picker
     onDone: () -> Unit
 ) {
@@ -206,7 +207,7 @@ fun StickerEditorToolbar(
                                     Slider(
                                         value = layer.tintStrength,
                                         onValueChange = { strength ->
-                                            onUpdateColor(true, layer.tintColor, strength)
+                                            onUpdateIntensity(strength)
                                         },
                                         valueRange = 0f..1f,
                                         colors = SliderDefaults.colors(
@@ -391,6 +392,32 @@ fun StickerEditorToolbar(
                                         bottom = 8.dp
                                     )
                             )
+
+                            // Gradient Intensity Slider (Added per user request)
+                            if (layer.isGradient) {
+                                Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                                    Text(
+                                        "Intensity: ${(layer.tintStrength * 100).toInt()}%",
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        modifier = Modifier.padding(start = 16.dp)
+                                    )
+                                    Slider(
+                                        value = layer.tintStrength,
+                                        onValueChange = { strength ->
+                                            onUpdateIntensity(strength)
+                                        },
+                                        valueRange = 0f..1f,
+                                        colors = SliderDefaults.colors(
+                                            thumbColor = Color.White,
+                                            activeTrackColor = Color.White,
+                                            inactiveTrackColor = Color.Gray
+                                        ),
+                                        modifier = Modifier.padding(horizontal = 8.dp)
+                                    )
+                                }
+                            }
+
                             Row(
                                 modifier =
                                     Modifier.horizontalScroll(

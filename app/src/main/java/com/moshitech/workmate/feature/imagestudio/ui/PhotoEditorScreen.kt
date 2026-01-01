@@ -1548,6 +1548,16 @@ fun PhotoEditorScreen(
                                                                                                                         isClockwise
                                                                                                                 )
                                                                                                 },
+                                                                                                onUpdateIntensity = {
+                                                                                                        strength
+                                                                                                        ->
+                                                                                                        viewModel
+                                                                                                                .updateStickerIntensity(
+                                                                                                                        layerToEdit
+                                                                                                                                .id,
+                                                                                                                        strength
+                                                                                                                )
+                                                                                                },
                                                                                                 onChangeSticker = {
                                                                                                         // Open sticker picker to change currently selected sticker
                                                                                                         viewModel.startStickerReplacement(layerToEdit.id)
